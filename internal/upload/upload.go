@@ -56,6 +56,7 @@ type Request struct {
 	EncryptedFlag, ExpiryHours                             string
 	Reader                                                 io.Reader
 	UploaderIP                                             string
+	Admin                                                  bool
 }
 
 // Result is what a successful upload yields to the handler.
@@ -97,8 +98,12 @@ func (u *Uploader) Do(req Request) (Result, error) {
 	if expHours <= 0 {
 		expHours = 6
 	}
-	if expHours > 24 {
-		expHours = 24
+	maxHours := 24
+	if req.Admin {
+		maxHours = 24 * 90
+	}
+	if expHours > maxHours {
+		expHours = maxHours
 	}
 	exp := time.Now().Add(time.Duration(expHours) * time.Hour).UTC().Format(time.RFC3339Nano)
 

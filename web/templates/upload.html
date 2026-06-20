@@ -60,6 +60,11 @@
         <option value="6" selected>6h</option>
         <option value="12">12h</option>
         <option value="24">24h</option>
+        {{if .Admin}}
+          <option value="168">7 days</option>
+          <option value="720">1 month</option>
+          <option value="2160">3 months</option>
+        {{end}}
       </select>
 
       <button type="submit" class="field-lg">start upload</button>

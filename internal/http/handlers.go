@@ -41,6 +41,7 @@ func (h *Handler) uploadPost(w http.ResponseWriter, r *http.Request) {
 		ExpiryHours:   r.FormValue("expiry_hours"),
 		Reader:        file,
 		UploaderIP:    ip,
+		Admin:         CurrentSession(r).AdminID > 0,
 	})
 	if err != nil {
 		switch {

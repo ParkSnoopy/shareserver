@@ -129,6 +129,48 @@ func TestExpiryClampedTo24h(t *testing.T) {
 	}
 }
 
+func TestNonAdminSevenDayExpiryClampedTo24h(t *testing.T) {
+	u, store, _, cleanup := newUploader(t, 1<<30)
+	defer cleanup()
+	res, err := u.Do(Request{
+		Title: "x", Visibility: "public", ExpiryHours: "168",
+		Reader: strReader("hello"), UploaderIP: "1.2.3.4",
+	})
+	if err != nil {
+		t.Fatalf("upload failed: %v", err)
+	}
+	sh, _ := store.Get(res.ID)
+	exp, err := time.Parse(time.RFC3339Nano, sh.ExpiresAt.String)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dur := exp.Sub(time.Now().UTC())
+	if dur > 24*time.Hour+time.Minute || dur < 23*time.Hour {
+		t.Fatalf("non-admin 7d expiry not clamped to ~24h: %v", dur)
+	}
+}
+
+func TestAdminExpiryAllowsThreeMonths(t *testing.T) {
+	u, store, _, cleanup := newUploader(t, 1<<30)
+	defer cleanup()
+	res, err := u.Do(Request{
+		Title: "x", Visibility: "public", ExpiryHours: "2160", Admin: true,
+		Reader: strReader("hello"), UploaderIP: "1.2.3.4",
+	})
+	if err != nil {
+		t.Fatalf("upload failed: %v", err)
+	}
+	sh, _ := store.Get(res.ID)
+	exp, err := time.Parse(time.RFC3339Nano, sh.ExpiresAt.String)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dur := exp.Sub(time.Now().UTC())
+	if dur > 90*24*time.Hour+time.Minute || dur < 90*24*time.Hour-time.Minute {
+		t.Fatalf("admin expiry not ~90d: %v", dur)
+	}
+}
+
 func TestExpiryDefault6h(t *testing.T) {
 	u, store, _, cleanup := newUploader(t, 1<<30)
 	defer cleanup()
