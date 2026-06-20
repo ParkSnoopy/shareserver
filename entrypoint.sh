@@ -7,6 +7,7 @@ cd /app
 mkdir -p "/app/data/blobs"
 
 # Update App Secret
+cp .env.example .env
 sed -i "s/^APP_SECRET =.*/APP_SECRET = $(cat \/dev\/urandom | LC_ALL=C tr -dc a-zA-Z0-9 | head -c 128)/" .env
 
 # Run the Server
