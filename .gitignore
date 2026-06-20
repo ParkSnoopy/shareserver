@@ -9,5 +9,5 @@ data/blobs/*
 
 # ignore binary
 !data/blobs/.gitkeep
-shareserver
-setexpiry
+/shareserver
+/setexpiry
