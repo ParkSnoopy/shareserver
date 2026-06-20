@@ -53,20 +53,20 @@ production — it logs a warning and uses a throwaway secret.
 ## Configuration
 
 All config comes from environment variables (a `.env` file is loaded if
-present; real env vars win over the file). See `.env.example` for the full
-list. The important ones:
+present; real env vars win over the file). `README.md` below matches
+`.env.example`:
 
-| Var | Default | Purpose |
+| Var | Example/default | Purpose |
 | --- | --- | --- |
-| `ENV` | `dev` | `dev` allows an ephemeral secret + password sync; `prod` requires `APP_SECRET` |
-| `ADDR` | `:8080` | listen address |
+| `ENV` | `dev` | `dev` allows an ephemeral secret + default admin; `prod` requires `APP_SECRET` + `ADMIN_PASSWORD` |
+| `ADDR` | `0.0.0.0:8080` | listen address |
 | `DB_PATH` | `data/shareserver.db` | SQLite path |
 | `BLOB_DIR` | `data/blobs` | where uploaded blobs are stored |
-| `APP_SECRET` | _(dev: ephemeral)_ | HMAC key for private-key hashing; **required in prod** |
-| `ADMIN_USER` | `admin` | initial admin username |
-| `ADMIN_PASSWORD` | `admin-change-me` | initial admin password |
-| `MAX_UPLOAD_BYTES` | `209715200` (200 MiB) | per-blob upload limit |
-| `STORAGE_CAP_BYTES` | `419430400` (400 MiB) | global stored-blob cap |
+| `APP_SECRET` | `!INSECURE!_qweruiop12347890` | HMAC key for private-key hashing; **required in prod** |
+| `ADMIN_USER` | commented out | initial admin username |
+| `ADMIN_PASSWORD` | commented out | initial admin password |
+| `MAX_UPLOAD_BYTES` | `314572800` | per-blob upload limit |
+| `STORAGE_CAP_BYTES` | `419430400` | global stored-blob cap |
 | `TRUST_PROXY_HEADERS` | `false` | trust `X-Forwarded-For`/`X-Real-IP`/`X-Forwarded-Proto` |
 | `TZ` | `Asia/Shanghai` | timezone for purge scheduling and display |
 
