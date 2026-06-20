@@ -1,0 +1,81 @@
+{{define "upload.html"}}
+{{template "base_top" .}}
+<div class="grid">
+  <div class="row">
+    <span>01</span>
+    <h1># upload</h1>
+  </div>
+
+  <div class="row">
+    <span>02</span>
+    <p class="muted">drop files here. default keep: 6h. private means unlisted; link still works.</p>
+  </div>
+
+  <div class="row">
+    <span>03</span>
+    <p class="muted">password unlocks locally before open/download.</p>
+  </div>
+
+  <div class="row">
+    <span>04</span>
+    <form id="uploadForm" class="panel" data-max-bytes="{{.Max}}">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+
+      <label>title</label>
+      <input class="field-md" name="title">
+
+      <label>source</label>
+      <select class="field-md" id="source">
+        <option value="file">file</option>
+        <option value="clipboard">clipboard</option>
+      </select>
+
+      <section id="fileSource">
+        <label>files</label>
+        <input class="field-lg" id="files" type="file" multiple>
+        <div id="fileSize" class="muted"></div>
+      </section>
+
+      <section id="clipSource" hidden>
+        <button type="button" id="clip" class="field-lg">read clipboard</button>
+        <div id="clipbox" tabindex="0" class="field-lg" contenteditable="true" data-placeholder="type or paste text here. paste a file/image to attach media alongside your text."></div>
+        <button type="button" id="clipCollapse" class="field-md" hidden>collapse</button>
+      </section>
+
+      <label>visibility</label>
+      <select class="field-md" name="visibility" id="visibility">
+        <option value="public">public</option>
+        <option value="private">private</option>
+      </select>
+
+      <label id="privateKeyLabel" hidden>private key</label>
+      <input class="field-md" name="private_key" id="privateKey" hidden>
+
+      <label>password</label>
+      <input class="field-md" name="password" type="password">
+
+      <label>expiry</label>
+      <select class="field-md" name="expiry_hours">
+        <option value="1">1h</option>
+        <option value="6" selected>6h</option>
+        <option value="12">12h</option>
+        <option value="24">24h</option>
+      </select>
+
+      <button type="submit" class="field-lg">start upload</button>
+    </form>
+  </div>
+
+  <div class="row">
+    <span>05</span>
+    <pre id="progress" class="progress"></pre>
+  </div>
+
+  <div class="row">
+    <span>06</span>
+    <div id="result"></div>
+  </div>
+</div>
+<script type="module" src="/static/js/upload.js"></script>
+{{template "base_bottom" .}}
+{{end}}

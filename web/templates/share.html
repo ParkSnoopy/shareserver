@@ -1,0 +1,55 @@
+{{define "share.html"}}
+{{template "base_top" .}}
+<div class="grid">
+  <div class="row">
+    <span>01</span>
+    <h1># {{.Share.Title}}</h1>
+  </div>
+
+  {{if .Expired}}
+    <div class="row">
+      <span>02</span>
+      <p class="err">expired.</p>
+    </div>
+  {{else}}
+    <div class="row">
+      <span>02</span>
+      <p class="muted">{{if .Share.Encrypted}}encrypted. password is used in browser.{{else}}plain share.{{end}}</p>
+    </div>
+
+    <div class="row">
+      <span>03</span>
+      <div id="share" data-id="{{.Share.ID}}" data-encrypted="{{.Share.Encrypted}}" data-cipher='{{.Share.CipherMeta}}' data-manifest='{{.Share.ZipManifest}}'>
+        {{if .Share.Encrypted}}
+          <input class="field-md" id="password" type="password" placeholder="password">
+          <button id="loadBtn" class="field-md">decrypt files</button>
+        {{else}}
+          <button id="loadBtn" class="field-md">list files</button>
+        {{end}}
+      </div>
+    </div>
+
+    <div class="row">
+      <span>04</span>
+      <pre id="progress" class="progress"></pre>
+    </div>
+
+    <div class="row">
+      <span>05</span>
+    </div>
+
+    <div class="row">
+      <span>06</span>
+      <h1># archive</h1>
+    </div>
+
+    <div class="row">
+      <span>07</span>
+      <div id="listing"></div>
+    </div>
+
+    <script type="module" src="/static/js/share.js"></script>
+  {{end}}
+</div>
+{{template "base_bottom" .}}
+{{end}}

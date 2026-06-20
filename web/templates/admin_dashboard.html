@@ -1,0 +1,34 @@
+{{define "admin_dashboard.html"}}
+{{template "base_top" .}}
+<div class="grid">
+  <div class="row">
+    <span>01</span>
+    <h1># admin</h1>
+  </div>
+
+  <div class="row">
+    <span>02</span>
+    <p>stored {{mb .Used}} / {{mb .Cap}}</p>
+  </div>
+
+  <div class="row">
+    <span>03</span>
+    <p>active {{.Active}} · expired {{.Expired}} · purged {{.Purged}}</p>
+  </div>
+
+  <div class="row">
+    <span>04</span>
+  </div>
+
+  <div class="row">
+    <span>05</span>
+    <h1># actions</h1>
+  </div>
+
+  <div class="row">
+    <span>06</span>
+    <p><a href="/admin/shares">inspect shares →</a></p>
+  </div>
+</div>
+{{template "base_bottom" .}}
+{{end}}

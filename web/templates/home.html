@@ -1,0 +1,50 @@
+{{define "home.html"}}
+{{template "base_top" .}}
+<div class="grid">
+  <div class="row">
+    <span>01</span>
+    <h1># shares</h1>
+  </div>
+
+  <div class="row">
+    <span>02</span>
+    <p class="muted">encrypted shares stay opaque here.</p>
+  </div>
+
+  <div class="row">
+    <span>03</span>
+    <form class="line" method="post" action="/lookup">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input class="field-md" name="key" placeholder="private key">
+      <button class="field-md">check</button>
+    </form>
+  </div>
+
+  <div class="row">
+    <span>04</span>
+  </div>
+
+  <div class="row">
+    <span>05</span>
+    <h1># list</h1>
+  </div>
+
+  {{range .Shares}}
+    <div class="row">
+      <span>--</span>
+      <div class="shareline">
+        <a href="/s/{{.ID}}">{{.Title}}</a>
+        <em>{{.Visibility}}</em>
+        <em>{{if .Encrypted}}encrypted{{else}}plain{{end}}</em>
+        <em>{{mb .Size}}</em>
+      </div>
+    </div>
+  {{else}}
+    <div class="row">
+      <span>06</span>
+      <p class="muted">nothing here yet.</p>
+    </div>
+  {{end}}
+</div>
+{{template "base_bottom" .}}
+{{end}}

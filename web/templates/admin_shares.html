@@ -1,0 +1,38 @@
+{{define "admin_shares.html"}}
+{{template "base_top" .}}
+<div class="wide">
+  <h1># shares</h1>
+  <table class="admin-shares">
+    <thead>
+      <tr>
+        <th>id</th>
+        <th>title</th>
+        <th>state</th>
+        <th>size</th>
+        <th>upload by</th>
+        <th>expires</th>
+        <th>actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Shares}}
+        <tr>
+          <td><a href="/s/{{.ID}}">{{short .ID}}</a></td>
+          <td class="admin-title">{{.Title}}</td>
+          <td>{{.Visibility}} {{if .Encrypted}}encrypted{{else}}plain{{end}} {{if .PurgedAt.Valid}}purged{{end}}</td>
+          <td>{{mb .Size}}</td>
+          <td>{{.UploaderIP}}</td>
+          <td>{{if .ExpiresAt.Valid}}{{fmtTime .ExpiresAt.String}}{{else}}never{{end}}</td>
+          <td>
+            <form method="post" action="/admin/shares/{{.ID}}/delete">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <button class="field-sm">delete</button>
+            </form>
+          </td>
+        </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{template "base_bottom" .}}
+{{end}}

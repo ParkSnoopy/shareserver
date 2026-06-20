@@ -1,0 +1,25 @@
+{{define "admin_login.html"}}
+{{template "base_top" .}}
+<div class="grid">
+  <div class="row">
+    <span>01</span>
+    <h1># admin login</h1>
+  </div>
+
+  <div class="row">
+    <span>02</span>
+    <form class="panel" method="post" action="/admin/login">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+
+      <label>user</label>
+      <input class="field-md" name="username">
+
+      <label>password</label>
+      <input class="field-md" type="password" name="password">
+
+      <button class="field-md">login</button>
+    </form>
+  </div>
+</div>
+{{template "base_bottom" .}}
+{{end}}

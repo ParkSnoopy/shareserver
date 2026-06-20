@@ -1,0 +1,13 @@
+# spec
+plan.md
+
+# local data
+.env
+data/*.db
+data/*.db-*
+data/blobs/*
+
+# ignore binary
+!data/blobs/.gitkeep
+shareserver
+setexpiry

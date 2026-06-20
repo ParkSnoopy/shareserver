@@ -1,0 +1,29 @@
+{{define "base_top"}}
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>{{.Title}}</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+  </head>
+  <body>
+    <nav class="tabs">
+      <a class="logo" href="/">share://</a>
+      <a href="/upload">upload</a>
+      <a href="/admin">admin</a>
+      {{if .Admin}}
+        <form method="post" action="/admin/logout">
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <button>logout</button>
+        </form>
+      {{end}}
+    </nav>
+    <main class="shell">
+{{end}}
+
+{{define "base_bottom"}}
+    </main>
+  </body>
+</html>
+{{end}}
