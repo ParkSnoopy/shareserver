@@ -153,9 +153,9 @@ if [ -n "$ID_PRIV" ] && echo "$resp" | grep -q '"ok":true'; then ok "upload priv
 else err "upload private with key failed: $resp"; fi
 
 echo "== lookup with key (A) =="
-s=$(curl -s -b "$COOKIES" -o /dev/null -w "%{http_code}" -X POST "$BASE/lookup" \
+s=$(curl -s -b "$COOKIES" -o /dev/null -w "%{http_code}" -X POST "$BASE/" \
   -F "csrf=$CSRF" -F "key=secretkey")
-assert_status "POST /lookup with key -> 200" 200 "$s"
+assert_status "POST / with key -> 200" 200 "$s"
 # direct private uuid works without key (plan rule)
 s=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/s/$ID_PRIV")
 assert_status "GET /s/{private} direct uuid -> 200" 200 "$s"

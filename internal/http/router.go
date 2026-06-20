@@ -52,7 +52,8 @@ func New(a *app.App) http.Handler {
 	r.Use(h.csrf)
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
 	r.Get("/", h.home)
-	r.Post("/lookup", h.lookup)
+	r.Post("/", h.home)
+	r.Get("/s/", h.archivePage)
 	r.Get("/upload", h.uploadPage)
 	r.Post("/upload", h.uploadPost)
 	r.Get("/s/{id}", h.sharePage)
@@ -81,19 +82,26 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, da
 	}
 }
 
-func (h *Handler) home(w http.ResponseWriter, r *http.Request) { h.renderShares(w, r, "", false) }
-func (h *Handler) lookup(w http.ResponseWriter, r *http.Request) {
-	h.renderShares(w, r, r.FormValue("key"), true)
-}
-func (h *Handler) renderShares(w http.ResponseWriter, r *http.Request, key string, keyMode bool) {
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	var list []share.Share
-	if key != "" {
-		list = h.Store.ListByKey(now, h.privateHash(key))
-	} else {
-		list = h.Store.ListPublic(now)
+func (h *Handler) home(w http.ResponseWriter, r *http.Request) {
+	key := ""
+	if r.Method == http.MethodPost {
+		key = r.FormValue("key")
 	}
-	h.render(w, r, "home.html", map[string]any{"Shares": list, "KeyMode": keyMode})
+	keyHash := ""
+	if key != "" {
+		keyHash = h.privateHash(key)
+	}
+	h.renderArchive(w, r, share.Share{}, false, "active", keyHash)
+}
+func (h *Handler) archivesForKey(keyHash string) ([]share.Share, bool) {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if keyHash != "" {
+		return h.Store.ListByKey(now, keyHash), true
+	}
+	return h.Store.ListPublic(now), false
+}
+func (h *Handler) archivePage(w http.ResponseWriter, r *http.Request) {
+	h.renderArchive(w, r, share.Share{}, false, "active", "")
 }
 func (h *Handler) uploadPage(w http.ResponseWriter, r *http.Request) {
 	h.render(w, r, "upload.html", map[string]any{"Max": h.A.C.MaxUploadBytes})
@@ -110,7 +118,19 @@ func (h *Handler) sharePage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	h.render(w, r, "share.html", map[string]any{"Share": s, "Status": st, "Expired": st == "expired"})
+	h.renderArchive(w, r, s, true, st, "")
+}
+
+func (h *Handler) renderArchive(w http.ResponseWriter, r *http.Request, selected share.Share, hasSelected bool, status, keyHash string) {
+	archives, privateMode := h.archivesForKey(keyHash)
+	h.render(w, r, "share.html", map[string]any{
+		"Share":       selected,
+		"Selected":    hasSelected,
+		"Status":      status,
+		"Expired":     hasSelected && status == "expired",
+		"Archives":    archives,
+		"PrivateMode": privateMode,
+	})
 }
 
 func (h *Handler) blob(w http.ResponseWriter, r *http.Request) {

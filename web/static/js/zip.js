@@ -1,4 +1,35 @@
 import { unzip, zip } from "../vendor/fflate.mjs";
+const mimeByExt = {
+	txt: "text/plain",
+	md: "text/markdown",
+	csv: "text/csv",
+	log: "text/plain",
+	html: "text/html",
+	htm: "text/html",
+	css: "text/css",
+	js: "text/javascript",
+	mjs: "text/javascript",
+	json: "application/json",
+	pdf: "application/pdf",
+	png: "image/png",
+	jpg: "image/jpeg",
+	jpeg: "image/jpeg",
+	gif: "image/gif",
+	webp: "image/webp",
+	svg: "image/svg+xml",
+	mp3: "audio/mpeg",
+	wav: "audio/wav",
+	weba: "audio/webm",
+	mp4: "video/mp4",
+	webm: "video/webm",
+	ogv: "video/ogg",
+};
+
+export function mimeFromName(name) {
+	const ext = (name || "").toLowerCase().split(".").pop();
+	return mimeByExt[ext] || "";
+}
+
 function safeName(name, seen) {
 	name = (name || "file")
 		.replace(/\\/g, "/")
@@ -30,7 +61,7 @@ export async function filesToZip(files) {
 		manifest.push({
 			name,
 			size: f.size,
-			type: f.type || "application/octet-stream",
+			type: f.type || mimeFromName(name) || "application/octet-stream",
 			mtime: f.lastModified || Date.now(),
 		});
 	}

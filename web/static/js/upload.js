@@ -10,6 +10,7 @@ const sourceEl = document.getElementById("source");
 const visibilityEl = document.getElementById("visibility");
 const privateKeyLabel = document.getElementById("privateKeyLabel");
 const privateKey = document.getElementById("privateKey");
+const privateKeyRow = document.getElementById("privateKeyRow");
 const fileSource = document.getElementById("fileSource");
 const clipSource = document.getElementById("clipSource");
 const progress = new Progress(document.getElementById("progress"));
@@ -17,6 +18,8 @@ const result = document.getElementById("result");
 const clip = document.getElementById("clip");
 const clipbox = document.getElementById("clipbox");
 const clipCollapse = document.getElementById("clipCollapse");
+const dropzone = document.getElementById("dropzone");
+const fileList = document.getElementById("fileList");
 let clipFiles = [];
 let clipPreviewURLs = [];
 
@@ -37,8 +40,9 @@ function syncSource() {
 
 function syncVisibility() {
 	const isPrivate = visibilityEl.value === "private";
-	privateKeyLabel.hidden = !isPrivate;
-	privateKey.hidden = !isPrivate;
+	privateKeyRow.hidden = !isPrivate;
+	privateKeyLabel.hidden = false;
+	privateKey.hidden = false;
 }
 
 function basename(name) {
@@ -128,13 +132,53 @@ function updateFileSize(files) {
 	fileSize.textContent = files.length
 		? `${fmtBytes(sum)} (${files.length} file${files.length === 1 ? "" : "s"})`
 		: "";
+	fileList.replaceChildren(
+		...files.map((file) => {
+			const row = document.createElement("div");
+			row.className = "selected-file-row";
+			const name = document.createElement("span");
+			name.className = "selected-file-name";
+			name.textContent = file.name;
+			const meta = document.createElement("span");
+			meta.className = "selected-file-meta";
+			meta.textContent = fmtBytes(file.size);
+			row.append(name, meta);
+			return row;
+		}),
+	);
+}
+
+function setFiles(files) {
+	const dt = new DataTransfer();
+	for (const file of files) dt.items.add(file);
+	filesEl.files = dt.files;
+	setDefaultTitle(files);
+	updateFileSize(files);
 }
 
 sourceEl.addEventListener("change", syncSource);
 visibilityEl.addEventListener("change", syncVisibility);
 filesEl.addEventListener("change", () => {
-	setDefaultTitle([...filesEl.files]);
-	updateFileSize([...filesEl.files]);
+	setFiles([...filesEl.files]);
+});
+
+for (const eventName of ["dragenter", "dragover"]) {
+	dropzone.addEventListener(eventName, (event) => {
+		event.preventDefault();
+		dropzone.classList.add("drag-over");
+	});
+}
+
+for (const eventName of ["dragleave", "drop"]) {
+	dropzone.addEventListener(eventName, () => {
+		dropzone.classList.remove("drag-over");
+	});
+}
+
+dropzone.addEventListener("drop", (event) => {
+	event.preventDefault();
+	const files = [...event.dataTransfer.files];
+	if (files.length) setFiles(files);
 });
 clipCollapse.addEventListener("click", () => {
 	clipbox.classList.toggle("clipbox-collapsed");

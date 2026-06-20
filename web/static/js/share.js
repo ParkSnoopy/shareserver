@@ -1,18 +1,18 @@
 import { decryptBlob } from "./crypto.js";
-import { Progress } from "./progress.js";
-import { canPreview, unzipBytes } from "./zip.js";
+import { fmtBytes, Progress } from "./progress.js";
+import { canPreview, mimeFromName, unzipBytes } from "./zip.js";
 import { normalizeText } from "./text.js";
 
 const root = document.getElementById("share");
 const progress = new Progress(document.getElementById("progress"));
 const listing = document.getElementById("listing");
+const previewPane = document.getElementById("previewPane");
 const loadBtn = document.getElementById("loadBtn");
 const pass = document.getElementById("password");
 const encrypted =
 	root.dataset.encrypted === "true" || root.dataset.encrypted === "1";
 let entries = null;
 let manifest = [];
-let previewRow = null;
 let previewURL = "";
 
 try {
@@ -20,7 +20,6 @@ try {
 } catch {}
 
 let activeRow = null;
-let activeBtn = null;
 let downloadedBlob = null;
 
 async function fetchBlobWithProgress(id, fallbackTotal) {
@@ -81,53 +80,55 @@ async function load() {
 	}
 	entries = raw.map((entry) => ({
 		...entry,
-		type: (manifest.find((item) => item.name === entry.name) || {}).type || "",
+		type: typeForEntry(entry),
 	}));
 	progress.done("unzip", blob.size);
 	renderList();
+	root.hidden = true;
+	progress.reset();
+	progress.el.hidden = true;
 	return entries;
 }
 
 function renderList() {
 	listing.innerHTML = "";
+	const title = document.createElement("h3");
+	title.textContent = "# files";
 	const list = document.createElement("div");
-	list.className = "archive-list";
+	list.className = "api-index-list";
 	for (const entry of entries) list.append(rowFor(entry));
-	listing.append(list);
+	listing.append(title, list);
+	if (entries.length) openEntry(entries[0], list.firstElementChild);
+	else showEmptyDetail("# archive empty.");
 }
 
 function rowFor(entry) {
-	const row = document.createElement("div");
-	row.className = "archive-row";
-
-	const open = document.createElement("button");
-	open.textContent = "open";
-	open.className = "field-sm";
+	const row = document.createElement("button");
+	row.className = "api-index-row";
 	const previewable = canPreview(entry.name, entry.type);
-	open.title = previewable
-		? "open preview below"
-		: "open disabled: unsupported file type";
-	open.classList.toggle("visually-disabled", !previewable);
-	open.dataset.disabledReason = previewable ? "" : "unsupported file type";
-	open.onclick = () => {
-		if (previewable) openEntry(entry, row, open);
-	};
-
-	const download = document.createElement("button");
-	download.textContent = "download";
-	download.className = "field-sm";
-	download.onclick = () => save(typedBlob(entry), entry.name);
+	row.title = previewable ? "open preview" : "show file actions";
+	row.onclick = () => openEntry(entry, row);
 
 	const name = document.createElement("span");
 	name.className = "archive-name";
 	name.textContent = entry.name;
+	const method = document.createElement("span");
+	method.className = previewable ? "method-label method-get" : "method-label method-put";
+	method.textContent = previewable ? "GET" : "BIN";
 
-	row.append(open, download, name);
+	row.append(name, method);
 	return row;
 }
 
 function typedBlob(entry) {
 	return entry.type ? new Blob([entry.blob], { type: entry.type }) : entry.blob;
+}
+
+function typeForEntry(entry) {
+	const manifestType = (manifest.find((item) => item.name === entry.name) || {}).type || "";
+	return manifestType && manifestType !== "application/octet-stream"
+		? manifestType
+		: mimeFromName(entry.name) || manifestType;
 }
 
 
@@ -141,32 +142,66 @@ function entryPreviewURL(entry, forcedType = "") {
 }
 
 function clearPreview() {
-	if (previewRow) previewRow.remove();
-	previewRow = null;
 	if (previewURL) URL.revokeObjectURL(previewURL);
 	previewURL = "";
-	if (activeBtn) {
-		activeBtn.textContent = "open";
-		activeBtn.title = "open preview below";
-	}
+	if (activeRow) activeRow.classList.remove("active");
 	activeRow = null;
-	activeBtn = null;
 }
 
-function openEntry(entry, row, btn) {
-	if (activeRow === row) {
-		clearPreview();
-		return;
-	}
+function showEmptyDetail(message) {
 	clearPreview();
-	previewRow = document.createElement("div");
-	previewRow.className = "archive-preview";
-	previewRow.append(previewFor(entry));
-	row.after(previewRow);
+	previewPane.replaceChildren(
+		heading("# archive"),
+		comment(message || "# select a file."),
+	);
+}
+
+function heading(text) {
+	const h = document.createElement("h3");
+	h.textContent = text;
+	return h;
+}
+
+function comment(text) {
+	const p = document.createElement("p");
+	p.className = "comment-text";
+	p.textContent = text;
+	return p;
+}
+
+function openEntry(entry, row) {
+	clearPreview();
 	activeRow = row;
-	activeBtn = btn;
-	btn.textContent = "close";
-	btn.title = "close preview";
+	row.classList.add("active");
+	const actions = document.createElement("div");
+	actions.className = "detail-actions";
+	const download = document.createElement("button");
+	download.className = "primary-action-button field-md";
+	download.textContent = "> download";
+	download.onclick = () => save(typedBlob(entry), entry.name);
+	actions.append(download);
+
+	previewPane.replaceChildren(
+		heading(`# ${entry.name}`),
+		metaLine(entry),
+		actions,
+		previewWell(entry),
+	);
+}
+
+function metaLine(entry) {
+	const meta = document.createElement("p");
+	meta.className = "api-meta";
+	const type = entry.type || "application/octet-stream";
+	meta.textContent = `${type} · ${fmtBytes(entry.blob.size)}`;
+	return meta;
+}
+
+function previewWell(entry) {
+	const well = document.createElement("div");
+	well.className = "archive-preview preview-well";
+	well.append(previewFor(entry));
+	return well;
 }
 
 // previewFor renders an inline preview from the entry's in-browser blob:

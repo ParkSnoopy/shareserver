@@ -1,55 +1,86 @@
 {{define "share.html"}}
 {{template "base_top" .}}
-<div class="grid">
-  <div class="row">
-    <span>01</span>
-    <h1># {{.Share.Title}}</h1>
-  </div>
+<div class="share-source-buffer">
+  <div class="api-doc-layout share-doc-layout" data-selected="{{.Selected}}">
+    <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-controls="archiveSidebar" aria-expanded="true">&gt; hide archives</button>
+    <aside id="archiveSidebar" class="api-sidebar" aria-label="archives">
+      <h3># archives</h3>
+      <form class="lookup-form" method="post" action="/">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <label class="field-label">--private-key</label>
+        <input class="text-input field-md" name="key" autocomplete="off" placeholder="private key" data-lookup-key>
+        <button type="submit" class="primary-action-button field-md">&gt; lookup</button>
+      </form>
+      {{if .PrivateMode}}
+        <p class="comment-text"># showing public archives.</p>
+      {{else}}
+        <p class="comment-text"># showing public archives.</p>
+      {{end}}
 
-  {{if .Expired}}
-    <div class="row">
-      <span>02</span>
-      <p class="err">expired.</p>
-    </div>
-  {{else}}
-    <div class="row">
-      <span>02</span>
-      <p class="muted">{{if .Share.Encrypted}}encrypted. password is used in browser.{{else}}plain share.{{end}}</p>
-    </div>
+      <div class="sidebar-rule" aria-hidden="true"></div>
 
-    <div class="row">
-      <span>03</span>
-      <div id="share" data-id="{{.Share.ID}}" data-encrypted="{{.Share.Encrypted}}" data-cipher='{{.Share.CipherMeta}}' data-manifest='{{.Share.ZipManifest}}'>
-        {{if .Share.Encrypted}}
-          <input class="field-md" id="password" type="password" placeholder="password">
-          <button id="loadBtn" class="field-md">decrypt files</button>
+      <nav class="api-index" aria-label="archive list">
+        <h3># list</h3>
+        <div class="api-index-list" data-archive-list data-private-mode="{{.PrivateMode}}">
+          {{range .Archives}}
+            <a class="api-index-row" href="/s/{{.ID}}">
+              <span class="archive-name">{{.Title}}</span>
+              <span class="method-label {{if .Encrypted}}method-put{{else}}method-get{{end}}">{{if .Encrypted}}ENC{{else}}GET{{end}}</span>
+            </a>
+          {{else}}
+            <p class="muted">no archives here.</p>
+          {{end}}
+        </div>
+      </nav>
+    </aside>
+
+    <section class="api-main">
+      {{if .Selected}}
+        <h1># {{.Share.Title}}</h1>
+        {{if .Expired}}
+          <p class="err">expired.</p>
         {{else}}
-          <button id="loadBtn" class="field-md">list files</button>
+          <p class="comment-text"># {{if .Share.Encrypted}}encrypted. password decrypts in browser.{{else}}plain share. list files, open preview, download.{{end}}</p>
+
+          <nav id="listing" class="api-index" aria-label="files">
+            <h3># files</h3>
+            <p class="muted">run archive command first.</p>
+          </nav>
+
+          <div class="section-rule" aria-hidden="true"></div>
+
+          <div id="share" class="input-panel share-control" data-id="{{.Share.ID}}" data-encrypted="{{.Share.Encrypted}}" data-cipher='{{.Share.CipherMeta}}' data-manifest='{{.Share.ZipManifest}}'>
+            {{if .Share.Encrypted}}
+              <label class="field-label">--password</label>
+              <input class="text-input field-md" id="password" type="password" autocomplete="current-password" placeholder="password">
+              <button id="loadBtn" class="primary-action-button field-md">&gt; decrypt files</button>
+            {{else}}
+              <button id="loadBtn" class="primary-action-button field-md">&gt; list files</button>
+            {{end}}
+          </div>
+
+          <pre id="progress" class="progress-output"></pre>
+
+          <section id="previewPane" class="api-detail detail-pane">
+            <h3># archive</h3>
+            <p class="comment-text"># select a file after archive loads.</p>
+          </section>
         {{end}}
-      </div>
-    </div>
-
-    <div class="row">
-      <span>04</span>
-      <pre id="progress" class="progress"></pre>
-    </div>
-
-    <div class="row">
-      <span>05</span>
-    </div>
-
-    <div class="row">
-      <span>06</span>
-      <h1># archive</h1>
-    </div>
-
-    <div class="row">
-      <span>07</span>
-      <div id="listing"></div>
-    </div>
-
-    <script type="module" src="/static/js/share.js"></script>
-  {{end}}
+      {{else}}
+        <h1># shares</h1>
+        <p class="comment-text"># choose an archive from left, or enter a private key.</p>
+        <div class="section-rule" aria-hidden="true"></div>
+        <section class="api-detail detail-pane">
+          <h3># archive</h3>
+          <p class="comment-text"># no archive selected.</p>
+        </section>
+      {{end}}
+    </section>
+  </div>
 </div>
+{{if and .Selected (not .Expired)}}
+  <script type="module" src="/static/js/share.js"></script>
+{{end}}
+<script type="module" src="/static/js/archive-list.js"></script>
 {{template "base_bottom" .}}
 {{end}}
