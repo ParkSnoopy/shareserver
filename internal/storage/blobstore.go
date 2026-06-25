@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 )
 
+// UUID returns a random RFC 4122 version 4 identifier for share/blob names.
 func UUID() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
@@ -22,6 +23,7 @@ func UUID() string {
 
 var ErrTooLarge = fmt.Errorf("upload too large")
 
+// Store streams a blob to a temp file, hashes it, enforces size, and atomically commits.
 func Store(dir, id string, r io.Reader, limit int64) (path, sum string, size int64, err error) {
 	if err = os.MkdirAll(dir, 0755); err != nil {
 		return
@@ -53,6 +55,7 @@ func Store(dir, id string, r io.Reader, limit int64) (path, sum string, size int
 	return final, hex.EncodeToString(h.Sum(nil)), size, nil
 }
 
+// UsedBytes totals committed blob files for storage-cap and admin display.
 func UsedBytes(dir string) int64 {
 	var total int64
 	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {

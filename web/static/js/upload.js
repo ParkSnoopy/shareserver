@@ -23,21 +23,23 @@ const fileList = document.getElementById("fileList");
 let clipFiles = [];
 let clipPreviewURLs = [];
 
+// clearClipboardPreviews removes old object URLs and preview nodes from clipboard mode.
 function clearClipboardPreviews() {
 	for (const url of clipPreviewURLs) URL.revokeObjectURL(url);
 	clipPreviewURLs = [];
 	for (const old of clipbox.querySelectorAll(".clip-preview")) old.remove();
 }
 
-
 const fileSize = document.getElementById("fileSize");
 
+// syncSource switches visible controls between file picker and clipboard input.
 function syncSource() {
 	const clipMode = sourceEl.value === "clipboard";
 	fileSource.hidden = clipMode;
 	clipSource.hidden = !clipMode;
 }
 
+// syncVisibility shows private-key inputs only for private shares.
 function syncVisibility() {
 	const isPrivate = visibilityEl.value === "private";
 	privateKeyRow.hidden = !isPrivate;
@@ -45,6 +47,7 @@ function syncVisibility() {
 	privateKey.hidden = false;
 }
 
+// basename turns a file path into the default share title without extension.
 function basename(name) {
 	return name
 		.replace(/\\/g, "/")
@@ -53,6 +56,7 @@ function basename(name) {
 		.replace(/\.[^.]+$/, "");
 }
 
+// setDefaultTitle fills the title from the first selected file when the user left it blank.
 function setDefaultTitle(files) {
 	if (!titleEl.value && files.length) titleEl.value = basename(files[0].name);
 }
@@ -127,6 +131,7 @@ function previewClip(file) {
 	return info;
 }
 
+// updateFileSize renders selected file names and their combined size.
 function updateFileSize(files) {
 	const sum = files.reduce((acc, f) => acc + f.size, 0);
 	fileSize.textContent = files.length
@@ -148,6 +153,7 @@ function updateFileSize(files) {
 	);
 }
 
+// setFiles mirrors drag/drop selections into the real file input and UI summary.
 function setFiles(files) {
 	const dt = new DataTransfer();
 	for (const file of files) dt.items.add(file);
@@ -210,6 +216,7 @@ const mimeExt = {
 	"video/webm": "webm",
 	"video/ogg": "ogv",
 };
+// clipboardName gives pasted binary content a timestamped previewable filename.
 function clipboardName(type) {
 	const stamp = new Date()
 		.toISOString()
@@ -324,6 +331,7 @@ clipbox.addEventListener("paste", (event) => {
 	showClipboard(clipFiles);
 });
 
+// uploadFormData sends the final archive with XHR upload progress callbacks.
 function uploadFormData(out, size) {
 	return new Promise((resolve, reject) => {
 		const xhr = new XMLHttpRequest();

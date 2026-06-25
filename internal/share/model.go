@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// Share is the storage-facing view of upload metadata and blob location.
 type Share struct {
 	ID, Title, Visibility, PrivateKeyHash string
 	Encrypted                             bool
@@ -16,14 +17,7 @@ type Share struct {
 	PurgedAt                              sql.NullString
 }
 
-func Scan(rows interface{ Scan(dest ...any) error }) (Share, error) {
-	var s Share
-	var enc int
-	err := rows.Scan(&s.ID, &s.Title, &s.Visibility, &s.PrivateKeyHash, &enc, &s.CipherMeta, &s.ZipManifest, &s.Size, &s.BlobPath, &s.BlobSHA256, &s.UploaderIP, &s.ExpiresAt, &s.CreatedAt, &s.PurgedAt)
-	s.Encrypted = enc == 1
-	return s, err
-}
-
+// IsExpired reports whether an optional expiry timestamp is at or before now.
 func IsExpired(exp sql.NullString, now time.Time) bool {
 	if !exp.Valid || exp.String == "" {
 		return false
@@ -32,6 +26,7 @@ func IsExpired(exp sql.NullString, now time.Time) bool {
 	return err == nil && !t.After(now.UTC())
 }
 
+// Status collapses purge and expiry metadata into active, expired, or purged.
 func Status(s Share, now time.Time) string {
 	if s.PurgedAt.Valid {
 		return "purged"

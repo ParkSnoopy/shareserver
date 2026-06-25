@@ -1,3 +1,4 @@
+// fmtBytes renders byte counts in compact binary units for terminal UI text.
 export function fmtBytes(n) {
 	if (!n) return "0 B";
 	const u = ["B", "KiB", "MiB", "GiB"];
@@ -10,12 +11,15 @@ export function fmtBytes(n) {
 	return `${x.toFixed(i ? 1 : 0)} ${u[i]}`;
 }
 
+// Progress renders ordered transfer phases with throttled updates and failure state.
 export class Progress {
+	// constructor binds progress rendering to one DOM element.
 	constructor(el) {
 		this.el = el;
 		this.reset();
 	}
 
+	// reset clears visible lines and stops delayed or pulsing updates.
 	reset() {
 		if (this.timer) clearTimeout(this.timer);
 		if (this._pulseTimers) for (const t of this._pulseTimers) clearInterval(t);
@@ -30,23 +34,27 @@ export class Progress {
 		this.el.textContent = "";
 	}
 
+	// bar renders a fixed-width text progress bar.
 	bar(p) {
 		const w = 20;
 		const n = Math.max(0, Math.min(w, Math.round(p * w)));
-		return "[" + "#".repeat(n) + " ".repeat(w - n) + "]";
+		return `[${"#".repeat(n)}${" ".repeat(w - n)}]`;
 	}
 
+	// render writes phase lines in first-seen order.
 	render() {
 		this.el.textContent = this.order
 			.map((phase) => this.lines.get(phase))
 			.join("\n");
 	}
 
+	// line formats one transfer phase with percent, bytes, and state.
 	line(phase, done, total, state) {
 		const p = total ? done / total : 0;
 		return `${phase.padEnd(9)} ${this.bar(p)} ${String(Math.round(p * 100)).padStart(3)}% ${fmtBytes(done)} / ${fmtBytes(total)} ${state}`;
 	}
 
+	// cancelPending removes a delayed update for a completed or failed phase.
 	cancelPending(phase) {
 		if (this.pending?.phase === phase) {
 			this.pending = null;
@@ -57,6 +65,7 @@ export class Progress {
 		}
 	}
 
+	// set queues a throttled phase update so fast operations do not flicker.
 	set(phase, done, total, state = "") {
 		if (this.failed.has(phase)) return;
 		if (!this.seen.has(phase)) {
@@ -68,6 +77,7 @@ export class Progress {
 		this.timer = setTimeout(() => this.flush(), 500);
 	}
 
+	// flush commits the latest queued update and estimates speed when no state is given.
 	flush() {
 		this.timer = null;
 		if (!this.pending) return;
@@ -80,6 +90,7 @@ export class Progress {
 		this.render();
 	}
 
+	// fail freezes a phase in error state and cancels pending success updates.
 	fail(phase, msg, done = 0, total = 0) {
 		this.failed.add(phase);
 		this.cancelPending(phase);
@@ -99,6 +110,7 @@ export class Progress {
 		this.render();
 	}
 
+	// pulse shows bounded synthetic progress for work without byte callbacks.
 	pulse(phase, total, state = "working") {
 		if (!this.seen.has(phase)) {
 			this.seen.add(phase);
@@ -120,6 +132,7 @@ export class Progress {
 		};
 	}
 
+	// done marks a phase complete and prevents stale queued updates from overwriting it.
 	done(phase, total) {
 		if (this.failed.has(phase)) return;
 		this.cancelPending(phase);

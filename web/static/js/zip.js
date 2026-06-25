@@ -1,4 +1,5 @@
 import { unzip, zip } from "../vendor/fflate.mjs";
+
 const mimeByExt = {
 	txt: "text/plain",
 	md: "text/markdown",
@@ -25,11 +26,13 @@ const mimeByExt = {
 	ogv: "video/ogg",
 };
 
+// mimeFromName maps known filename extensions to preview/download MIME types.
 export function mimeFromName(name) {
 	const ext = (name || "").toLowerCase().split(".").pop();
 	return mimeByExt[ext] || "";
 }
 
+// safeName keeps zip entry paths relative and unique.
 function safeName(name, seen) {
 	name = (name || "file")
 		.replace(/\\/g, "/")
@@ -50,6 +53,7 @@ function safeName(name, seen) {
 	seen.add(name);
 	return name;
 }
+// filesToZip compresses browser-selected files and records safe preview metadata.
 export async function filesToZip(files) {
 	const seen = new Set(),
 		input = {},
@@ -73,6 +77,7 @@ export async function filesToZip(files) {
 	});
 	return { blob: new Blob([zipped], { type: "application/zip" }), manifest };
 }
+// unzipBytes expands an archive into named browser blobs for preview and download.
 export async function unzipBytes(buf) {
 	const out = await new Promise((resolve, reject) => {
 		unzip(new Uint8Array(buf), {}, (err, data) => {
@@ -87,6 +92,7 @@ export async function unzipBytes(buf) {
 		size: bytes.byteLength,
 	}));
 }
+// canPreview decides whether an entry can render inline instead of download-only.
 export function canPreview(name, type = "") {
 	const ext = name.toLowerCase().split(".").pop();
 	return (

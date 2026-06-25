@@ -3,6 +3,7 @@ const DEFAULT_ITERATIONS = 600000;
 const MIN_ITERATIONS = 100000;
 const MAX_ITERATIONS = 1200000;
 
+// cipherIterations validates PBKDF2 cost metadata before decrypting.
 export function cipherIterations(meta) {
 	const n = Number(meta?.iterations ?? DEFAULT_ITERATIONS);
 	if (!Number.isInteger(n) || n < MIN_ITERATIONS || n > MAX_ITERATIONS) {
@@ -13,6 +14,7 @@ export function cipherIterations(meta) {
 
 const b64 = (u) => btoa(String.fromCharCode(...u));
 const ub64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+// key derives an AES-GCM key from password, salt, and bounded PBKDF2 rounds.
 async function key(password, salt, iters) {
 	const base = await crypto.subtle.importKey(
 		"raw",
@@ -29,6 +31,7 @@ async function key(password, salt, iters) {
 		["encrypt", "decrypt"],
 	);
 }
+// encryptBlob wraps a zip blob with AES-GCM and returns safe metadata.
 export async function encryptBlob(blob, password) {
 	const salt = crypto.getRandomValues(new Uint8Array(16)),
 		nonce = crypto.getRandomValues(new Uint8Array(12)),
@@ -50,6 +53,7 @@ export async function encryptBlob(blob, password) {
 		},
 	};
 }
+// decryptBlob opens an encrypted share zip or reports a generic wrong-password error.
 export async function decryptBlob(blob, password, meta) {
 	const salt = ub64(meta.salt),
 		nonce = ub64(meta.nonce);

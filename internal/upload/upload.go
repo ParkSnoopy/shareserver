@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"shareserver/internal/audit"
 	"shareserver/internal/auth"
+	"shareserver/internal/ent"
 	"shareserver/internal/share"
 	"shareserver/internal/storage"
 	"strconv"
@@ -47,7 +48,7 @@ type Config struct {
 type Uploader struct {
 	Cfg   Config
 	Store *share.Store
-	DB    *sql.DB // for audit only
+	DB    *ent.Client // for audit only
 }
 
 // Request is the parsed multipart form plus the blob reader.

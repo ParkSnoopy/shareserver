@@ -1,10 +1,20 @@
 package audit
 
 import (
-	"database/sql"
+	"context"
+
 	"shareserver/internal/db"
+	"shareserver/internal/ent"
 )
 
-func Log(d *sql.DB, actor, ip, action, target, meta string) {
-	_, _ = d.Exec(`insert into audit_events(actor,ip,action,target,meta,created_at) values(?,?,?,?,?,?)`, actor, ip, action, target, meta, db.Now())
+// Log records a safe audit event and intentionally ignores logging failures.
+func Log(client *ent.Client, actor, ip, action, target, meta string) {
+	_, _ = client.AuditEvent.Create().
+		SetActor(actor).
+		SetIP(ip).
+		SetAction(action).
+		SetTarget(target).
+		SetMeta(meta).
+		SetCreatedAt(db.Now()).
+		Save(context.Background())
 }

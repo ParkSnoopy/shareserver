@@ -1,0 +1,20 @@
+{{ define "error.html" }}
+{{ template "base_top" . }}
+<div class="share-source-buffer">
+	<div class="api-detail detail-pane">
+		<h1># {{ .StatusCode }}</h1>
+		<p class="err">{{ .Message }}</p>
+		<p class="comment-text">
+			# redirect home in
+			<span
+				data-redirect-countdown
+				data-seconds="{{.RedirectSeconds}}"
+				data-redirect-to="/"
+				>{{ .RedirectSeconds }}</span
+			>s.
+		</p>
+	</div>
+</div>
+<script type="module" src="/static/js/redirect-countdown.js"></script>
+{{ template "base_bottom" . }}
+{{ end }}

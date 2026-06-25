@@ -1,7 +1,8 @@
 import { decryptBlob } from "./crypto.js";
+import { saveBlob } from "./download.js";
 import { fmtBytes, Progress } from "./progress.js";
-import { canPreview, mimeFromName, unzipBytes } from "./zip.js";
 import { normalizeText } from "./text.js";
+import { canPreview, mimeFromName, unzipBytes } from "./zip.js";
 
 const root = document.getElementById("share");
 const progress = new Progress(document.getElementById("progress"));
@@ -22,6 +23,7 @@ try {
 let activeRow = null;
 let downloadedBlob = null;
 
+// fetchBlobWithProgress downloads the stored archive while updating byte progress.
 async function fetchBlobWithProgress(id, fallbackTotal) {
 	const res = await fetch(`/blob/${id}`);
 	if (!res.ok) throw Error(`download failed ${res.status}`);
@@ -46,13 +48,14 @@ async function fetchBlobWithProgress(id, fallbackTotal) {
 	return new Blob([all]);
 }
 
+// load fetches, decrypts when needed, unzips entries, and renders the file list once.
 async function load() {
 	if (entries) return entries;
 	const id = root.dataset.id;
 	if (!downloadedBlob) {
 		downloadedBlob = await fetchBlobWithProgress(
 			id,
-			(manifest.find(Boolean) || {}).size || 0,
+			manifest.find(Boolean)?.size || 0,
 		);
 	}
 	progress.done("download", downloadedBlob.size);
@@ -90,6 +93,7 @@ async function load() {
 	return entries;
 }
 
+// renderList replaces the archive list with file rows and opens the first entry.
 function renderList() {
 	listing.innerHTML = "";
 	const title = document.createElement("h3");
@@ -102,6 +106,7 @@ function renderList() {
 	else showEmptyDetail("# archive empty.");
 }
 
+// rowFor builds one keyboard-clickable file row with previewability metadata.
 function rowFor(entry) {
 	const row = document.createElement("button");
 	row.className = "api-index-row";
@@ -113,34 +118,41 @@ function rowFor(entry) {
 	name.className = "archive-name";
 	name.textContent = entry.name;
 	const method = document.createElement("span");
-	method.className = previewable ? "method-label method-get" : "method-label method-put";
+	method.className = previewable
+		? "method-label method-get"
+		: "method-label method-put";
 	method.textContent = previewable ? "GET" : "BIN";
 
 	row.append(name, method);
 	return row;
 }
 
+// typedBlob restores an entry MIME type before preview or download.
 function typedBlob(entry) {
 	return entry.type ? new Blob([entry.blob], { type: entry.type }) : entry.blob;
 }
 
+// typeForEntry trusts manifest MIME data unless it is the generic octet fallback.
 function typeForEntry(entry) {
-	const manifestType = (manifest.find((item) => item.name === entry.name) || {}).type || "";
+	const manifestType =
+		manifest.find((item) => item.name === entry.name)?.type || "";
 	return manifestType && manifestType !== "application/octet-stream"
 		? manifestType
 		: mimeFromName(entry.name) || manifestType;
 }
-
 
 // entryPreviewURL builds a same-origin blob: URL from the in-browser entry
 // blob. Blob URLs bypass X-Frame-Options / CSP frame-ancestors, so previews
 // work for plain shares too (the server only exposes /blob/{id} for download;
 // per-entry HTTP serving was removed to avoid stored same-origin XSS).
 function entryPreviewURL(entry, forcedType = "") {
-	const blob = forcedType ? new Blob([entry.blob], { type: forcedType }) : typedBlob(entry);
+	const blob = forcedType
+		? new Blob([entry.blob], { type: forcedType })
+		: typedBlob(entry);
 	return URL.createObjectURL(blob);
 }
 
+// clearPreview revokes old preview URLs and clears row selection state.
 function clearPreview() {
 	if (previewURL) URL.revokeObjectURL(previewURL);
 	previewURL = "";
@@ -148,6 +160,7 @@ function clearPreview() {
 	activeRow = null;
 }
 
+// showEmptyDetail renders a neutral detail pane when no file can be selected.
 function showEmptyDetail(message) {
 	clearPreview();
 	previewPane.replaceChildren(
@@ -156,12 +169,14 @@ function showEmptyDetail(message) {
 	);
 }
 
+// heading creates terminal-styled section titles for the detail pane.
 function heading(text) {
 	const h = document.createElement("h3");
 	h.textContent = text;
 	return h;
 }
 
+// comment creates muted explanatory text for empty and status states.
 function comment(text) {
 	const p = document.createElement("p");
 	p.className = "comment-text";
@@ -169,6 +184,7 @@ function comment(text) {
 	return p;
 }
 
+// openEntry selects a file, exposes download, and renders its preview area.
 function openEntry(entry, row) {
 	clearPreview();
 	activeRow = row;
@@ -178,7 +194,7 @@ function openEntry(entry, row) {
 	const download = document.createElement("button");
 	download.className = "primary-action-button field-md";
 	download.textContent = "> download";
-	download.onclick = () => save(typedBlob(entry), entry.name);
+	download.onclick = () => saveBlob(typedBlob(entry), entry.name);
 	actions.append(download);
 
 	previewPane.replaceChildren(
@@ -189,6 +205,7 @@ function openEntry(entry, row) {
 	);
 }
 
+// metaLine displays an entry's MIME type and byte size.
 function metaLine(entry) {
 	const meta = document.createElement("p");
 	meta.className = "api-meta";
@@ -197,6 +214,7 @@ function metaLine(entry) {
 	return meta;
 }
 
+// previewWell wraps one preview renderer in the shared detail styling.
 function previewWell(entry) {
 	const well = document.createElement("div");
 	well.className = "archive-preview preview-well";
@@ -256,18 +274,7 @@ function previewFor(entry) {
 	return note;
 }
 
-function save(blob, name) {
-	const a = document.createElement("a");
-	a.href = URL.createObjectURL(blob);
-	a.download = name;
-	document.body.append(a);
-	a.click();
-	setTimeout(() => {
-		URL.revokeObjectURL(a.href);
-		a.remove();
-	}, 1000);
-}
-
+// loadEntries resets progress and reports list/decrypt errors without stale output.
 async function loadEntries() {
 	progress.reset();
 	entries = null;
@@ -290,4 +297,3 @@ if (pass) {
 		}
 	});
 }
-

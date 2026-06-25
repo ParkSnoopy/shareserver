@@ -1,16 +1,18 @@
 const STORE_KEY = "shareserver.archiveList";
 const ARM_KEY = "shareserver.archiveListArmed";
-const SIDEBAR_EXPANDED_KEY = "shareserver.sidebarExpanded";
 
+// navigationType tells whether page state came from reload or navigation.
 function navigationType() {
 	return performance.getEntriesByType("navigation")[0]?.type || "";
 }
 
+// clearArchiveList drops cached sidebar rows so reloads show fresh server data.
 function clearArchiveList() {
 	sessionStorage.removeItem(STORE_KEY);
 	sessionStorage.removeItem(ARM_KEY);
 }
 
+// armArchiveLinks marks archive navigation that should reuse the sidebar list.
 function armArchiveLinks(list) {
 	for (const link of list.querySelectorAll("a.api-index-row")) {
 		link.addEventListener("click", () => {
@@ -19,15 +21,22 @@ function armArchiveLinks(list) {
 	}
 }
 
+// archiveLinks serializes visible archive rows for same-tab share navigation.
 function archiveLinks(list) {
 	return [...list.querySelectorAll("a.api-index-row")].map((link) => ({
 		href: link.getAttribute("href") || "",
-		title: link.querySelector(".archive-name")?.textContent || link.textContent || "",
+		title:
+			link.querySelector(".archive-name")?.textContent ||
+			link.textContent ||
+			"",
 		label: link.querySelector(".method-label")?.textContent || "GET",
-		labelClass: link.querySelector(".method-label")?.className || "method-label method-get",
+		labelClass:
+			link.querySelector(".method-label")?.className ||
+			"method-label method-get",
 	}));
 }
 
+// renderArchiveLinks restores cached archive rows after direct share navigation.
 function renderArchiveLinks(list, links) {
 	if (!links.length) return false;
 	list.replaceChildren(
@@ -49,31 +58,35 @@ function renderArchiveLinks(list, links) {
 	return true;
 }
 
+// setupSidebarToggle controls mobile archive visibility and selected-share collapse.
 function setupSidebarToggle() {
 	const toggle = document.querySelector("[data-sidebar-toggle]");
-	const sidebar = document.getElementById(toggle?.getAttribute("aria-controls") || "");
+	const sidebar = document.getElementById(
+		toggle?.getAttribute("aria-controls") || "",
+	);
 	if (!toggle || !sidebar) return;
+	const layout = toggle.closest(".api-doc-layout");
+	const hasSelectedArchive = layout?.dataset.selected === "true";
 	const mobile = window.matchMedia("(max-width: 760px)");
-	const setCollapsed = (collapsed, persist = false) => {
+	const setCollapsed = (collapsed) => {
 		sidebar.classList.toggle("is-collapsed", collapsed);
+		layout?.classList.toggle(
+			"is-mobile-sidebar-open",
+			mobile.matches && !collapsed,
+		);
 		toggle.setAttribute("aria-expanded", String(!collapsed));
 		toggle.textContent = collapsed ? "> show archives" : "> hide archives";
-		if (persist && mobile.matches) sessionStorage.setItem(SIDEBAR_EXPANDED_KEY, String(!collapsed));
 	};
 	toggle.addEventListener("click", () => {
-		setCollapsed(!sidebar.classList.contains("is-collapsed"), true);
+		setCollapsed(!sidebar.classList.contains("is-collapsed"));
 	});
 	sidebar.addEventListener("click", (event) => {
-		if (mobile.matches && event.target.closest("a.api-index-row")) setCollapsed(true, true);
+		if (mobile.matches && event.target.closest("a.api-index-row"))
+			setCollapsed(true);
 	});
-	const storedExpanded = sessionStorage.getItem(SIDEBAR_EXPANDED_KEY);
-	setCollapsed(mobile.matches && storedExpanded !== "true");
+	setCollapsed(mobile.matches && hasSelectedArchive);
 	mobile.addEventListener("change", () => {
-		if (mobile.matches) {
-			setCollapsed(sessionStorage.getItem(SIDEBAR_EXPANDED_KEY) !== "true");
-		} else {
-			setCollapsed(false);
-		}
+		setCollapsed(mobile.matches && hasSelectedArchive);
 	});
 	const keyInput = sidebar.querySelector("[data-lookup-key]");
 	keyInput?.addEventListener("keydown", (event) => {
@@ -94,7 +107,10 @@ if (navType === "reload") clearArchiveList();
 document.querySelector(".logo")?.addEventListener("click", clearArchiveList);
 
 window.addEventListener("keydown", (event) => {
-	if (event.key === "F5" || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "r")) {
+	if (
+		event.key === "F5" ||
+		((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "r")
+	) {
 		clearArchiveList();
 	}
 });
@@ -102,10 +118,17 @@ window.addEventListener("keydown", (event) => {
 if (list?.dataset.privateMode === "true") {
 	sessionStorage.setItem(STORE_KEY, JSON.stringify(archiveLinks(list)));
 	armArchiveLinks(list);
-} else if (list && location.pathname.startsWith("/s/") && navType !== "reload") {
+} else if (
+	list &&
+	location.pathname.startsWith("/s/") &&
+	navType !== "reload"
+) {
 	try {
 		if (sessionStorage.getItem(ARM_KEY) === "1") {
-			renderArchiveLinks(list, JSON.parse(sessionStorage.getItem(STORE_KEY) || "[]"));
+			renderArchiveLinks(
+				list,
+				JSON.parse(sessionStorage.getItem(STORE_KEY) || "[]"),
+			);
 		}
 	} catch {
 		clearArchiveList();

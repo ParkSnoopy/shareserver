@@ -1,35 +1,56 @@
-{{define "admin_dashboard.html"}}
-{{template "base_top" .}}
+{{ define "admin_dashboard.html" }}
+{{ template "base_top" . }}
 <div class="grid">
-  <div class="row">
-    <span>01</span>
-    <h1># admin</h1>
-  </div>
+	<div class="row">
+		<span>01</span>
+		<h1># admin</h1>
+	</div>
 
-  <div class="row">
-    <span>02</span>
-    <p>stored {{mb .Used}} / {{mb .Cap}}</p>
-  </div>
+	<div class="row">
+		<span>02</span>
+		<p>stored {{ mb .Used }} / {{ mb .Cap }}</p>
+	</div>
 
-  <div class="row">
-    <span>03</span>
-    <p>active {{.Active}} · expired {{.Expired}} · purged {{.Purged}}</p>
-  </div>
+	<div class="row">
+		<span>03</span>
+		<p>active {{ .Active }} · expired {{ .Expired }} · purged {{ .Purged }}</p>
+	</div>
 
-  <div class="row">
-    <span>04</span>
-    <div class="section-rule"></div>
-  </div>
+	{{ if .StorageCleanupDone }}
+	<div class="row">
+		<span>04</span>
+		<p>
+			Storage check finished: removed {{ .StorageOrphanFiles }} files not in the
+			database and cleared {{ .StorageMissingRows }} database records whose
+			files were missing.
+		</p>
+	</div>
+	{{ end }}
 
-  <div class="row">
-    <span>05</span>
-    <h1># actions</h1>
-  </div>
+	<div class="row">
+		<span>05</span>
+		<div class="section-rule"></div>
+	</div>
 
-  <div class="row">
-    <span>06</span>
-    <p><a href="/admin/shares">inspect shares →</a></p>
-  </div>
+	<div class="row">
+		<span>06</span>
+		<h1># actions</h1>
+	</div>
+
+	<div class="row">
+		<span>07</span>
+		<p><a href="/admin/shares">inspect shares →</a></p>
+	</div>
+
+	<div class="row">
+		<span>08</span>
+		<form method="post" action="/admin/storage/cleanup">
+			<input type="hidden" name="csrf" value="{{.CSRF}}">
+			<button type="submit" class="primary-action-button field-md">
+				clean up stored files now
+			</button>
+		</form>
+	</div>
 </div>
-{{template "base_bottom" .}}
-{{end}}
+{{ template "base_bottom" . }}
+{{ end }}

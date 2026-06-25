@@ -13,6 +13,7 @@ import (
 	_ "time/tzdata"
 )
 
+// Config is the validated runtime configuration for the single server process.
 type Config struct {
 	Addr              string
 	DBPath            string
@@ -27,6 +28,7 @@ type Config struct {
 	Dev               bool
 }
 
+// Load reads environment settings, applies safe defaults, and fails closed in prod.
 func Load() Config {
 	loadDotEnv(".env")
 	dev := env("ENV", "dev") == "dev"
@@ -61,6 +63,7 @@ func Load() Config {
 	}
 }
 
+// loadDotEnv imports simple KEY=value pairs without overriding real environment values.
 func loadDotEnv(path string) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -88,18 +91,23 @@ func loadDotEnv(path string) {
 	}
 }
 
+// env returns an environment value or a default when unset.
 func env(k, d string) string {
 	if v := os.Getenv(k); v != "" {
 		return v
 	}
 	return d
 }
+
+// envBool parses common true values and otherwise returns the default.
 func envBool(k string, d bool) bool {
 	if v := os.Getenv(k); v != "" {
 		return v == "1" || v == "true" || v == "yes"
 	}
 	return d
 }
+
+// envInt parses an integer setting and falls back on invalid input.
 func envInt(k string, d int) int {
 	if v := os.Getenv(k); v != "" {
 		n, err := strconv.Atoi(v)

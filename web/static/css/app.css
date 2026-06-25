@@ -630,6 +630,9 @@ td form {
 		pointer-events: none;
 		transform: translateY(-8px);
 	}
+	.api-doc-layout.is-mobile-sidebar-open .api-main {
+		display: none;
+	}
 	.api-index-row {
 		min-height: 40px;
 	}

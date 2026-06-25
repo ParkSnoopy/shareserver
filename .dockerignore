@@ -1,6 +1,8 @@
-.git
-.github
-data
-*.db*
-*.sqlite*
-.env
+# Git
+.git/
+.github/
+
+# Local
+data/
+**/*.db*
+**/*.sqlite*

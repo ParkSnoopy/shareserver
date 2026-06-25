@@ -20,6 +20,7 @@ type ctxKey string
 
 const sessionKey ctxKey = "session"
 
+// Session is the request-scoped browser session used for CSRF and admin state.
 type Session struct {
 	ID        string
 	AdminID   int64
@@ -27,6 +28,7 @@ type Session struct {
 	ExpiresAt time.Time
 }
 
+// randHex returns cryptographic random hex for session IDs and CSRF tokens.
 func randHex(n int) string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
@@ -35,6 +37,7 @@ func randHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
+// security applies conservative browser security headers to every response.
 func (h *Handler) security(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -45,6 +48,7 @@ func (h *Handler) security(next http.Handler) http.Handler {
 	})
 }
 
+// withSession attaches a valid session to the request, creating one when needed.
 func (h *Handler) withSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s := h.getOrCreateSession(w, r)
@@ -52,6 +56,7 @@ func (h *Handler) withSession(next http.Handler) http.Handler {
 	})
 }
 
+// CurrentSession returns the session stored in context or an empty fail-closed value.
 func CurrentSession(r *http.Request) Session {
 	if s, ok := r.Context().Value(sessionKey).(Session); ok {
 		return s
@@ -59,22 +64,30 @@ func CurrentSession(r *http.Request) Session {
 	return Session{}
 }
 
+// getOrCreateSession reuses valid sessions and drops expired rows for that visitor.
 func (h *Handler) getOrCreateSession(w http.ResponseWriter, r *http.Request) Session {
 	if c, err := r.Cookie("sid"); err == nil && c.Value != "" {
-		var s Session
-		var exp string
-		err := h.A.DB.QueryRow(`select id, coalesce(admin_id,0), csrf, expires_at from sessions where id=?`, c.Value).Scan(&s.ID, &s.AdminID, &s.CSRF, &exp)
+		row, err := h.A.DB.Session.Get(r.Context(), c.Value)
 		if err == nil {
-			if t, e := time.Parse(time.RFC3339Nano, exp); e == nil && t.After(time.Now().UTC()) {
+			s := Session{ID: row.ID, CSRF: row.Csrf}
+			if row.AdminID != nil {
+				s.AdminID = *row.AdminID
+			}
+			if t, e := time.Parse(time.RFC3339Nano, row.ExpiresAt); e == nil && t.After(time.Now().UTC()) {
 				s.ExpiresAt = t
 				return s
 			}
 			// expired row for this visitor — drop it so it doesn't accumulate.
-			_, _ = h.A.DB.Exec(`delete from sessions where id=?`, c.Value)
+			_ = h.A.DB.Session.DeleteOneID(c.Value).Exec(r.Context())
 		}
 	}
 	s := Session{ID: randHex(32), CSRF: randHex(32), ExpiresAt: time.Now().Add(12 * time.Hour).UTC()}
-	_, _ = h.A.DB.Exec(`insert into sessions(id,admin_id,csrf,created_at,expires_at) values(?,null,?,?,?)`, s.ID, s.CSRF, db.Now(), s.ExpiresAt.Format(time.RFC3339Nano))
+	_, _ = h.A.DB.Session.Create().
+		SetID(s.ID).
+		SetCsrf(s.CSRF).
+		SetCreatedAt(db.Now()).
+		SetExpiresAt(s.ExpiresAt.Format(time.RFC3339Nano)).
+		Save(r.Context())
 	h.setCookie(w, s.ID, h.isHTTPS(r))
 	return s
 }
@@ -91,6 +104,7 @@ func (h *Handler) isHTTPS(r *http.Request) bool {
 	return false
 }
 
+// setCookie issues the HTTP-only session cookie with Secure only on trusted HTTPS.
 func (h *Handler) setCookie(w http.ResponseWriter, sid string, secure bool) {
 	http.SetCookie(w, &http.Cookie{
 		Name: "sid", Value: sid, Path: "/", HttpOnly: true,
@@ -99,6 +113,7 @@ func (h *Handler) setCookie(w http.ResponseWriter, sid string, secure bool) {
 	})
 }
 
+// requestBodyLimit caps all request bodies while allowing configured upload payloads.
 func (h *Handler) requestBodyLimit(r *http.Request) int64 {
 	if r.URL.Path == "/upload" {
 		n := h.A.C.MaxUploadBytes
@@ -110,10 +125,12 @@ func (h *Handler) requestBodyLimit(r *http.Request) int64 {
 	return 1 << 20
 }
 
+// sameToken compares CSRF tokens without timing leaks.
 func sameToken(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
+// forwardedIP extracts the first valid IP from a proxy forwarding header.
 func forwardedIP(v string) string {
 	ip := strings.TrimSpace(strings.Split(v, ",")[0])
 	if net.ParseIP(ip) == nil {
@@ -122,6 +139,7 @@ func forwardedIP(v string) string {
 	return ip
 }
 
+// trustProxyHeaders accepts proxy headers only from configured loopback peers.
 func (h *Handler) trustProxyHeaders(r *http.Request) bool {
 	if !h.A.C.TrustProxyHeaders {
 		return false
@@ -130,6 +148,7 @@ func (h *Handler) trustProxyHeaders(r *http.Request) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// csrf rejects unsafe requests unless they present the current session token.
 func (h *Handler) csrf(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" || r.Method == "HEAD" || r.Method == "OPTIONS" {
@@ -154,6 +173,7 @@ func (h *Handler) csrf(next http.Handler) http.Handler {
 	})
 }
 
+// requireAdmin gates admin routes behind a current admin session.
 func (h *Handler) requireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if CurrentSession(r).AdminID <= 0 {
@@ -164,6 +184,7 @@ func (h *Handler) requireAdmin(next http.Handler) http.Handler {
 	})
 }
 
+// clientIP returns the trusted client address used for audit and login bans.
 func (h *Handler) clientIP(r *http.Request) string {
 	if h.trustProxyHeaders(r) {
 		if x := forwardedIP(r.Header.Get("X-Forwarded-For")); x != "" {
@@ -182,15 +203,24 @@ func (h *Handler) clientIP(r *http.Request) string {
 func (h *Handler) loginSession(w http.ResponseWriter, r *http.Request, oldSID string, adminID int64) {
 	newSID := randHex(32)
 	newCSRF := randHex(32)
-	exp := time.Now().Add(12 * time.Hour).UTC().Format(time.RFC3339Nano)
-	_, _ = h.A.DB.Exec(`delete from sessions where id=?`, oldSID)
-	_, _ = h.A.DB.Exec(`insert into sessions(id,admin_id,csrf,created_at,expires_at) values(?,?,?,?,?)`, newSID, adminID, newCSRF, db.Now(), exp)
+	exp := time.Now().Add(12 * time.Hour).UTC()
+	_ = h.A.DB.Session.DeleteOneID(oldSID).Exec(r.Context())
+	_, _ = h.A.DB.Session.Create().
+		SetID(newSID).
+		SetAdminID(adminID).
+		SetCsrf(newCSRF).
+		SetCreatedAt(db.Now()).
+		SetExpiresAt(exp.Format(time.RFC3339Nano)).
+		Save(r.Context())
 	h.setCookie(w, newSID, h.isHTTPS(r))
 }
+
+// logoutSession deletes one session row so the cookie can no longer authorize requests.
 func (h *Handler) logoutSession(sid string) {
-	_, _ = h.A.DB.Exec(`delete from sessions where id=?`, sid)
+	_ = h.A.DB.Session.DeleteOneID(sid).Exec(context.Background())
 }
 
+// Handler groups HTTP dependencies; route methods keep policy in owned modules.
 type Handler struct {
 	A      *app.App
 	Store  *share.Store

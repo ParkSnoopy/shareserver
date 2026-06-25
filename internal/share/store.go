@@ -1,118 +1,204 @@
 package share
 
 import (
+	"context"
 	"database/sql"
+
 	"shareserver/internal/db"
+	"shareserver/internal/ent"
+	entshare "shareserver/internal/ent/share"
 )
 
-// cols is the canonical shares row, kept in sync with Scan.
-const cols = `id,title,visibility,private_key_hash,encrypted,cipher_meta,zip_manifest,size,blob_path,blob_sha256,uploader_ip,expires_at,created_at,purged_at`
-
 // Store is the deep module behind every shares query.
-// Schema, column order, and selection rules live here; callers learn
-// List/Get/Insert/etc, never the SQL.
+// Schema, null mapping, and selection rules live here; callers learn
+// List/Get/Insert/etc, never SQL details.
 type Store struct {
-	DB *sql.DB
+	Client *ent.Client
 }
 
-func NewStore(db *sql.DB) *Store { return &Store{DB: db} }
+// NewStore binds the share query module to an Ent client.
+func NewStore(client *ent.Client) *Store { return &Store{Client: client} }
 
 // Get returns the share with the given id. ok is false if absent.
 func (s *Store) Get(id string) (Share, bool) {
-	row := s.DB.QueryRow(`select `+cols+` from shares where id=?`, id)
-	sh, err := Scan(row)
-	return sh, err == nil
+	row, err := s.Client.Share.Get(context.Background(), id)
+	if err != nil {
+		return Share{}, false
+	}
+	return fromEnt(row), true
 }
 
 // ListPublic returns up to 100 non-purged, non-expired public shares.
 func (s *Store) ListPublic(now string) []Share {
-	q := `select ` + cols + ` from shares where purged_at is null and (expires_at is null or expires_at>?) and visibility='public' order by created_at desc limit 100`
-	return query(s.DB, q, now)
+	return s.query(s.Client.Share.Query().
+		Where(
+			entshare.PurgedAtIsNil(),
+			entshare.Or(entshare.ExpiresAtIsNil(), entshare.ExpiresAtGT(now)),
+			entshare.VisibilityEQ("public"),
+		).
+		Order(ent.Desc(entshare.FieldCreatedAt)).
+		Limit(100))
 }
 
 // ListByKey returns up to 100 non-purged, non-expired shares matching keyHash.
 // Used by the private-key lookup flow.
 func (s *Store) ListByKey(now, keyHash string) []Share {
-	q := `select ` + cols + ` from shares where purged_at is null and (expires_at is null or expires_at>?) and private_key_hash=? order by created_at desc limit 100`
-	return query(s.DB, q, now, keyHash)
+	return s.query(s.Client.Share.Query().
+		Where(
+			entshare.PurgedAtIsNil(),
+			entshare.Or(entshare.ExpiresAtIsNil(), entshare.ExpiresAtGT(now)),
+			entshare.PrivateKeyHashEQ(keyHash),
+		).
+		Order(ent.Desc(entshare.FieldCreatedAt)).
+		Limit(100))
 }
 
 // ListAll returns up to 300 shares of any visibility/status, newest first.
 // Admin view; includes expired-but-not-purged.
 func (s *Store) ListAll() []Share {
-	q := `select ` + cols + ` from shares order by created_at desc limit 300`
-	return query(s.DB, q)
+	return s.query(s.Client.Share.Query().
+		Order(ent.Desc(entshare.FieldCreatedAt)).
+		Limit(300))
+}
+
+// All returns every share row for storage reconciliation.
+func (s *Store) All() []Share {
+	return s.query(s.Client.Share.Query())
 }
 
 // Purgeable returns non-purged shares that have an expiry. The 24h-grace
 // and expired checks are applied by the caller (cleanup policy).
 func (s *Store) Purgeable() []Share {
-	q := `select ` + cols + ` from shares where purged_at is null and expires_at is not null`
-	return query(s.DB, q)
+	return s.query(s.Client.Share.Query().
+		Where(entshare.PurgedAtIsNil(), entshare.ExpiresAtNotNil()))
 }
 
 // CountActive counts non-purged, non-expired shares.
 func (s *Store) CountActive(now string) int {
-	var n int
-	_ = s.DB.QueryRow(`select count(*) from shares where purged_at is null and (expires_at is null or expires_at>?)`, now).Scan(&n)
-	return n
+	return s.count(s.Client.Share.Query().
+		Where(
+			entshare.PurgedAtIsNil(),
+			entshare.Or(entshare.ExpiresAtIsNil(), entshare.ExpiresAtGT(now)),
+		))
 }
 
 // CountExpired counts non-purged shares past expiry.
 func (s *Store) CountExpired(now string) int {
-	var n int
-	_ = s.DB.QueryRow(`select count(*) from shares where purged_at is null and expires_at<=?`, now).Scan(&n)
-	return n
+	return s.count(s.Client.Share.Query().
+		Where(entshare.PurgedAtIsNil(), entshare.ExpiresAtLTE(now)))
 }
 
 // CountPurged counts shares with purged_at set.
 func (s *Store) CountPurged() int {
-	var n int
-	_ = s.DB.QueryRow(`select count(*) from shares where purged_at is not null`).Scan(&n)
-	return n
+	return s.count(s.Client.Share.Query().Where(entshare.PurgedAtNotNil()))
 }
 
 // Insert writes a new share row. created_at is set server-side.
 func (s *Store) Insert(sh Share) error {
-	enc := 0
-	if sh.Encrypted {
-		enc = 1
-	}
-	_, err := s.DB.Exec(
-		`insert into shares(id,title,visibility,private_key_hash,encrypted,cipher_meta,zip_manifest,size,blob_path,blob_sha256,uploader_ip,expires_at,created_at) values(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		sh.ID, sh.Title, sh.Visibility, sh.PrivateKeyHash, enc, sh.CipherMeta, sh.ZipManifest, sh.Size, sh.BlobPath, sh.BlobSHA256, sh.UploaderIP, sh.ExpiresAt, db.Now(),
-	)
+	create := s.Client.Share.Create().
+		SetID(sh.ID).
+		SetTitle(sh.Title).
+		SetVisibility(sh.Visibility).
+		SetNillablePrivateKeyHash(nonEmptyString(sh.PrivateKeyHash)).
+		SetEncrypted(sh.Encrypted).
+		SetCipherMeta(sh.CipherMeta).
+		SetZipManifest(sh.ZipManifest).
+		SetSize(sh.Size).
+		SetBlobPath(sh.BlobPath).
+		SetBlobSha256(sh.BlobSHA256).
+		SetUploaderIP(sh.UploaderIP).
+		SetNillableExpiresAt(nullStringPtr(sh.ExpiresAt)).
+		SetCreatedAt(db.Now()).
+		SetNillablePurgedAt(nullStringPtr(sh.PurgedAt))
+	_, err := create.Save(context.Background())
 	return err
 }
 
 // MarkPurged records purge time for a share.
 func (s *Store) MarkPurged(id string) error {
-	_, err := s.DB.Exec(`update shares set purged_at=? where id=?`, db.Now(), id)
+	_, err := s.Client.Share.Update().
+		Where(entshare.ID(id)).
+		SetPurgedAt(db.Now()).
+		Save(context.Background())
 	return err
 }
 
 // Delete removes the share row entirely (blob deletion is the caller's job).
 func (s *Store) Delete(id string) error {
-	_, err := s.DB.Exec(`delete from shares where id=?`, id)
+	_, err := s.Client.Share.Delete().Where(entshare.ID(id)).Exec(context.Background())
 	return err
 }
 
-// query runs a select and scans all rows into Shares. Errors are swallowed to
-// preserve prior handler behaviour (return what we have); a nil slice is
-// returned on query failure.
-func query(db *sql.DB, q string, args ...any) []Share {
-	rows, err := db.Query(q, args...)
+// query executes a share query and maps Ent rows into domain shares.
+func (s *Store) query(q *ent.ShareQuery) []Share {
+	rows, err := q.All(context.Background())
 	if err != nil {
 		return nil
 	}
-	defer rows.Close()
-	var list []Share
-	for rows.Next() {
-		sh, err := Scan(rows)
-		if err != nil {
-			continue
-		}
-		list = append(list, sh)
+	list := make([]Share, 0, len(rows))
+	for _, row := range rows {
+		list = append(list, fromEnt(row))
 	}
 	return list
+}
+
+// count executes a share count and returns zero on storage errors.
+func (s *Store) count(q *ent.ShareQuery) int {
+	n, err := q.Count(context.Background())
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// fromEnt converts generated Ent rows into the hand-written Share model.
+func fromEnt(row *ent.Share) Share {
+	return Share{
+		ID:             row.ID,
+		Title:          row.Title,
+		Visibility:     row.Visibility,
+		PrivateKeyHash: stringValue(row.PrivateKeyHash),
+		Encrypted:      row.Encrypted,
+		CipherMeta:     row.CipherMeta,
+		ZipManifest:    row.ZipManifest,
+		Size:           row.Size,
+		BlobPath:       row.BlobPath,
+		BlobSHA256:     row.BlobSha256,
+		UploaderIP:     row.UploaderIP,
+		ExpiresAt:      nullString(row.ExpiresAt),
+		CreatedAt:      row.CreatedAt,
+		PurgedAt:       nullString(row.PurgedAt),
+	}
+}
+
+// stringValue turns optional Ent strings into empty-string domain fields.
+func stringValue(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
+// nullString maps optional Ent strings to sql.NullString for legacy callers.
+func nullString(v *string) sql.NullString {
+	if v == nil || *v == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: *v, Valid: true}
+}
+
+// nullStringPtr maps optional legacy strings back into Ent setters.
+func nullStringPtr(v sql.NullString) *string {
+	if !v.Valid || v.String == "" {
+		return nil
+	}
+	return &v.String
+}
+
+// nonEmptyString lets Ent omit empty optional string fields.
+func nonEmptyString(v string) *string {
+	if v == "" {
+		return nil
+	}
+	return &v
 }

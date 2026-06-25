@@ -1,13 +1,14 @@
 package app
 
 import (
-	"database/sql"
 	"html/template"
 	"shareserver/internal/config"
+	"shareserver/internal/ent"
 )
 
+// App carries process-wide dependencies shared by HTTP handlers.
 type App struct {
 	C  config.Config
-	DB *sql.DB
+	DB *ent.Client
 	T  *template.Template
 }

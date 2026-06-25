@@ -9,19 +9,22 @@ import (
 	"shareserver/internal/config"
 	"shareserver/internal/db"
 	httpx "shareserver/internal/http"
+	"shareserver/internal/share"
 )
 
+// main loads runtime config, opens storage, starts cleanup, and serves HTTP.
 func main() {
 	c := config.Load()
 	d, err := db.Open(c.DBPath)
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer d.Close()
 	if err := auth.EnsureAdmin(d, c.AdminUser, c.AdminPassword, c.Dev); err != nil {
 		log.Fatal(err)
 	}
 	a := &app.App{C: c, DB: d, T: template.New("")}
-	h := &httpx.Handler{A: a}
+	h := &httpx.Handler{A: a, Store: share.NewStore(d)}
 	h.StartCleanup()
 	log.Println("listening", c.Addr)
 	log.Fatal(http.ListenAndServe(c.Addr, httpx.New(a)))

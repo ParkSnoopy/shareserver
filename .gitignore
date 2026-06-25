@@ -1,13 +1,9 @@
-# spec
-plan.md
-
 # local data
+data/
 .env
-data/*.db
-data/*.db-*
-data/blobs/*
+**/*.db*
+**/*.sqlite*
 
 # ignore binary
-!data/blobs/.gitkeep
 /shareserver
 /setexpiry
