@@ -40,6 +40,7 @@ go build -o shareserver ./cmd/shareserver
 
 # 2. configure (copy and edit)
 cp .env.example .env   # then set APP_SECRET, ADMIN_PASSWORD, etc.
+mkdir -p data/blobs    # directory for DB_PATH and BLOB_DIR
 
 # 3. run
 ./shareserver
@@ -58,7 +59,7 @@ present; real env vars win over the file). `README.md` below matches
 
 | Var | Example/default | Purpose |
 | --- | --- | --- |
-| `DEBUG` | `1` | `1`/`true` allows an ephemeral secret + default admin; `0`/`false` requires `APP_SECRET` + `ADMIN_PASSWORD` |
+| `DEBUG` | `true` | `1`/`true` allows an ephemeral secret + default admin; `0`/`false` requires `APP_SECRET` + `ADMIN_PASSWORD` |
 | `ADDR` | `0.0.0.0:8080` | listen address |
 | `DB_PATH` | `data/shareserver.db` | SQLite path |
 | `BLOB_DIR` | `data/blobs` | where uploaded blobs are stored |
