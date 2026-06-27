@@ -2,40 +2,20 @@ package httpx
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/subtle"
-	"encoding/hex"
 	"net"
 	"net/http"
+	"strings"
+
 	"shareserver/internal/app"
 	"shareserver/internal/auth"
-	"shareserver/internal/db"
 	"shareserver/internal/share"
 	"shareserver/internal/upload"
-	"strings"
-	"time"
 )
 
 type ctxKey string
 
 const sessionKey ctxKey = "session"
-
-// Session is the request-scoped browser session used for CSRF and admin state.
-type Session struct {
-	ID        string
-	AdminID   int64
-	CSRF      string
-	ExpiresAt time.Time
-}
-
-// randHex returns cryptographic random hex for session IDs and CSRF tokens.
-func randHex(n int) string {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		panic("crypto rand failed: " + err.Error())
-	}
-	return hex.EncodeToString(b)
-}
 
 // security applies conservative browser security headers to every response.
 func (h *Handler) security(next http.Handler) http.Handler {
@@ -64,31 +44,16 @@ func CurrentSession(r *http.Request) Session {
 	return Session{}
 }
 
-// getOrCreateSession reuses valid sessions and drops expired rows for that visitor.
+// getOrCreateSession asks the lifecycle module for row state and issues cookies in HTTP.
 func (h *Handler) getOrCreateSession(w http.ResponseWriter, r *http.Request) Session {
-	if c, err := r.Cookie("sid"); err == nil && c.Value != "" {
-		row, err := h.A.DB.Session.Get(r.Context(), c.Value)
-		if err == nil {
-			s := Session{ID: row.ID, CSRF: row.Csrf}
-			if row.AdminID != nil {
-				s.AdminID = *row.AdminID
-			}
-			if t, e := time.Parse(time.RFC3339Nano, row.ExpiresAt); e == nil && t.After(time.Now().UTC()) {
-				s.ExpiresAt = t
-				return s
-			}
-			// expired row for this visitor — drop it so it doesn't accumulate.
-			_ = h.A.DB.Session.DeleteOneID(c.Value).Exec(r.Context())
-		}
+	sid := ""
+	if c, err := r.Cookie("sid"); err == nil {
+		sid = c.Value
 	}
-	s := Session{ID: randHex(32), CSRF: randHex(32), ExpiresAt: time.Now().Add(12 * time.Hour).UTC()}
-	_, _ = h.A.DB.Session.Create().
-		SetID(s.ID).
-		SetCsrf(s.CSRF).
-		SetCreatedAt(db.Now()).
-		SetExpiresAt(s.ExpiresAt.Format(time.RFC3339Nano)).
-		Save(r.Context())
-	h.setCookie(w, s.ID, h.isHTTPS(r))
+	s, created := h.sessions().GetOrCreate(r.Context(), sid)
+	if created {
+		h.setCookie(w, s.ID, h.isHTTPS(r))
+	}
 	return s
 }
 
@@ -109,7 +74,7 @@ func (h *Handler) setCookie(w http.ResponseWriter, sid string, secure bool) {
 	http.SetCookie(w, &http.Cookie{
 		Name: "sid", Value: sid, Path: "/", HttpOnly: true,
 		SameSite: http.SameSiteLaxMode, Secure: secure,
-		MaxAge: int((12 * time.Hour).Seconds()),
+		MaxAge: int(sessionDuration.Seconds()),
 	})
 }
 
@@ -201,28 +166,26 @@ func (h *Handler) clientIP(r *http.Request) string {
 // session fixation: the pre-login sid (which an attacker may have seeded) is
 // discarded and a fresh id+csrf is issued bound to the admin.
 func (h *Handler) loginSession(w http.ResponseWriter, r *http.Request, oldSID string, adminID int64) {
-	newSID := randHex(32)
-	newCSRF := randHex(32)
-	exp := time.Now().Add(12 * time.Hour).UTC()
-	_ = h.A.DB.Session.DeleteOneID(oldSID).Exec(r.Context())
-	_, _ = h.A.DB.Session.Create().
-		SetID(newSID).
-		SetAdminID(adminID).
-		SetCsrf(newCSRF).
-		SetCreatedAt(db.Now()).
-		SetExpiresAt(exp.Format(time.RFC3339Nano)).
-		Save(r.Context())
-	h.setCookie(w, newSID, h.isHTTPS(r))
+	s := h.sessions().Rotate(r.Context(), oldSID, adminID)
+	h.setCookie(w, s.ID, h.isHTTPS(r))
 }
 
 // logoutSession deletes one session row so the cookie can no longer authorize requests.
 func (h *Handler) logoutSession(sid string) {
-	_ = h.A.DB.Session.DeleteOneID(sid).Exec(context.Background())
+	h.sessions().Delete(context.Background(), sid)
 }
 
 // Handler groups HTTP dependencies; route methods keep policy in owned modules.
 type Handler struct {
-	A      *app.App
-	Store  *share.Store
-	Upload *upload.Uploader
+	A        *app.App
+	Store    *share.Store
+	Upload   *upload.Uploader
+	Sessions SessionLifecycle
+}
+
+func (h *Handler) sessions() SessionLifecycle {
+	if h.Sessions != nil {
+		return h.Sessions
+	}
+	return NewSessions(h.A.DB)
 }

@@ -39,18 +39,19 @@ func (h *Handler) PurgeExpired() int {
 	now := time.Now().UTC()
 	cutoff := now.Add(-24 * time.Hour)
 	count := 0
+	active := share.ActiveAt(now)
+	remover := share.NewRemover(h.Store)
 	for _, s := range h.Store.Purgeable() {
-		if !share.IsExpired(s.ExpiresAt, now) {
+		if !active.IsExpired(s.ExpiresAt) {
 			continue
 		}
 		exp, _ := time.Parse(time.RFC3339Nano, s.ExpiresAt.String)
 		if exp.After(cutoff) {
 			continue
 		}
-		if err := purgeOne(s.BlobPath); err != nil && !os.IsNotExist(err) {
+		if err := remover.Remove(s); err != nil {
 			continue
 		}
-		_ = h.Store.Delete(s.ID)
 		count++
 	}
 	return count
@@ -72,8 +73,9 @@ func (h *Handler) ReconcileBlobStore() ReconcileResult {
 		blobPath := filepath.Clean(s.BlobPath)
 		if _, err := os.Stat(blobPath); err != nil {
 			if os.IsNotExist(err) {
-				_ = h.Store.Delete(s.ID)
-				result.MissingFiles++
+				if err := share.NewRemover(h.Store).Remove(s); err == nil {
+					result.MissingFiles++
+				}
 			}
 			continue
 		}
@@ -87,7 +89,7 @@ func (h *Handler) ReconcileBlobStore() ReconcileResult {
 		if _, ok := known[absPath(blobPath)]; ok {
 			return nil
 		}
-		if err := os.Remove(blobPath); err == nil {
+		if err := share.RemoveBlob(blobPath); err == nil {
 			result.OrphanFiles++
 		}
 		return nil

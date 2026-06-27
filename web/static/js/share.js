@@ -1,8 +1,8 @@
-import { decryptBlob } from "./crypto.js";
-import { saveBlob } from "./download.js";
+import { ArchiveErrorCode, openArchive } from "./archive.js";
+import { prepareBlobDownload } from "./download.js";
 import { fmtBytes, Progress } from "./progress.js";
 import { normalizeText } from "./text.js";
-import { canPreview, mimeFromName, unzipBytes } from "./zip.js";
+import { canPreview } from "./zip.js";
 
 const root = document.getElementById("share");
 const progress = new Progress(document.getElementById("progress"));
@@ -22,6 +22,8 @@ try {
 
 let activeRow = null;
 let downloadedBlob = null;
+let downloadTicket = 0;
+let downloadCleanup = null;
 
 // fetchBlobWithProgress downloads the stored archive while updating byte progress.
 async function fetchBlobWithProgress(id, fallbackTotal) {
@@ -48,7 +50,7 @@ async function fetchBlobWithProgress(id, fallbackTotal) {
 	return new Blob([all]);
 }
 
-// load fetches, decrypts when needed, unzips entries, and renders the file list once.
+// load fetches the archive, opens it through the pure archive seam, and renders once.
 async function load() {
 	if (entries) return entries;
 	const id = root.dataset.id;
@@ -59,33 +61,37 @@ async function load() {
 		);
 	}
 	progress.done("download", downloadedBlob.size);
-	let blob = downloadedBlob;
-	if (encrypted) {
-		if (!pass.value) throw Error("password required");
-		const stopDecrypt = progress.pulse("decrypt", blob.size, "working");
-		try {
-			blob = await decryptBlob(
-				blob,
-				pass.value,
-				JSON.parse(root.dataset.cipher || "{}"),
-			);
-		} finally {
-			stopDecrypt();
-		}
-		progress.done("decrypt", blob.size);
-	}
-	const stopUnzip = progress.pulse("unzip", blob.size, "working");
-	let raw;
+
+	let stopDecrypt = () => {};
+	let stopUnzip = () => {};
 	try {
-		raw = await unzipBytes(await blob.arrayBuffer());
+		entries = await openArchive(downloadedBlob, {
+			encrypted,
+			password: pass?.value || "",
+			cipher: encrypted ? JSON.parse(root.dataset.cipher || "{}") : {},
+			manifest,
+			onDecryptStart: (blob) => {
+				stopDecrypt = progress.pulse("decrypt", blob.size, "working");
+			},
+			onDecryptDone: (blob) => {
+				stopDecrypt();
+				stopDecrypt = () => {};
+				progress.done("decrypt", blob.size);
+			},
+			onUnzipStart: (blob) => {
+				stopUnzip = progress.pulse("unzip", blob.size, "working");
+			},
+			onUnzipDone: (blob) => {
+				stopUnzip();
+				stopUnzip = () => {};
+				progress.done("unzip", blob.size);
+			},
+		});
 	} finally {
+		stopDecrypt();
 		stopUnzip();
 	}
-	entries = raw.map((entry) => ({
-		...entry,
-		type: typeForEntry(entry),
-	}));
-	progress.done("unzip", blob.size);
+
 	renderList();
 	root.hidden = true;
 	progress.reset();
@@ -110,7 +116,7 @@ function renderList() {
 function rowFor(entry) {
 	const row = document.createElement("button");
 	row.className = "api-index-row";
-	const previewable = canPreview(entry.name, entry.type);
+	const previewable = entry.previewable ?? canPreview(entry.name, entry.type);
 	row.title = previewable ? "open preview" : "show file actions";
 	row.onclick = () => openEntry(entry, row);
 
@@ -132,15 +138,6 @@ function typedBlob(entry) {
 	return entry.type ? new Blob([entry.blob], { type: entry.type }) : entry.blob;
 }
 
-// typeForEntry trusts manifest MIME data unless it is the generic octet fallback.
-function typeForEntry(entry) {
-	const manifestType =
-		manifest.find((item) => item.name === entry.name)?.type || "";
-	return manifestType && manifestType !== "application/octet-stream"
-		? manifestType
-		: mimeFromName(entry.name) || manifestType;
-}
-
 // entryPreviewURL builds a same-origin blob: URL from the in-browser entry
 // blob. Blob URLs bypass X-Frame-Options / CSP frame-ancestors, so previews
 // work for plain shares too (the server only exposes /blob/{id} for download;
@@ -152,10 +149,13 @@ function entryPreviewURL(entry, forcedType = "") {
 	return URL.createObjectURL(blob);
 }
 
-// clearPreview revokes old preview URLs and clears row selection state.
+// clearPreview revokes old preview/download URLs and clears row selection state.
 function clearPreview() {
+	downloadTicket += 1;
 	if (previewURL) URL.revokeObjectURL(previewURL);
 	previewURL = "";
+	if (downloadCleanup) downloadCleanup();
+	downloadCleanup = null;
 	if (activeRow) activeRow.classList.remove("active");
 	activeRow = null;
 }
@@ -184,6 +184,35 @@ function comment(text) {
 	return p;
 }
 
+// armDownloadLink prepares the Android-safe URL before the user clicks it.
+function armDownloadLink(link, entry) {
+	const ticket = ++downloadTicket;
+	link.textContent = "> preparing";
+	link.removeAttribute("href");
+	link.setAttribute("aria-disabled", "true");
+	prepareBlobDownload(typedBlob(entry), entry.name)
+		.then((prepared) => {
+			if (ticket !== downloadTicket) {
+				prepared.cleanup();
+				return;
+			}
+			downloadCleanup = prepared.cleanup;
+			link.href = prepared.href;
+			if (prepared.useDownloadAttribute === false) {
+				link.removeAttribute("download");
+			} else {
+				link.download = prepared.downloadName;
+			}
+			link.textContent = "> download";
+			link.removeAttribute("aria-disabled");
+		})
+		.catch((err) => {
+			if (ticket !== downloadTicket) return;
+			link.textContent = "> download unavailable";
+			link.title = err.message || String(err);
+		});
+}
+
 // openEntry selects a file, exposes download, and renders its preview area.
 function openEntry(entry, row) {
 	clearPreview();
@@ -191,10 +220,18 @@ function openEntry(entry, row) {
 	row.classList.add("active");
 	const actions = document.createElement("div");
 	actions.className = "detail-actions";
-	const download = document.createElement("button");
+	const download = document.createElement("a");
 	download.className = "primary-action-button field-md";
-	download.textContent = "> download";
-	download.onclick = () => saveBlob(typedBlob(entry), entry.name);
+	download.addEventListener("click", (event) => {
+		if (download.getAttribute("aria-disabled") === "true") {
+			event.preventDefault();
+			return;
+		}
+		const cleanup = downloadCleanup;
+		downloadCleanup = null;
+		if (cleanup) setTimeout(cleanup, 1000);
+	});
+	armDownloadLink(download, entry);
 	actions.append(download);
 
 	previewPane.replaceChildren(
@@ -281,11 +318,20 @@ async function loadEntries() {
 	try {
 		await load();
 	} catch (err) {
-		progress.fail(
-			encrypted ? "decrypt" : "list",
-			err.message || "wrong password. nothing decrypted.",
-		);
+		progress.fail(failurePhase(err), err.message || "archive open failed");
 	}
+}
+
+// failurePhase keeps password errors under decrypt and archive errors under list.
+function failurePhase(err) {
+	if (
+		err?.code === ArchiveErrorCode.PasswordRequired ||
+		err?.code === ArchiveErrorCode.WrongPassword
+	) {
+		return "decrypt";
+	}
+	if (err?.code === ArchiveErrorCode.CorruptArchive) return "list";
+	return encrypted ? "decrypt" : "list";
 }
 
 loadBtn.onclick = loadEntries;

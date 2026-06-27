@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"shareserver/internal/ent/session"
+	httpx "shareserver/internal/http"
 	"shareserver/internal/share"
 )
 
@@ -65,6 +66,100 @@ func TestCleanExpiredSessionsNoneExpired(t *testing.T) {
 	n := h.CleanExpiredSessions()
 	if n != 0 {
 		t.Fatalf("expected 0 removed when no expired rows, got %d", n)
+	}
+}
+
+func TestSessionLifecycleRotateDeletesOldAndCreatesAdmin(t *testing.T) {
+	_, client := newTestHandler(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	_, err := client.Session.Create().
+		SetID("pre-login-sid").
+		SetCsrf("pre-login-csrf").
+		SetCreatedAt(now.Add(-time.Minute).Format(time.RFC3339Nano)).
+		SetExpiresAt(now.Add(time.Hour).Format(time.RFC3339Nano)).
+		Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessions := httpx.NewSessions(client)
+	sessions.Now = func() time.Time { return now }
+
+	rotated := sessions.Rotate(ctx, "pre-login-sid", 42)
+	if rotated.ID == "" || rotated.ID == "pre-login-sid" {
+		t.Fatalf("expected fresh session id, got %q", rotated.ID)
+	}
+	if rotated.AdminID != 42 {
+		t.Fatalf("expected admin id 42 on rotated session, got %d", rotated.AdminID)
+	}
+	if rotated.CSRF == "" {
+		t.Fatalf("expected rotated session csrf")
+	}
+	if existsSession(t, client, "pre-login-sid") {
+		t.Fatalf("old session survived rotation")
+	}
+	row, err := client.Session.Get(ctx, rotated.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.AdminID == nil || *row.AdminID != 42 {
+		t.Fatalf("rotated row admin id = %v, want 42", row.AdminID)
+	}
+	if row.Csrf != rotated.CSRF {
+		t.Fatalf("rotated row csrf = %q, want %q", row.Csrf, rotated.CSRF)
+	}
+}
+
+func TestSessionLifecycleGetOrCreateReusesValidAndDropsExpired(t *testing.T) {
+	_, client := newTestHandler(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	past := now.Add(-time.Hour).Format(time.RFC3339Nano)
+	future := now.Add(time.Hour).Format(time.RFC3339Nano)
+	_, err := client.Session.Create().
+		SetID("valid-sid").
+		SetCsrf("valid-csrf").
+		SetCreatedAt(past).
+		SetExpiresAt(future).
+		Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Session.Create().
+		SetID("expired-browser-sid").
+		SetCsrf("expired-csrf").
+		SetCreatedAt(past).
+		SetExpiresAt(now.Add(-time.Minute).Format(time.RFC3339Nano)).
+		Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessions := httpx.NewSessions(client)
+	sessions.Now = func() time.Time { return now }
+
+	got, created := sessions.GetOrCreate(ctx, "valid-sid")
+	if created {
+		t.Fatalf("valid session was recreated")
+	}
+	if got.ID != "valid-sid" || got.CSRF != "valid-csrf" {
+		t.Fatalf("valid session not reused: %+v", got)
+	}
+	if !existsSession(t, client, "valid-sid") {
+		t.Fatalf("valid session row was removed")
+	}
+
+	got, created = sessions.GetOrCreate(ctx, "expired-browser-sid")
+	if !created {
+		t.Fatalf("expired session was not replaced")
+	}
+	if got.ID == "" || got.ID == "expired-browser-sid" || got.CSRF == "" {
+		t.Fatalf("replacement session invalid: %+v", got)
+	}
+	if existsSession(t, client, "expired-browser-sid") {
+		t.Fatalf("expired session row survived get/create")
+	}
+	if !existsSession(t, client, got.ID) {
+		t.Fatalf("replacement session row missing")
 	}
 }
 

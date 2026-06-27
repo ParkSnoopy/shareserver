@@ -3,32 +3,39 @@ package httpx
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/go-chi/chi/v5"
 	"html/template"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+
 	"shareserver/internal/app"
 	"shareserver/internal/auth"
 	"shareserver/internal/share"
 	"shareserver/internal/upload"
-	"time"
 )
 
 // New wires middleware, routes, templates, share store, and upload policy.
 func New(a *app.App) http.Handler {
 	store := share.NewStore(a.DB)
-	h := &Handler{A: a, Store: store, Upload: &upload.Uploader{
-		Cfg: upload.Config{
-			BlobDir:         a.C.BlobDir,
-			MaxUploadBytes:  a.C.MaxUploadBytes,
-			StorageCapBytes: a.C.StorageCapBytes,
-			AppSecret:       a.C.AppSecret,
+	h := &Handler{
+		A:        a,
+		Store:    store,
+		Sessions: NewSessions(a.DB),
+		Upload: &upload.Uploader{
+			Cfg: upload.Config{
+				BlobDir:         a.C.BlobDir,
+				MaxUploadBytes:  a.C.MaxUploadBytes,
+				StorageCapBytes: a.C.StorageCapBytes,
+				AppSecret:       a.C.AppSecret,
+			},
+			Store: store,
+			DB:    a.DB,
 		},
-		Store: store,
-		DB:    a.DB,
-	}}
+	}
 	funcs := template.FuncMap{
 		"csrf": func() string { return "" },
 		"short": func(s string) string {
@@ -122,21 +129,21 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request) {
 	if key != "" {
 		keyHash = h.privateHash(key)
 	}
-	h.renderArchive(w, r, share.Share{}, false, "active", keyHash)
+	h.renderArchive(w, r, share.Share{}, false, share.StatusActive, keyHash)
 }
 
 // archivesForKey selects the public list or private-key matches for the archive sidebar.
 func (h *Handler) archivesForKey(keyHash string) ([]share.Share, bool) {
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	active := share.ActiveAt(time.Now().UTC())
 	if keyHash != "" {
-		return h.Store.ListByKey(now, keyHash), true
+		return h.Store.ListByKey(active, keyHash), true
 	}
-	return h.Store.ListPublic(now), false
+	return h.Store.ListPublic(active), false
 }
 
 // archivePage renders the unselected archive browser.
 func (h *Handler) archivePage(w http.ResponseWriter, r *http.Request) {
-	h.renderArchive(w, r, share.Share{}, false, "active", "")
+	h.renderArchive(w, r, share.Share{}, false, share.StatusActive, "")
 }
 
 // uploadPage renders the browser-side zip/encrypt upload form.
@@ -151,8 +158,8 @@ func (h *Handler) sharePage(w http.ResponseWriter, r *http.Request) {
 		h.notFoundPage(w, r)
 		return
 	}
-	st := share.Status(s, time.Now().UTC())
-	if st == "purged" {
+	st := share.ActiveAt(time.Now().UTC()).Status(s)
+	if st == share.StatusPurged {
 		h.notFoundPage(w, r)
 		return
 	}
@@ -166,7 +173,7 @@ func (h *Handler) renderArchive(w http.ResponseWriter, r *http.Request, selected
 		"Share":       selected,
 		"Selected":    hasSelected,
 		"Status":      status,
-		"Expired":     hasSelected && status == "expired",
+		"Expired":     hasSelected && status == share.StatusExpired,
 		"Archives":    archives,
 		"PrivateMode": privateMode,
 	})
@@ -179,7 +186,7 @@ func (h *Handler) blob(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if share.Status(s, time.Now().UTC()) != "active" {
+	if !share.ActiveAt(time.Now().UTC()).IsActive(s) {
 		http.Error(w, "expired", 410)
 		return
 	}
@@ -231,6 +238,3 @@ func templateGlob() string {
 		dir = parent
 	}
 }
-
-// purgeOne removes a cleaned blob path as the shared delete primitive.
-func purgeOne(path string) error { return os.Remove(filepath.Clean(path)) }

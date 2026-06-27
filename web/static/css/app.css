@@ -182,6 +182,7 @@ a {
 input,
 select,
 button,
+.primary-action-button,
 textarea,
 .textarea-input,
 .dropzone {
@@ -281,8 +282,18 @@ textarea {
 .check input {
 	width: auto;
 }
-button {
+button,
+.primary-action-button {
 	cursor: default;
+}
+button {
+	text-align: left;
+}
+.primary-action-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: flex-start;
+	text-decoration: none;
 }
 .primary-action-button:hover,
 .copy-button:hover,

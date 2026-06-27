@@ -1,6 +1,6 @@
-const DOWNLOAD_CACHE = "shareserver.downloads.v1";
 const DOWNLOAD_PREFIX = "/__download__/";
 const WORKER_URL = "/download-sw.js";
+const DOWNLOAD_MESSAGE_TIMEOUT_MS = 5000;
 
 // replaceControlChars keeps filenames printable without changing normal Unicode.
 function replaceControlChars(value) {
@@ -57,16 +57,33 @@ function isAndroid() {
 	);
 }
 
-// canStageDownload verifies browser APIs needed for service-worker download staging.
 function canStageDownload() {
 	return (
 		typeof window !== "undefined" &&
 		window.isSecureContext &&
 		typeof navigator !== "undefined" &&
 		"serviceWorker" in navigator &&
-		typeof caches !== "undefined" &&
-		typeof Response !== "undefined"
+		typeof MessageChannel !== "undefined"
 	);
+}
+
+// waitForController avoids staging Android downloads before the worker owns page fetches.
+function waitForController() {
+	if (navigator.serviceWorker.controller) return Promise.resolve();
+	return new Promise((resolve, reject) => {
+		let timeout = 0;
+		const done = () => {
+			clearTimeout(timeout);
+			resolve();
+		};
+		timeout = setTimeout(() => {
+			navigator.serviceWorker.removeEventListener("controllerchange", done);
+			reject(Error("download worker did not control page"));
+		}, 5000);
+		navigator.serviceWorker.addEventListener("controllerchange", done, {
+			once: true,
+		});
+	});
 }
 
 let workerReady;
@@ -75,7 +92,15 @@ async function ensureDownloadWorker() {
 	if (!workerReady) {
 		workerReady = navigator.serviceWorker
 			.register(WORKER_URL, { scope: "/" })
-			.then(() => navigator.serviceWorker.ready);
+			.then(async () => {
+				const registration = await navigator.serviceWorker.ready;
+				await waitForController();
+				return registration;
+			})
+			.catch((err) => {
+				workerReady = null;
+				throw err;
+			});
 	}
 	return workerReady;
 }
@@ -100,11 +125,13 @@ function namedFile(blob, name) {
 	return new Blob([blob], { type });
 }
 
-// clickDownload triggers a hidden-anchor download using the requested filename.
-function clickDownload(href, name) {
+// clickDownload triggers a hidden-anchor download. Staged HTTP URLs rely on
+// Content-Disposition instead of the download attribute because Android Chrome
+// can ignore or cancel synthetic downloads when both are present.
+function clickDownload(href, name, useDownloadAttribute = true) {
 	const a = document.createElement("a");
 	a.href = href;
-	a.download = name;
+	if (useDownloadAttribute) a.download = name;
 	a.rel = "noopener";
 	a.style.display = "none";
 	document.body.append(a);
@@ -112,53 +139,89 @@ function clickDownload(href, name) {
 	setTimeout(() => a.remove(), 1000);
 }
 
+// postDownloadMessage sends staged file data to the active download worker.
+function postDownloadMessage(message) {
+	return new Promise((resolve, reject) => {
+		const worker = navigator.serviceWorker.controller;
+		if (!worker) {
+			reject(Error("download worker did not control page"));
+			return;
+		}
+		const channel = new MessageChannel();
+		const timeout = setTimeout(() => {
+			channel.port1.close();
+			reject(Error("download worker did not respond"));
+		}, DOWNLOAD_MESSAGE_TIMEOUT_MS);
+		channel.port1.onmessage = (event) => {
+			clearTimeout(timeout);
+			channel.port1.close();
+			const data = event.data || {};
+			if (data.ok) {
+				resolve();
+				return;
+			}
+			reject(Error(data.error || "download worker rejected request"));
+		};
+		worker.postMessage(message, [channel.port2]);
+	});
+}
+
 // stagedDownloadURL stores one response so Android sees filename headers.
 async function stagedDownloadURL(file, name) {
 	await ensureDownloadWorker();
-	const token = randomToken();
-	const url = downloadURLPath(token, name);
-	const cache = await caches.open(DOWNLOAD_CACHE);
-	await cache.put(
+	const url = downloadURLPath(randomToken(), name);
+	await postDownloadMessage({
+		type: "stage-download",
 		url,
-		new Response(file, {
-			headers: {
-				"Cache-Control": "no-store",
-				"Content-Disposition": contentDispositionFor(name),
-				"Content-Type": file.type || "application/octet-stream",
-			},
-		}),
-	);
+		file,
+		disposition: contentDispositionFor(name),
+		contentType: file.type || "application/octet-stream",
+	});
 	return url;
 }
 
 // forgetStagedDownload expires unused staged responses after one minute.
 function forgetStagedDownload(url) {
 	setTimeout(() => {
-		caches
-			.open(DOWNLOAD_CACHE)
-			.then((cache) => cache.delete(url))
-			.catch(() => {});
+		postDownloadMessage({ type: "forget-download", url }).catch(() => {});
 	}, 60000);
 }
 
-// saveObjectURL falls back to blob URLs for browsers that honor download names.
-function saveObjectURL(file, name) {
+// objectDownload prepares a blob: URL for clients that honor anchor filenames.
+function objectDownload(file, name) {
 	const url = URL.createObjectURL(file);
-	clickDownload(url, name);
-	setTimeout(() => URL.revokeObjectURL(url), 1000);
+	return {
+		href: url,
+		downloadName: name,
+		cleanup: () => setTimeout(() => URL.revokeObjectURL(url), 1000),
+	};
 }
 
-// saveBlob saves an in-browser entry with its uploaded filename on desktop and Android.
-export async function saveBlob(blob, name) {
+// prepareBlobDownload resolves the final href before the user taps the link.
+export async function prepareBlobDownload(blob, name) {
 	const downloadName = safeDownloadName(name);
 	const file = namedFile(blob, downloadName);
 	if (isAndroid() && canStageDownload()) {
 		try {
 			const url = await stagedDownloadURL(file, downloadName);
-			clickDownload(url, downloadName);
-			forgetStagedDownload(url);
-			return;
+			return {
+				href: url,
+				downloadName,
+				useDownloadAttribute: false,
+				cleanup: () => forgetStagedDownload(url),
+			};
 		} catch {}
 	}
-	saveObjectURL(file, downloadName);
+	return objectDownload(file, downloadName);
+}
+
+// saveBlob saves an in-browser entry with its uploaded filename.
+export async function saveBlob(blob, name) {
+	const prepared = await prepareBlobDownload(blob, name);
+	clickDownload(
+		prepared.href,
+		prepared.downloadName,
+		prepared.useDownloadAttribute,
+	);
+	prepared.cleanup();
 }

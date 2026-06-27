@@ -2,6 +2,8 @@ package internaltest
 
 import (
 	"database/sql"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -48,13 +50,12 @@ func TestStoreInsertGetRoundTrip(t *testing.T) {
 
 func TestStoreListPublicExcludesExpiredAndPrivate(t *testing.T) {
 	s, _ := newStore(t)
-	now := time.Now().UTC()
-	nowStr := now.Format(time.RFC3339Nano)
+	active := share.ActiveAt(time.Now().UTC())
 	mustInsertShare(t, s, sampleShare("pub-live", "public", futureTS(1*time.Hour)))
 	mustInsertShare(t, s, sampleShare("pub-expired", "public", pastTS(1*time.Hour)))
 	mustInsertShare(t, s, sampleShare("priv-live", "private", futureTS(1*time.Hour)))
 
-	list := s.ListPublic(nowStr)
+	list := s.ListPublic(active)
 	if len(list) != 1 {
 		t.Fatalf("ListPublic want 1, got %d: %+v", len(list), list)
 	}
@@ -65,15 +66,15 @@ func TestStoreListPublicExcludesExpiredAndPrivate(t *testing.T) {
 
 func TestStoreListByKeyMatchesHash(t *testing.T) {
 	s, _ := newStore(t)
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	active := share.ActiveAt(time.Now().UTC())
 	sh := sampleShare("priv1", "private", futureTS(1*time.Hour))
 	sh.PrivateKeyHash = "hash-X"
 	mustInsertShare(t, s, sh)
-	list := s.ListByKey(now, "hash-X")
+	list := s.ListByKey(active, "hash-X")
 	if len(list) != 1 || list[0].ID != "priv1" {
 		t.Fatalf("ListByKey want [priv1], got %+v", list)
 	}
-	list = s.ListByKey(now, "hash-other")
+	list = s.ListByKey(active, "hash-other")
 	if len(list) != 0 {
 		t.Fatalf("ListByKey wrong hash should return 0, got %+v", list)
 	}
@@ -113,14 +114,14 @@ func TestStorePurgeableOnlyExpiryNonPurged(t *testing.T) {
 
 func TestStoreCountsAndMarkPurged(t *testing.T) {
 	s, _ := newStore(t)
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	active := share.ActiveAt(time.Now().UTC())
 	mustInsertShare(t, s, sampleShare("live", "public", futureTS(1*time.Hour)))
 	mustInsertShare(t, s, sampleShare("exp", "public", pastTS(1*time.Hour)))
-	if s.CountActive(now) != 1 {
-		t.Fatalf("CountActive want 1, got %d", s.CountActive(now))
+	if s.CountActive(active) != 1 {
+		t.Fatalf("CountActive want 1, got %d", s.CountActive(active))
 	}
-	if s.CountExpired(now) != 1 {
-		t.Fatalf("CountExpired want 1, got %d", s.CountExpired(now))
+	if s.CountExpired(active) != 1 {
+		t.Fatalf("CountExpired want 1, got %d", s.CountExpired(active))
 	}
 	if s.CountPurged() != 0 {
 		t.Fatalf("CountPurged want 0, got %d", s.CountPurged())
@@ -146,6 +147,29 @@ func TestStoreDeleteRemovesRow(t *testing.T) {
 	}
 	if _, ok := s.Get("del"); ok {
 		t.Fatal("Delete did not remove row")
+	}
+}
+
+func TestRemoverDeletesBlobAndRow(t *testing.T) {
+	s, _ := newStore(t)
+	dir := t.TempDir()
+	id := "remove"
+	blob := filepath.Join(dir, id+".blob")
+	if err := os.WriteFile(blob, []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sh := sampleShare(id, "public", futureTS(time.Hour))
+	sh.BlobPath = blob
+	mustInsertShare(t, s, sh)
+
+	if err := share.NewRemover(s).Remove(sh); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(blob); !os.IsNotExist(err) {
+		t.Fatalf("blob survived removal: %v", err)
+	}
+	if _, ok := s.Get(id); ok {
+		t.Fatal("row survived removal")
 	}
 }
 

@@ -8,8 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"shareserver/internal/audit"
 	"shareserver/internal/auth"
 	"shareserver/internal/ent"
@@ -128,7 +126,7 @@ func (u *Uploader) Do(req Request) (Result, error) {
 		return Result{}, ErrStore
 	}
 	if used+size > u.Cfg.StorageCapBytes {
-		purgeOne(path)
+		share.RemoveBlobBestEffort(path)
 		audit.Log(u.DB, "public", ip, "upload_cap_reject", id, fmt.Sprintf("%d + %d > %d", used, size, u.Cfg.StorageCapBytes))
 		return Result{}, ErrCap
 	}
@@ -141,7 +139,7 @@ func (u *Uploader) Do(req Request) (Result, error) {
 		ExpiresAt: sql.NullString{String: exp, Valid: true},
 	}
 	if err := u.Store.Insert(sh); err != nil {
-		purgeOne(path)
+		share.RemoveBlobBestEffort(path)
 		return Result{}, ErrStore
 	}
 	audit.Log(u.DB, "public", ip, "upload", id, fmt.Sprintf("size=%d visibility=%s encrypted=%d", size, vis, enc))
@@ -158,6 +156,3 @@ func manifestForInsert(encrypted int, raw string) string {
 	}
 	return raw
 }
-
-// purgeOne removes a blob path, best-effort, mirroring the prior handler helper.
-func purgeOne(path string) { _ = os.Remove(filepath.Clean(path)) }

@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"net/http"
-	"os"
 	"shareserver/internal/audit"
 	"shareserver/internal/auth"
-	entadmin "shareserver/internal/ent/admin"
+	"shareserver/internal/share"
 	"shareserver/internal/storage"
 	"shareserver/internal/upload"
 	"time"
@@ -70,33 +69,30 @@ func (h *Handler) adminLoginPage(w http.ResponseWriter, r *http.Request) {
 	h.render(w, r, "admin_login.html", nil)
 }
 
-// adminLoginPost verifies credentials, rate-limits failures, and rotates admin session state.
+// adminLoginPost delegates credential decisions to auth and rotates admin session state on success.
 func (h *Handler) adminLoginPost(w http.ResponseWriter, r *http.Request) {
 	ip := h.clientIP(r)
-	now := time.Now()
-	if auth.IsBanned(h.A.DB, ip, now) {
+	user, pass := r.FormValue("username"), r.FormValue("password")
+	result := auth.AdminLogin(r.Context(), h.A.DB, ip, user, pass, time.Now())
+	switch result.Status {
+	case auth.AdminLoginBanned:
 		audit.Log(h.A.DB, "public", ip, "login_banned", "", "")
 		http.Error(w, "try again later", 429)
-		return
-	}
-	user, pass := r.FormValue("username"), r.FormValue("password")
-	adminRow, err := h.A.DB.Admin.Query().
-		Where(entadmin.UsernameEQ(user)).
-		Only(r.Context())
-	if err != nil || !auth.CheckPassword(adminRow.PasswordHash, pass) {
-		banned, until := auth.RecordLoginFailure(h.A.DB, ip, now)
+	case auth.AdminLoginFailed:
 		meta := ""
-		if banned {
-			meta = "banned_until=" + until.Format(time.RFC3339Nano)
+		if !result.BannedUntil.IsZero() {
+			meta = "banned_until=" + result.BannedUntil.Format(time.RFC3339Nano)
 		}
 		audit.Log(h.A.DB, "public", ip, "login_fail", user, meta)
 		http.Error(w, "login failed", 401)
-		return
+	case auth.AdminLoginSuccess:
+		h.loginSession(w, r, CurrentSession(r).ID, int64(result.AdminID))
+		audit.Log(h.A.DB, "admin", ip, "login", user, "")
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+	default:
+		audit.Log(h.A.DB, "public", ip, "login_fail", user, "")
+		http.Error(w, "login failed", 401)
 	}
-	auth.ResetFailures(h.A.DB, ip)
-	h.loginSession(w, r, CurrentSession(r).ID, int64(adminRow.ID))
-	audit.Log(h.A.DB, "admin", ip, "login", user, "")
-	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
 // adminLogout removes the current admin session and returns to the public home page.
@@ -108,11 +104,11 @@ func (h *Handler) adminLogout(w http.ResponseWriter, r *http.Request) {
 // adminDashboard shows storage/share counters and the manual repair action.
 func (h *Handler) adminDashboard(w http.ResponseWriter, r *http.Request) {
 	used := storage.UsedBytes(h.A.C.BlobDir)
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	active := share.ActiveAt(time.Now().UTC())
 	cleanupDone := r.URL.Query().Get("storage_cleanup") == "done"
 	h.render(w, r, "admin_dashboard.html", map[string]any{
 		"Used": used, "Cap": h.A.C.StorageCapBytes,
-		"Active": h.Store.CountActive(now), "Expired": h.Store.CountExpired(now), "Purged": h.Store.CountPurged(),
+		"Active": h.Store.CountActive(active), "Expired": h.Store.CountExpired(active), "Purged": h.Store.CountPurged(),
 		"StorageCleanupDone": cleanupDone,
 		"StorageMissingRows": r.URL.Query().Get("missing"),
 		"StorageOrphanFiles": r.URL.Query().Get("orphan"),
@@ -129,8 +125,7 @@ func (h *Handler) adminShares(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) adminDelete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if s, ok := h.getShare(id); ok {
-		if err := purgeOne(s.BlobPath); err == nil || os.IsNotExist(err) {
-			_ = h.Store.Delete(id)
+		if err := share.NewRemover(h.Store).Remove(s); err == nil {
 			audit.Log(h.A.DB, "admin", h.clientIP(r), "delete", id, "removed blob and metadata")
 		}
 	}

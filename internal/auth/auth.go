@@ -34,6 +34,39 @@ func HMACKey(secret []byte, key string) string {
 	return hex.EncodeToString(m.Sum(nil))
 }
 
+// AdminLoginStatus is the decision produced by the admin login flow.
+type AdminLoginStatus int
+
+const (
+	AdminLoginSuccess AdminLoginStatus = iota
+	AdminLoginFailed
+	AdminLoginBanned
+)
+
+// AdminLoginResult describes the fail-closed result of an admin login attempt.
+type AdminLoginResult struct {
+	Status      AdminLoginStatus
+	AdminID     int
+	BannedUntil time.Time
+}
+
+// AdminLogin verifies an admin login attempt in fail-closed order.
+func AdminLogin(ctx context.Context, client *ent.Client, ip, username, password string, now time.Time) AdminLoginResult {
+	now = now.UTC()
+	if isBanned(ctx, client, ip, now) {
+		return AdminLoginResult{Status: AdminLoginBanned}
+	}
+	adminRow, err := client.Admin.Query().
+		Where(entadmin.UsernameEQ(username)).
+		Only(ctx)
+	if err != nil || !CheckPassword(adminRow.PasswordHash, password) {
+		_, until := recordLoginFailure(ctx, client, ip, now)
+		return AdminLoginResult{Status: AdminLoginFailed, BannedUntil: until}
+	}
+	resetFailures(ctx, client, ip)
+	return AdminLoginResult{Status: AdminLoginSuccess, AdminID: adminRow.ID}
+}
+
 // EnsureAdmin creates or syncs the bootstrap admin without overwriting prod credentials.
 func EnsureAdmin(client *ent.Client, user, pass string, syncPassword bool) error {
 	ctx := context.Background()
@@ -67,19 +100,21 @@ func EnsureAdmin(client *ent.Client, user, pass string, syncPassword bool) error
 	return err
 }
 
-// IsBanned reports whether an IP has an active login ban.
-func IsBanned(client *ent.Client, ip string, now time.Time) bool {
-	ban, err := client.IpBan.Get(context.Background(), ip)
-	if err != nil {
+// isBanned reports whether an IP has an active login ban.
+func isBanned(ctx context.Context, client *ent.Client, ip string, now time.Time) bool {
+	ban, err := client.IpBan.Get(ctx, ip)
+	if ent.IsNotFound(err) {
 		return false
 	}
+	if err != nil {
+		return true
+	}
 	t, err := time.Parse(time.RFC3339Nano, ban.BannedUntil)
-	return err == nil && t.After(now.UTC())
+	return err != nil || t.After(now.UTC())
 }
 
-// RecordLoginFailure stores a failed login and returns a ban after repeated attempts.
-func RecordLoginFailure(client *ent.Client, ip string, now time.Time) (banned bool, until time.Time) {
-	ctx := context.Background()
+// recordLoginFailure stores a failed login and returns a ban after repeated attempts.
+func recordLoginFailure(ctx context.Context, client *ent.Client, ip string, now time.Time) (banned bool, until time.Time) {
 	_, _ = client.LoginFailureEvent.Create().
 		SetIP(ip).
 		SetHappenedAt(now.UTC().Format(time.RFC3339Nano)).
@@ -101,9 +136,9 @@ func RecordLoginFailure(client *ent.Client, ip string, now time.Time) (banned bo
 	return false, time.Time{}
 }
 
-// ResetFailures clears failed-login history after successful admin auth.
-func ResetFailures(client *ent.Client, ip string) {
-	_, _ = client.LoginFailureEvent.Delete().Where(loginfailureevent.IP(ip)).Exec(context.Background())
+// resetFailures clears failed-login history after successful admin auth.
+func resetFailures(ctx context.Context, client *ent.Client, ip string) {
+	_, _ = client.LoginFailureEvent.Delete().Where(loginfailureevent.IP(ip)).Exec(ctx)
 }
 
 // CleanIP strips a port from RemoteAddr-style values when present.

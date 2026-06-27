@@ -6,6 +6,7 @@ import (
 
 	"shareserver/internal/db"
 	"shareserver/internal/ent"
+	"shareserver/internal/ent/predicate"
 	entshare "shareserver/internal/ent/share"
 )
 
@@ -19,6 +20,19 @@ type Store struct {
 // NewStore binds the share query module to an Ent client.
 func NewStore(client *ent.Client) *Store { return &Store{Client: client} }
 
+// Predicate returns the Ent predicate for active shares at this rule's instant.
+func (r ActiveRule) Predicate() predicate.Share {
+	return entshare.And(
+		entshare.PurgedAtIsNil(),
+		entshare.Or(entshare.ExpiresAtIsNil(), entshare.ExpiresAtGT(r.encodedNow)),
+	)
+}
+
+// ExpiredPredicate returns the Ent predicate for non-purged expired shares.
+func (r ActiveRule) ExpiredPredicate() predicate.Share {
+	return entshare.And(entshare.PurgedAtIsNil(), entshare.ExpiresAtLTE(r.encodedNow))
+}
+
 // Get returns the share with the given id. ok is false if absent.
 func (s *Store) Get(id string) (Share, bool) {
 	row, err := s.Client.Share.Get(context.Background(), id)
@@ -28,27 +42,19 @@ func (s *Store) Get(id string) (Share, bool) {
 	return fromEnt(row), true
 }
 
-// ListPublic returns up to 100 non-purged, non-expired public shares.
-func (s *Store) ListPublic(now string) []Share {
+// ListPublic returns up to 100 active public shares.
+func (s *Store) ListPublic(active ActiveRule) []Share {
 	return s.query(s.Client.Share.Query().
-		Where(
-			entshare.PurgedAtIsNil(),
-			entshare.Or(entshare.ExpiresAtIsNil(), entshare.ExpiresAtGT(now)),
-			entshare.VisibilityEQ("public"),
-		).
+		Where(active.Predicate(), entshare.VisibilityEQ("public")).
 		Order(ent.Desc(entshare.FieldCreatedAt)).
 		Limit(100))
 }
 
-// ListByKey returns up to 100 non-purged, non-expired shares matching keyHash.
+// ListByKey returns up to 100 active shares matching keyHash.
 // Used by the private-key lookup flow.
-func (s *Store) ListByKey(now, keyHash string) []Share {
+func (s *Store) ListByKey(active ActiveRule, keyHash string) []Share {
 	return s.query(s.Client.Share.Query().
-		Where(
-			entshare.PurgedAtIsNil(),
-			entshare.Or(entshare.ExpiresAtIsNil(), entshare.ExpiresAtGT(now)),
-			entshare.PrivateKeyHashEQ(keyHash),
-		).
+		Where(active.Predicate(), entshare.PrivateKeyHashEQ(keyHash)).
 		Order(ent.Desc(entshare.FieldCreatedAt)).
 		Limit(100))
 }
@@ -73,19 +79,14 @@ func (s *Store) Purgeable() []Share {
 		Where(entshare.PurgedAtIsNil(), entshare.ExpiresAtNotNil()))
 }
 
-// CountActive counts non-purged, non-expired shares.
-func (s *Store) CountActive(now string) int {
-	return s.count(s.Client.Share.Query().
-		Where(
-			entshare.PurgedAtIsNil(),
-			entshare.Or(entshare.ExpiresAtIsNil(), entshare.ExpiresAtGT(now)),
-		))
+// CountActive counts active shares.
+func (s *Store) CountActive(active ActiveRule) int {
+	return s.count(s.Client.Share.Query().Where(active.Predicate()))
 }
 
 // CountExpired counts non-purged shares past expiry.
-func (s *Store) CountExpired(now string) int {
-	return s.count(s.Client.Share.Query().
-		Where(entshare.PurgedAtIsNil(), entshare.ExpiresAtLTE(now)))
+func (s *Store) CountExpired(active ActiveRule) int {
+	return s.count(s.Client.Share.Query().Where(active.ExpiredPredicate()))
 }
 
 // CountPurged counts shares with purged_at set.
