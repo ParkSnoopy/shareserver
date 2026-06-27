@@ -46,8 +46,8 @@ cp .env.example .env   # then set APP_SECRET, ADMIN_PASSWORD, etc.
 # -> listening on :8080 (or ADDR from .env)
 ```
 
-For local play you can skip `.env`: with `ENV=dev` an ephemeral `APP_SECRET`
-is generated and a default admin is created. Do **not** run `ENV=dev` in
+For local play you can skip `.env`: with `DEBUG=1` an ephemeral `APP_SECRET`
+is generated and a default admin is created. Do **not** run `DEBUG=1` in
 production — it logs a warning and uses a throwaway secret.
 
 ## Configuration
@@ -58,7 +58,7 @@ present; real env vars win over the file). `README.md` below matches
 
 | Var | Example/default | Purpose |
 | --- | --- | --- |
-| `ENV` | `dev` | `dev` allows an ephemeral secret + default admin; `prod` requires `APP_SECRET` + `ADMIN_PASSWORD` |
+| `DEBUG` | `1` | `1`/`true` allows an ephemeral secret + default admin; `0`/`false` requires `APP_SECRET` + `ADMIN_PASSWORD` |
 | `ADDR` | `0.0.0.0:8080` | listen address |
 | `DB_PATH` | `data/shareserver.db` | SQLite path |
 | `BLOB_DIR` | `data/blobs` | where uploaded blobs are stored |

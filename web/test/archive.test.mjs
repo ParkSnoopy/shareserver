@@ -81,4 +81,42 @@ describe("openArchive", () => {
 			ArchiveErrorCode.WrongPassword,
 		);
 	});
+
+	test("fires decrypt+unzip callbacks in phase order with blob sizes", async () => {
+		const { blob, manifest } = await zippedFixture(
+			fileFixture("data.bin", "payload", "application/octet-stream"),
+		);
+		const encrypted = await encryptBlob(blob, "hunter2");
+
+		const events = [];
+		const record = (phase) => (blob) =>
+			events.push({ phase, size: blob.size });
+
+		const entries = await openArchive(encrypted.blob, {
+			encrypted: true,
+			password: "hunter2",
+			cipher: encrypted.meta,
+			manifest,
+			onDecryptStart: record("decrypt-start"),
+			onDecryptDone: record("decrypt-done"),
+			onUnzipStart: record("unzip-start"),
+			onUnzipDone: record("unzip-done"),
+		});
+
+		// Phase order: decrypt starts, decrypt finishes (blob size may differ
+		// from ciphertext), then unzip starts and finishes on the plaintext.
+		expect(events.map((e) => e.phase)).toEqual([
+			"decrypt-start",
+			"decrypt-done",
+			"unzip-start",
+			"unzip-done",
+		]);
+		// The unzip callbacks receive the decrypted blob; decrypt-start gets ciphertext.
+		expect(events[0].size).toBe(encrypted.blob.size);
+		expect(events[2].size).toBe(events[1].size); // unzip-start = decrypted size
+		expect(events[3].size).toBe(events[1].size); // unzip-done = same blob
+		// Entries are classified with manifest type.
+		expect(entries).toHaveLength(1);
+		expect(entries[0].name).toBe("data.bin");
+	});
 });

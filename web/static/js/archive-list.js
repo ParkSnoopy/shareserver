@@ -75,7 +75,7 @@ function setupSidebarToggle() {
 			mobile.matches && !collapsed,
 		);
 		toggle.setAttribute("aria-expanded", String(!collapsed));
-		toggle.textContent = collapsed ? "> show archives" : "> hide archives";
+		toggle.textContent = collapsed ? "> show Search" : "> hide Search";
 	};
 	toggle.addEventListener("click", () => {
 		setCollapsed(!sidebar.classList.contains("is-collapsed"));

@@ -4,6 +4,7 @@ import { canPreview, mimeFromName, unzipBytes } from "./zip.js";
 export const ArchiveErrorCode = Object.freeze({
 	PasswordRequired: "password_required",
 	WrongPassword: "wrong_password",
+	UnsupportedCrypto: "unsupported_crypto",
 	CorruptArchive: "corrupt_archive",
 });
 
@@ -29,6 +30,14 @@ function archiveError(code, message, cause) {
 	return new ArchiveError(code, message, cause);
 }
 
+function isUnsupportedCrypto(err) {
+	return (
+		err?.code === "unsupported_crypto" ||
+		err?.name === "UnsupportedCryptoError" ||
+		err?.name === "NotSupportedError"
+	);
+}
+
 // openArchive decrypts when needed, unzips the archive, and classifies entries.
 export async function openArchive(blob, options = {}) {
 	const {
@@ -38,6 +47,7 @@ export async function openArchive(blob, options = {}) {
 		manifest = [],
 		onDecryptStart = null,
 		onDecryptDone = null,
+		onDecryptDebug = null,
 		onUnzipStart = null,
 		onUnzipDone = null,
 	} = options;
@@ -52,8 +62,17 @@ export async function openArchive(blob, options = {}) {
 		}
 		onDecryptStart?.(archiveBlob);
 		try {
-			archiveBlob = await decryptBlob(archiveBlob, password, cipher);
+			archiveBlob = await decryptBlob(archiveBlob, password, cipher, {
+				onDebug: onDecryptDebug,
+			});
 		} catch (err) {
+			if (isUnsupportedCrypto(err)) {
+				throw archiveError(
+					ArchiveErrorCode.UnsupportedCrypto,
+					err.message || "encryption is not supported on this browser",
+					err,
+				);
+			}
 			throw archiveError(ArchiveErrorCode.WrongPassword, "wrong password", err);
 		}
 		onDecryptDone?.(archiveBlob);

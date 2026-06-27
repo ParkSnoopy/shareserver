@@ -24,15 +24,6 @@ func (r Remover) Remove(sh Share) error {
 	return r.Store.Delete(sh.ID)
 }
 
-// RemoveByID looks up and removes a Share. Missing rows are already removed.
-func (r Remover) RemoveByID(id string) (bool, error) {
-	sh, ok := r.Store.Get(id)
-	if !ok {
-		return false, nil
-	}
-	return true, r.Remove(sh)
-}
-
 // RemoveBlob deletes one blob path after cleaning it.
 func RemoveBlob(path string) error { return os.Remove(filepath.Clean(path)) }
 

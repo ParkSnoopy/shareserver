@@ -315,6 +315,121 @@ func TestAnonymousSessionCreatedThroughRouter(t *testing.T) {
 	}
 }
 
+func TestDevModeHomeWarnsAndServesDevTools(t *testing.T) {
+	a := newTestApp(t)
+	a.C.Dev = true
+	router := httpx.New(a)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected dev home 200, got %d", w.Code)
+	}
+	assertBodyContains(t, w.Body.String(),
+		"# Dev Mode",
+		"DEBUG=1 is active.",
+		"/dev/debug.js",
+	)
+	if csp := w.Header().Get("Content-Security-Policy"); strings.Contains(csp, "unsafe-inline") ||
+		strings.Contains(csp, "unsafe-eval") {
+		t.Fatalf("dev CSP should not expose unsafe relaxations, got %q", csp)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/dev/debug.js", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected dev debug script 200, got %d", w.Code)
+	}
+	assertBodyContains(t, w.Body.String(), "shareserverDecryptDebug")
+
+	req = httptest.NewRequest(http.MethodGet, "/dev/debug.css", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected dev debug style 200, got %d", w.Code)
+	}
+	assertBodyContains(t, w.Body.String(), "shareserver-dev-log")
+}
+
+func TestProdModeHidesDevTools(t *testing.T) {
+	_, router := newRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if strings.Contains(w.Body.String(), "/dev/debug.js") ||
+		strings.Contains(w.Body.String(), "/dev/debug.css") ||
+		strings.Contains(w.Body.String(), "# Dev Mode") {
+		t.Fatalf("prod home exposed dev UI:\n%s", w.Body.String())
+	}
+	if csp := w.Header().Get("Content-Security-Policy"); strings.Contains(csp, "unsafe-inline") ||
+		strings.Contains(csp, "unsafe-eval") {
+		t.Fatalf("prod CSP exposed dev relaxations: %q", csp)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/dev/debug.js", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected prod debug route 404, got %d", w.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/dev/debug.css", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected prod debug style 404, got %d", w.Code)
+	}
+}
+
+func TestHTMLPagesHaveNoStoreCacheControl(t *testing.T) {
+	_, router := newRouter(t)
+
+	// Home page (200) must not be cached: the Dev flag and CSRF token are
+	// per-request and a stale cached HTML can embed a <script> tag for a
+	// route that no longer exists (e.g. debug.js after switching to prod),
+	// causing the browser to fetch a 404 HTML page as JavaScript/CSS.
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if cc := w.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Fatalf("home Cache-Control = %q, want no-store", cc)
+	}
+
+	// 404 page must also be no-store so the browser does not cache a stale
+	// error page and miss a newly-created share at the same path.
+	req = httptest.NewRequest(http.MethodGet, "/s/nope", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+	if cc := w.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Fatalf("404 Cache-Control = %q, want no-store", cc)
+	}
+}
+
+func TestStaticFilesHaveRevalidateCacheControl(t *testing.T) {
+	_, router := newRouter(t)
+
+	// Static JS/CSS must revalidate so a browser that cached an old
+	// progress.js (before a server-side update) always re-checks with
+	// If-Modified-Since instead of serving a stale API mismatch. The
+	// repoFile-based root resolves web/static from the test's working
+	// directory too, so app.css is served as a real 200.
+	req := httptest.NewRequest(http.MethodGet, "/static/css/app.css", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected static CSS 200, got %d", w.Code)
+	}
+	if cc := w.Header().Get("Cache-Control"); cc != "no-cache, must-revalidate" {
+		t.Fatalf("static Cache-Control = %q, want no-cache, must-revalidate", cc)
+	}
+}
+
 func TestAdminDashboardShowsStorageCleanupAction(t *testing.T) {
 	a, router := newRouter(t)
 	insertAdminSession(t, a.DB, "admin-sid", "admin-csrf")

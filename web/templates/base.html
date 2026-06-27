@@ -6,6 +6,10 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>{{.Title}}</title>
     <link rel="stylesheet" href="/static/css/app.css">
+    {{if .Dev}}
+      <meta name="shareserver-env" content="dev">
+      <script src="/dev/debug.js"></script>
+    {{end}}
   </head>
   <body>
     <nav class="tabs">
@@ -20,6 +24,16 @@
       {{end}}
     </nav>
     <main class="shell">
+      {{if .Dev}}
+        <section class="api-detail detail-pane" role="status">
+          <h3># Dev Mode</h3>
+          <p class="err">DEBUG=1 is active.</p>
+          <p class="comment-text">
+            # local-only mode: default admin password and ephemeral secrets may be
+            allowed. Use DEBUG=0 for production.
+          </p>
+        </section>
+      {{end}}
 {{end}}
 
 {{define "base_bottom"}}

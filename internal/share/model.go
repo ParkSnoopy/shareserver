@@ -23,6 +23,11 @@ const (
 	StatusPurged  = "purged"
 )
 
+// purgeGrace is the retention window after expiry before a share's blob and
+// metadata are purged. It gives the uploader a chance to retrieve a share
+// shortly after it expires.
+const purgeGrace = 24 * time.Hour
+
 // ActiveRule is the single in-process definition of an active Share:
 // non-purged and not expired at one instant.
 type ActiveRule struct {
@@ -62,12 +67,20 @@ func (r ActiveRule) Status(s Share) string {
 	return StatusActive
 }
 
-// IsExpired reports whether an optional expiry timestamp is at or before now.
-func IsExpired(exp sql.NullString, now time.Time) bool {
-	return ActiveAt(now).IsExpired(exp)
-}
-
-// Status collapses purge and expiry metadata into active, expired, or purged.
-func Status(s Share, now time.Time) string {
-	return ActiveAt(now).Status(s)
+// IsPurgeable reports whether an expired share has passed the purge grace
+// window and should have its blob and metadata removed. A share is purgeable
+// only if it is expired AND its expiry is older than purgeGrace. The grace
+// window lives here — in the rule — not in the cleanup caller.
+func (r ActiveRule) IsPurgeable(exp sql.NullString) bool {
+	if !r.IsExpired(exp) {
+		return false
+	}
+	if !exp.Valid || exp.String == "" {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339Nano, exp.String)
+	if err != nil {
+		return false
+	}
+	return !t.After(r.now.Add(-purgeGrace))
 }

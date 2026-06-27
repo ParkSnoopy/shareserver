@@ -30,6 +30,7 @@ export class Progress {
 		this.pending = null;
 		this.timer = null;
 		this._pulseTimers = new Set();
+		this.pulses = new Map();
 		this.t0 = performance.now();
 		this.el.textContent = "";
 	}
@@ -117,11 +118,14 @@ export class Progress {
 			this.order.push(phase);
 		}
 		const start = performance.now();
+		this.pulses.set(phase, { total, start, state });
 		const tick = () => {
 			if (this.failed.has(phase)) return;
-			const elapsed = (performance.now() - start) / 1000;
+			const meta = this.pulses.get(phase);
+			if (!meta) return;
+			const elapsed = (performance.now() - meta.start) / 1000;
 			const p = Math.min(0.95, elapsed / 8);
-			this.set(phase, Math.round(total * p), total, state);
+			this.set(phase, Math.round(meta.total * p), meta.total, meta.state);
 		};
 		tick();
 		const timer = setInterval(tick, 500);
@@ -129,7 +133,23 @@ export class Progress {
 		return () => {
 			clearInterval(timer);
 			this._pulseTimers.delete(timer);
+			this.pulses.delete(phase);
 		};
+	}
+
+	// state relabels an active pulse and re-renders immediately so a mode
+	// change (e.g. native -> pure-JS decrypt fallback) shows without waiting
+	// for the next pulse tick. No-op when the phase is not pulsing or has failed.
+	state(phase, newState) {
+		if (this.failed.has(phase)) return;
+		const meta = this.pulses.get(phase);
+		if (!meta) return;
+		meta.state = newState;
+		const elapsed = (performance.now() - meta.start) / 1000;
+		const p = Math.min(0.95, elapsed / 8);
+		this.cancelPending(phase);
+		this.lines.set(phase, this.line(phase, Math.round(meta.total * p), meta.total, newState));
+		this.render();
 	}
 
 	// done marks a phase complete and prevents stale queued updates from overwriting it.

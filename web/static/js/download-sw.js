@@ -1,4 +1,4 @@
-const DOWNLOAD_PREFIX = "/__download__/";
+const DOWNLOAD_PATH = /^\/s\/[^/]+\/f\/.+/;
 const downloads = new Map();
 
 self.addEventListener("install", () => {
@@ -34,7 +34,7 @@ self.addEventListener("fetch", (event) => {
 	if (
 		event.request.method !== "GET" ||
 		url.origin !== self.location.origin ||
-		!url.pathname.startsWith(DOWNLOAD_PREFIX)
+		!DOWNLOAD_PATH.test(url.pathname)
 	) {
 		return;
 	}
@@ -58,8 +58,11 @@ function stageDownload(data) {
 	});
 }
 
-// downloadResponse serves one staged download with filename headers, then evicts it.
-function downloadResponse(url) {
+// downloadResponse serves a staged download with filename headers until
+// forgotten. The body is read as an ArrayBuffer because Android Chrome fails
+// to stream Blob-backed responses for navigation downloads (first tap errors
+// with "Network Error"); ArrayBuffer bodies are reliable across platforms.
+async function downloadResponse(url) {
 	const key = downloadKey(url);
 	const staged = downloads.get(key);
 	if (!staged) {
@@ -68,12 +71,19 @@ function downloadResponse(url) {
 			headers: { "Content-Type": "text/plain; charset=utf-8" },
 		});
 	}
-	downloads.delete(key);
-	return new Response(staged.file, {
-		headers: {
-			"Cache-Control": "no-store",
-			"Content-Disposition": staged.disposition,
-			"Content-Type": staged.contentType,
-		},
-	});
+	try {
+		const body = await staged.file.arrayBuffer();
+		return new Response(body, {
+			headers: {
+				"Cache-Control": "no-store",
+				"Content-Disposition": staged.disposition,
+				"Content-Type": staged.contentType,
+			},
+		});
+	} catch (err) {
+		return new Response("download read failed\n", {
+			status: 500,
+			headers: { "Content-Type": "text/plain; charset=utf-8" },
+		});
+	}
 }

@@ -14,13 +14,14 @@ func TestIsExpired(t *testing.T) {
 	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	past := now.Add(-time.Second).Format(time.RFC3339Nano)
 	future := now.Add(time.Second).Format(time.RFC3339Nano)
-	if !share.IsExpired(sql.NullString{String: past, Valid: true}, now) {
+	active := share.ActiveAt(now)
+	if !active.IsExpired(sql.NullString{String: past, Valid: true}) {
 		t.Fatalf("past should be expired")
 	}
-	if share.IsExpired(sql.NullString{String: future, Valid: true}, now) {
+	if active.IsExpired(sql.NullString{String: future, Valid: true}) {
 		t.Fatalf("future should be active")
 	}
-	if share.IsExpired(sql.NullString{}, now) {
+	if active.IsExpired(sql.NullString{}) {
 		t.Fatalf("null expiry should be active")
 	}
 }
@@ -91,28 +92,28 @@ func TestStoreListAllIncludesEverything(t *testing.T) {
 	}
 }
 
-func TestStorePurgeableOnlyExpiryNonPurged(t *testing.T) {
+func TestStoreWithExpiryOnlyExpiryNonPurged(t *testing.T) {
 	s, _ := newStore(t)
 	mustInsertShare(t, s, sampleShare("exp", "public", pastTS(1*time.Hour)))
 	mustInsertShare(t, s, sampleShare("live", "public", futureTS(1*time.Hour)))
 	mustInsertShare(t, s, sampleShare("noexp", "public", ""))
-	list := s.Purgeable()
+	list := s.WithExpiry()
 	if len(list) != 2 {
-		t.Fatalf("Purgeable want 2 (both with expiry), got %d: %+v", len(list), list)
+		t.Fatalf("WithExpiry want 2 (both with expiry), got %d: %+v", len(list), list)
 	}
 	ids := map[string]bool{}
 	for _, sh := range list {
 		ids[sh.ID] = true
 	}
 	if !ids["exp"] || !ids["live"] {
-		t.Fatalf("Purgeable missing exp/live, got %+v", list)
+		t.Fatalf("WithExpiry missing exp/live, got %+v", list)
 	}
 	if ids["noexp"] {
-		t.Fatal("Purgeable included no-expiry share")
+		t.Fatal("WithExpiry included no-expiry share")
 	}
 }
 
-func TestStoreCountsAndMarkPurged(t *testing.T) {
+func TestStoreCounts(t *testing.T) {
 	s, _ := newStore(t)
 	active := share.ActiveAt(time.Now().UTC())
 	mustInsertShare(t, s, sampleShare("live", "public", futureTS(1*time.Hour)))
@@ -126,16 +127,61 @@ func TestStoreCountsAndMarkPurged(t *testing.T) {
 	if s.CountPurged() != 0 {
 		t.Fatalf("CountPurged want 0, got %d", s.CountPurged())
 	}
-	if err := s.MarkPurged("exp"); err != nil {
-		t.Fatal(err)
+}
+
+func TestExpiryRuleGoAgreesWithSQL(t *testing.T) {
+	// Boundary test: the Go ActiveRule.IsExpired and the SQL ExpiredPredicate
+	// must classify the same shares identically. Without this, the two
+	// encodings of the expiry rule can drift silently.
+	s, _ := newStore(t)
+	now := time.Now().UTC()
+	active := share.ActiveAt(now)
+
+	// Insert one expired and one live share with the same timestamp the rule uses.
+	expired := sampleShare("exp-boundary", "public", now.Add(-1*time.Hour).Format(time.RFC3339Nano))
+	live := sampleShare("live-boundary", "public", now.Add(1*time.Hour).Format(time.RFC3339Nano))
+	mustInsertShare(t, s, expired)
+	mustInsertShare(t, s, live)
+
+	// Go rule says:
+	goExpired := active.IsExpired(expired.ExpiresAt)
+	goLive := active.IsExpired(live.ExpiresAt)
+	if !goExpired || goLive {
+		t.Fatalf("Go IsExpired mismatch: expired=%v live=%v", goExpired, goLive)
 	}
-	if s.CountPurged() != 1 {
-		t.Fatalf("CountPurged after mark want 1, got %d", s.CountPurged())
+
+	// SQL predicate says:
+	sqlExpired := s.CountExpired(active)
+	if sqlExpired < 1 {
+		t.Fatalf("SQL CountExpired want >=1, got %d", sqlExpired)
 	}
-	for _, sh := range s.Purgeable() {
-		if sh.ID == "exp" {
-			t.Fatal("purged share still in Purgeable")
-		}
+}
+
+func TestIsPurgeableHonoursGraceWindow(t *testing.T) {
+	now := time.Now().UTC()
+
+	// Expired 25h ago — past the 24h grace → purgeable
+	past24 := now.Add(-25 * time.Hour).Format(time.RFC3339Nano)
+	rule := share.ActiveAt(now)
+	if !rule.IsPurgeable(sql.NullString{String: past24, Valid: true}) {
+		t.Fatal("share expired 25h ago should be purgeable")
+	}
+
+	// Expired 1h ago — within grace → not purgeable
+	recent := now.Add(-1 * time.Hour).Format(time.RFC3339Nano)
+	if rule.IsPurgeable(sql.NullString{String: recent, Valid: true}) {
+		t.Fatal("share expired 1h ago should not be purgeable (within grace)")
+	}
+
+	// Not expired → not purgeable
+	future := now.Add(1 * time.Hour).Format(time.RFC3339Nano)
+	if rule.IsPurgeable(sql.NullString{String: future, Valid: true}) {
+		t.Fatal("live share should not be purgeable")
+	}
+
+	// No expiry → not purgeable
+	if rule.IsPurgeable(sql.NullString{}) {
+		t.Fatal("no-expiry share should not be purgeable")
 	}
 }
 

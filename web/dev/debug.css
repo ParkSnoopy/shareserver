@@ -1,0 +1,31 @@
+#shareserver-dev-log {
+	margin-top: 12px;
+	border: 1px solid #3a3e41;
+	background: #000;
+	color: #f0f7f9;
+	font: 12px/1.45 GeistMono, "Courier New", monospace;
+}
+
+#shareserver-dev-log button {
+	width: 100%;
+	padding: 8px 10px;
+	border: 0;
+	border-bottom: 1px solid #3a3e41;
+	background: #151719;
+	color: #f0f7f9;
+	font: inherit;
+	text-align: left;
+}
+
+#shareserver-dev-log .shareserver-dev-log-body {
+	max-height: 240px;
+	margin: 0;
+	padding: 8px 10px;
+	overflow: auto;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+#shareserver-dev-log.is-collapsed .shareserver-dev-log-body {
+	display: none;
+}

@@ -1,12 +1,14 @@
 import { encryptBlob } from "./crypto.js";
 import { fmtBytes, Progress } from "./progress.js";
 import { canPreview, filesToZip } from "./zip.js";
+import { settlePasswordInput } from "./ime.js";
 
 const form = document.getElementById("uploadForm");
 const maxBytes = Number(form.dataset.maxBytes || 0);
 const filesEl = document.getElementById("files");
 const titleEl = form.elements.title;
 const sourceEl = document.getElementById("source");
+const passwordEl = form.elements.password;
 const visibilityEl = document.getElementById("visibility");
 const privateKeyLabel = document.getElementById("privateKeyLabel");
 const privateKey = document.getElementById("privateKey");
@@ -22,6 +24,7 @@ const dropzone = document.getElementById("dropzone");
 const fileList = document.getElementById("fileList");
 let clipFiles = [];
 let clipPreviewURLs = [];
+let passwordComposing = false;
 
 // clearClipboardPreviews removes old object URLs and preview nodes from clipboard mode.
 function clearClipboardPreviews() {
@@ -362,6 +365,7 @@ function uploadFormData(out, size) {
 form.onsubmit = async (event) => {
 	event.preventDefault();
 	result.textContent = "";
+	await settlePasswordInput(passwordEl, () => passwordComposing);
 	try {
 		const fd = new FormData(form);
 		let files =
@@ -442,6 +446,15 @@ form.onsubmit = async (event) => {
 		result.textContent = msg;
 	}
 };
+
+if (passwordEl) {
+	passwordEl.addEventListener("compositionstart", () => {
+		passwordComposing = true;
+	});
+	passwordEl.addEventListener("compositionend", () => {
+		passwordComposing = false;
+	});
+}
 
 syncSource();
 syncVisibility();

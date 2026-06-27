@@ -31,11 +31,11 @@ type Config struct {
 // Load reads environment settings, applies safe defaults, and fails closed in prod.
 func Load() Config {
 	loadDotEnv(".env")
-	dev := env("ENV", "dev") == "dev"
+	dev := envBool("DEBUG", true)
 	secret := os.Getenv("APP_SECRET")
 	if secret == "" {
 		if !dev {
-			log.Fatal("APP_SECRET required when ENV != dev")
+			log.Fatal("APP_SECRET required when DEBUG is not 1/true")
 		}
 		b := make([]byte, 32)
 		if _, err := rand.Read(b); err != nil {
@@ -49,7 +49,7 @@ func Load() Config {
 		adminPassword = "admin-change-me"
 	}
 	if !dev && (!hasAdminPassword || adminPassword == "admin-change-me") {
-		log.Fatal("ADMIN_PASSWORD required when ENV != dev")
+		log.Fatal("ADMIN_PASSWORD required when DEBUG is not 1/true")
 	}
 	loc, err := time.LoadLocation(env("TZ", "Asia/Shanghai"))
 	if err != nil {

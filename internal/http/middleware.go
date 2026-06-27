@@ -6,16 +6,37 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
-	"shareserver/internal/app"
 	"shareserver/internal/auth"
-	"shareserver/internal/share"
-	"shareserver/internal/upload"
 )
 
 type ctxKey string
 
 const sessionKey ctxKey = "session"
+const clockKey ctxKey = "clock"
+
+// withClock stamps one canonical UTC timestamp into the request context so
+// every handler in a single request classifies shares with the same "now".
+// Without this, sharePage and blob each call time.Now() independently and a
+// share whose expiry falls between the two readings is classified two ways.
+// Background goroutines (PurgeExpired, CleanExpiredSessions) keep their own
+// local now since they have no request context.
+func (h *Handler) withClock(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), clockKey, time.Now().UTC())
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// requestTime returns the canonical timestamp stamped by withClock, falling
+// back to time.Now for paths not wrapped by the middleware.
+func requestTime(r *http.Request) time.Time {
+	if t, ok := r.Context().Value(clockKey).(time.Time); ok {
+		return t
+	}
+	return time.Now().UTC()
+}
 
 // security applies conservative browser security headers to every response.
 func (h *Handler) security(next http.Handler) http.Handler {
@@ -123,11 +144,7 @@ func (h *Handler) csrf(next http.Handler) http.Handler {
 		r.Body = http.MaxBytesReader(w, r.Body, h.requestBodyLimit(r))
 		s := CurrentSession(r)
 		tok := r.Header.Get("X-CSRF-Token")
-		if tok == "" && r.URL.Path == "/upload" && strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/") {
-			http.Error(w, "csrf header required", http.StatusForbidden)
-			return
-		}
-		if tok == "" {
+		if tok == "" && !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/") {
 			tok = r.FormValue("csrf")
 		}
 		if s.CSRF == "" || tok == "" || !sameToken(tok, s.CSRF) {
@@ -175,14 +192,7 @@ func (h *Handler) logoutSession(sid string) {
 	h.sessions().Delete(context.Background(), sid)
 }
 
-// Handler groups HTTP dependencies; route methods keep policy in owned modules.
-type Handler struct {
-	A        *app.App
-	Store    *share.Store
-	Upload   *upload.Uploader
-	Sessions SessionLifecycle
-}
-
+// sessions returns the session lifecycle, defaulting to a DB-backed one.
 func (h *Handler) sessions() SessionLifecycle {
 	if h.Sessions != nil {
 		return h.Sessions

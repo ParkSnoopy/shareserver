@@ -1,6 +1,7 @@
 package httpx
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/go-chi/chi/v5"
@@ -16,6 +17,15 @@ import (
 // uploadPost accepts a browser-built archive and delegates validation/storage to upload.
 func (h *Handler) uploadPost(w http.ResponseWriter, r *http.Request) {
 	ip := h.clientIP(r)
+	// Multipart bodies are consumed by ParseMultipartForm, so the CSRF
+	// token must come from the header (not r.FormValue, which would read
+	// the body). The general CSRF middleware can't know this — it's upload
+	// policy, checked here before the body is parsed.
+	tok := r.Header.Get("X-CSRF-Token")
+	if tok == "" || !sameToken(tok, CurrentSession(r).CSRF) {
+		http.Error(w, "csrf header required", http.StatusForbidden)
+		return
+	}
 	if err := r.ParseMultipartForm(2 << 20); err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
@@ -61,7 +71,8 @@ func (h *Handler) uploadPost(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	jsonResp(w, map[string]any{"ok": true, "id": res.ID, "url": res.URL})
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": res.ID, "url": res.URL})
 }
 
 // adminLoginPage renders the admin sign-in form.
@@ -104,7 +115,7 @@ func (h *Handler) adminLogout(w http.ResponseWriter, r *http.Request) {
 // adminDashboard shows storage/share counters and the manual repair action.
 func (h *Handler) adminDashboard(w http.ResponseWriter, r *http.Request) {
 	used := storage.UsedBytes(h.A.C.BlobDir)
-	active := share.ActiveAt(time.Now().UTC())
+	active := share.ActiveAt(requestTime(r))
 	cleanupDone := r.URL.Query().Get("storage_cleanup") == "done"
 	h.render(w, r, "admin_dashboard.html", map[string]any{
 		"Used": used, "Cap": h.A.C.StorageCapBytes,
@@ -118,7 +129,7 @@ func (h *Handler) adminDashboard(w http.ResponseWriter, r *http.Request) {
 // adminShares lists recent shares for inspection and deletion.
 func (h *Handler) adminShares(w http.ResponseWriter, r *http.Request) {
 	list := h.Store.ListAll()
-	h.render(w, r, "admin_shares.html", map[string]any{"Shares": list, "Now": time.Now().UTC()})
+	h.render(w, r, "admin_shares.html", map[string]any{"Shares": list, "Now": requestTime(r)})
 }
 
 // adminDelete removes one share's blob and metadata when the admin confirms deletion.

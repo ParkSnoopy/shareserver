@@ -50,4 +50,25 @@ describe("Progress", () => {
 		expect(progress.lines.size).toBe(0);
 		expect(text()).toBe("");
 	});
+
+	test("state relabels a pulse then reverts before done (fallback flow)", async () => {
+		const { progress, text } = progressHarness();
+		const stop = progress.pulse("decrypt", 100, "working");
+		// fallback decided: relabel to indicate the pure-JS file fetch
+		progress.state("decrypt", "loading pure JS");
+		expect(text()).toContain("loading pure JS");
+		// a later pulse tick must keep the relabeled state, not revert on its own
+		await wait(1200);
+		expect(text()).toContain("loading pure JS");
+		// fetch complete: revert to the same label the native decrypt path uses
+		progress.state("decrypt", "working");
+		await wait(1200);
+		expect(text()).toContain("working");
+		expect(text()).not.toContain("pure JS");
+		stop();
+		progress.done("decrypt", 100);
+		await wait(700);
+		expect(text()).toMatch(/decrypt.*100%.*done/);
+		expect(text()).not.toContain("pure JS");
+	});
 });

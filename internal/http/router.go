@@ -1,14 +1,10 @@
 package httpx
 
 import (
-	"encoding/json"
-	"fmt"
-	"html/template"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -17,6 +13,14 @@ import (
 	"shareserver/internal/share"
 	"shareserver/internal/upload"
 )
+
+// Handler groups HTTP dependencies; route methods keep policy in owned modules.
+type Handler struct {
+	A        *app.App
+	Store    *share.Store
+	Upload   *upload.Uploader
+	Sessions SessionLifecycle
+}
 
 // New wires middleware, routes, templates, share store, and upload policy.
 func New(a *app.App) http.Handler {
@@ -36,30 +40,18 @@ func New(a *app.App) http.Handler {
 			DB:    a.DB,
 		},
 	}
-	funcs := template.FuncMap{
-		"csrf": func() string { return "" },
-		"short": func(s string) string {
-			if len(s) > 8 {
-				return s[:8]
-			}
-			return s
-		},
-		"mb": func(n int64) string { return human(n) },
-		"fmtTime": func(s string) string {
-			t, err := time.Parse(time.RFC3339Nano, s)
-			if err != nil {
-				return s
-			}
-			return t.In(a.C.TZ).Format("2006-01-02 15:04:05")
-		},
-	}
-	a.T = template.Must(template.New("").Funcs(funcs).ParseGlob(templateGlob()))
+	a.T = setupTemplates(a.C.TZ)
 	r := chi.NewRouter()
 	r.Use(h.security)
+	r.Use(h.withClock)
 	r.Use(h.withSession)
 	r.Use(h.csrf)
 	r.Get("/download-sw.js", h.downloadServiceWorker)
-	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
+	if a.C.Dev {
+		r.Get("/dev/debug.js", h.devDebugScript)
+		r.Get("/dev/debug.css", h.devDebugStyle)
+	}
+	r.Handle("/static/*", noCacheStatic(http.StripPrefix("/static/", http.FileServer(http.Dir(repoFile("web", "static"))))))
 	r.Get("/", h.home)
 	r.Post("/", h.home)
 	r.Get("/s/", h.archivePage)
@@ -81,27 +73,6 @@ func New(a *app.App) http.Handler {
 	return r
 }
 
-// render writes a normal 200 HTML template response with shared template data.
-func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, data map[string]any) {
-	h.renderStatus(w, r, http.StatusOK, name, data)
-}
-
-// renderStatus writes an HTML template with CSRF/admin context and explicit status.
-func (h *Handler) renderStatus(w http.ResponseWriter, r *http.Request, status int, name string, data map[string]any) {
-	if data == nil {
-		data = map[string]any{}
-	}
-	data["CSRF"] = CurrentSession(r).CSRF
-	data["Admin"] = CurrentSession(r).AdminID > 0
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if status != http.StatusOK {
-		w.WriteHeader(status)
-	}
-	if err := h.A.T.ExecuteTemplate(w, name, data); err != nil {
-		http.Error(w, err.Error(), 500)
-	}
-}
-
 // notFoundPage renders the friendly 404 page with the home redirect countdown.
 func (h *Handler) notFoundPage(w http.ResponseWriter, r *http.Request) {
 	h.renderStatus(w, r, http.StatusNotFound, "error.html", map[string]any{
@@ -116,7 +87,40 @@ func (h *Handler) notFoundPage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) downloadServiceWorker(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Service-Worker-Allowed", "/")
-	http.ServeFile(w, r, "web/static/js/download-sw.js")
+	http.ServeFile(w, r, repoFile("web", "static", "js", "download-sw.js"))
+}
+
+// devDebugScript serves local development-only browser diagnostics.
+func (h *Handler) devDebugScript(w http.ResponseWriter, r *http.Request) {
+	h.serveDevFile(w, r, "web/dev/debug.js")
+}
+
+// devDebugStyle serves local development-only browser diagnostic styles.
+func (h *Handler) devDebugStyle(w http.ResponseWriter, r *http.Request) {
+	h.serveDevFile(w, r, "web/dev/debug.css")
+}
+
+// serveDevFile fails closed so development assets are unreachable in production.
+func (h *Handler) serveDevFile(w http.ResponseWriter, r *http.Request, path string) {
+	if !h.A.C.Dev {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	http.ServeFile(w, r, repoFile(path))
+}
+
+// noCacheStatic wraps the static file server so browsers always revalidate
+// (If-Modified-Since) before using a cached asset. Without this, heuristic
+// caching can serve a stale progress.js whose API no longer matches the
+// freshly-fetched share.js, causing "progress.state is not a function" and
+// similar stale-module crashes on devices that visited the page before an
+// update. The 304 path still avoids re-sending unchanged bytes.
+func noCacheStatic(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // home renders public archives or private-key lookup results.
@@ -133,8 +137,8 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request) {
 }
 
 // archivesForKey selects the public list or private-key matches for the archive sidebar.
-func (h *Handler) archivesForKey(keyHash string) ([]share.Share, bool) {
-	active := share.ActiveAt(time.Now().UTC())
+func (h *Handler) archivesForKey(r *http.Request, keyHash string) ([]share.Share, bool) {
+	active := share.ActiveAt(requestTime(r))
 	if keyHash != "" {
 		return h.Store.ListByKey(active, keyHash), true
 	}
@@ -158,7 +162,7 @@ func (h *Handler) sharePage(w http.ResponseWriter, r *http.Request) {
 		h.notFoundPage(w, r)
 		return
 	}
-	st := share.ActiveAt(time.Now().UTC()).Status(s)
+	st := share.ActiveAt(requestTime(r)).Status(s)
 	if st == share.StatusPurged {
 		h.notFoundPage(w, r)
 		return
@@ -168,7 +172,7 @@ func (h *Handler) sharePage(w http.ResponseWriter, r *http.Request) {
 
 // renderArchive feeds the shared archive/detail template for home, lookup, and share pages.
 func (h *Handler) renderArchive(w http.ResponseWriter, r *http.Request, selected share.Share, hasSelected bool, status, keyHash string) {
-	archives, privateMode := h.archivesForKey(keyHash)
+	archives, privateMode := h.archivesForKey(r, keyHash)
 	h.render(w, r, "share.html", map[string]any{
 		"Share":       selected,
 		"Selected":    hasSelected,
@@ -176,6 +180,7 @@ func (h *Handler) renderArchive(w http.ResponseWriter, r *http.Request, selected
 		"Expired":     hasSelected && status == share.StatusExpired,
 		"Archives":    archives,
 		"PrivateMode": privateMode,
+		"Dev":         h.A.C.Dev,
 	})
 }
 
@@ -186,7 +191,7 @@ func (h *Handler) blob(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if !share.ActiveAt(time.Now().UTC()).IsActive(s) {
+	if !share.ActiveAt(requestTime(r)).IsActive(s) {
 		http.Error(w, "expired", 410)
 		return
 	}
@@ -211,29 +216,22 @@ func validUUID(id string) bool { return uuidRE.MatchString(id) }
 // privateHash scopes private-key lookup hashes to the app secret.
 func (h *Handler) privateHash(k string) string { return auth.HMACKey(h.A.C.AppSecret, k) }
 
-// jsonResp writes small JSON API responses for browser upload code.
-func jsonResp(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(v)
-}
 
-// human formats byte counts for terminal-styled admin pages.
-func human(n int64) string { return fmt.Sprintf("%.1f MiB", float64(n)/1024/1024) }
-
-// templateGlob finds templates from repo root or package test working directories.
-func templateGlob() string {
+// repoFile finds a repository-relative file from repo root or package test directories.
+func repoFile(parts ...string) string {
 	dir, err := os.Getwd()
 	if err != nil {
-		return "web/templates/*.html"
+		return filepath.Join(parts...)
 	}
 	for {
-		pattern := filepath.Join(dir, "web", "templates", "*.html")
-		if matches, _ := filepath.Glob(pattern); len(matches) > 0 {
-			return pattern
+		elems := append([]string{dir}, parts...)
+		path := filepath.Join(elems...)
+		if _, err := os.Stat(path); err == nil {
+			return path
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "web/templates/*.html"
+			return filepath.Join(parts...)
 		}
 		dir = parent
 	}

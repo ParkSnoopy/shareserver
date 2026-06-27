@@ -536,6 +536,11 @@ td form {
 .preview-well {
 	width: 100%;
 	min-height: 140px;
+	cursor: pointer;
+}
+.archive-preview video,
+.archive-preview audio {
+	cursor: auto;
 }
 .archive-preview img,
 .archive-preview video,

@@ -72,9 +72,11 @@ func (s *Store) All() []Share {
 	return s.query(s.Client.Share.Query())
 }
 
-// Purgeable returns non-purged shares that have an expiry. The 24h-grace
-// and expired checks are applied by the caller (cleanup policy).
-func (s *Store) Purgeable() []Share {
+// WithExpiry returns non-purged shares that have an expiry set. The caller
+// applies the purge rule (ActiveRule.IsPurgeable) to decide which are past
+// the grace window. Renamed from Purgeable — that name implied the result
+// was already purgeable, but it includes live shares too.
+func (s *Store) WithExpiry() []Share {
 	return s.query(s.Client.Share.Query().
 		Where(entshare.PurgedAtIsNil(), entshare.ExpiresAtNotNil()))
 }
@@ -112,15 +114,6 @@ func (s *Store) Insert(sh Share) error {
 		SetCreatedAt(db.Now()).
 		SetNillablePurgedAt(nullStringPtr(sh.PurgedAt))
 	_, err := create.Save(context.Background())
-	return err
-}
-
-// MarkPurged records purge time for a share.
-func (s *Store) MarkPurged(id string) error {
-	_, err := s.Client.Share.Update().
-		Where(entshare.ID(id)).
-		SetPurgedAt(db.Now()).
-		Save(context.Background())
 	return err
 }
 

@@ -1,116 +1,162 @@
-{{define "upload.html"}}
-{{template "base_top" .}}
+{{ define "upload.html" }}
+{{ template "base_top" . }}
 <div class="source-buffer">
-  <div class="editor-line">
-    <span class="line-gutter" aria-hidden="true">01</span>
-    <h1># upload</h1>
-  </div>
+	<div class="editor-line">
+		<span class="line-gutter" aria-hidden="true">01</span>
+		<h1># Upload</h1>
+	</div>
 
-  <div class="editor-line">
-    <span class="line-gutter" aria-hidden="true">02</span>
-    <p class="comment-text"># drop files, paste clipboard, set policy, upload.</p>
-  </div>
+	<div class="editor-line">
+		<span class="line-gutter" aria-hidden="true">02</span>
+		<p class="comment-text">
+			# drop files, paste clipboard, set policy, upload.
+		</p>
+	</div>
 
-  <div class="editor-line">
-    <span class="line-gutter" aria-hidden="true">03</span>
-    <p class="comment-text"># password encrypts in browser. private key only hides from public list.</p>
-  </div>
+	<div class="editor-line">
+		<span class="line-gutter" aria-hidden="true">03</span>
+		<p class="comment-text">
+			# password encrypts in browser. private key only hides from public list.
+		</p>
+	</div>
 
-  <div class="editor-line" aria-hidden="true">
-    <span class="line-gutter">--</span>
-    <div class="section-rule"></div>
-  </div>
+	<div class="editor-line" aria-hidden="true">
+		<span class="line-gutter">--</span>
+		<div class="section-rule"></div>
+	</div>
 
-  <div class="editor-line form-line">
-    <span class="line-gutter" aria-hidden="true">04</span>
-    <form id="uploadForm" class="input-panel upload-panel" data-max-bytes="{{.Max}}">
-      <input type="hidden" name="csrf" value="{{.CSRF}}">
+	<div class="editor-line form-line">
+		<span class="line-gutter" aria-hidden="true">04</span>
+		<form
+			id="uploadForm"
+			class="input-panel upload-panel"
+			data-max-bytes="{{.Max}}"
+		>
+			<input type="hidden" name="csrf" value="{{.CSRF}}">
 
-      <div class="field-row">
-        <label class="field-label">--title</label>
-        <input class="text-input field-md" name="title" autocomplete="off">
-      </div>
+			<div class="field-row">
+				<label class="field-label">--title</label>
+				<input class="text-input field-md" name="title" autocomplete="off">
+			</div>
 
-      <div class="field-row">
-        <label class="field-label">--source</label>
-        <select class="select-input field-md" id="source">
-          <option value="file">file</option>
-          <option value="clipboard">clipboard</option>
-        </select>
-      </div>
+			<div class="field-row">
+				<label class="field-label">--source</label>
+				<select class="select-input field-md" id="source">
+					<option value="file">file</option>
+					<option value="clipboard">clipboard</option>
+				</select>
+			</div>
 
-      <section id="fileSource" class="field-row">
-        <label class="field-label">--files</label>
-        <label id="dropzone" class="dropzone field-full" for="files">
-          <span class="command-text">&gt; drop files here or click to select</span>
-          <span class="muted">zip/encrypt runs before upload</span>
-        </label>
-        <input class="native-file" id="files" type="file" multiple>
-        <div id="fileSize" class="muted status-line"></div>
-        <div id="fileList" class="selected-file-list" aria-live="polite"></div>
-      </section>
+			<section id="fileSource" class="field-row">
+				<label class="field-label">--files</label>
+				<label id="dropzone" class="dropzone field-full" for="files">
+					<span class="command-text"
+						>&gt; drop files here or click to select</span
+					>
+					<span class="muted">zip/encrypt runs before upload</span>
+				</label>
+				<input class="native-file" id="files" type="file" multiple>
+				<div id="fileSize" class="muted status-line"></div>
+				<div id="fileList" class="selected-file-list" aria-live="polite"></div>
+			</section>
 
-      <section id="clipSource" class="field-row" hidden>
-        <label class="field-label">--clipboard</label>
-        <button type="button" id="clip" class="primary-action-button field-md">&gt; read clipboard</button>
-        <div id="clipbox" tabindex="0" class="textarea-input field-full" contenteditable="true" data-placeholder="type or paste text here. paste file/image to attach media."></div>
-        <button type="button" id="clipCollapse" class="copy-button field-sm" hidden>collapse</button>
-      </section>
+			<section id="clipSource" class="field-row" hidden>
+				<label class="field-label">--clipboard</label>
+				<button type="button" id="clip" class="primary-action-button field-md">
+					&gt; read clipboard
+				</button>
+				<div
+					id="clipbox"
+					tabindex="0"
+					class="textarea-input field-full"
+					contenteditable="true"
+					data-placeholder="type or paste text here. paste file/image to attach media."
+				></div>
+				<button
+					type="button"
+					id="clipCollapse"
+					class="copy-button field-sm"
+					hidden
+				>
+					collapse
+				</button>
+			</section>
 
-      <div class="field-grid">
-        <div class="field-row compact">
-          <label class="field-label">--visibility</label>
-          <select class="select-input field-md" name="visibility" id="visibility">
-            <option value="public">public</option>
-            <option value="private">private</option>
-          </select>
-        </div>
+			<div class="field-grid">
+				<div class="field-row compact">
+					<label class="field-label">--visibility</label>
+					<select
+						class="select-input field-md"
+						name="visibility"
+						id="visibility"
+					>
+						<option value="public">public</option>
+						<option value="private">private</option>
+					</select>
+				</div>
 
-        <div class="field-row compact" id="privateKeyRow" hidden>
-          <label class="field-label" id="privateKeyLabel">--private-key</label>
-          <input class="text-input field-md" name="private_key" id="privateKey" autocomplete="off" placeholder="share with people who know this key">
-        </div>
-      </div>
+				<div class="field-row compact" id="privateKeyRow" hidden>
+					<label class="field-label" id="privateKeyLabel">--private-key</label>
+					<input
+						class="text-input field-md"
+						name="private_key"
+						id="privateKey"
+						autocomplete="off"
+						placeholder="share with people who know this key"
+					>
+				</div>
+			</div>
 
-      <div class="field-row compact">
-        <label class="field-label">--password</label>
-        <input class="text-input field-md" name="password" type="password" autocomplete="new-password" placeholder="optional encryption">
-      </div>
+			<div class="field-row compact">
+				<label class="field-label">--password</label>
+				<input
+					class="text-input field-md"
+					name="password"
+					type="password"
+					autocomplete="off"
+					autocapitalize="none"
+					autocorrect="off"
+					spellcheck="false"
+					placeholder="optional encryption"
+				>
+			</div>
 
-      <div class="field-row compact">
-        <label class="field-label">--expiry</label>
-        <select class="select-input field-md" name="expiry_hours">
-          <option value="1">1h</option>
-          <option value="6" selected>6h</option>
-          <option value="12">12h</option>
-          <option value="24">24h</option>
-          {{if .Admin}}
-            <option value="168">7 days</option>
-            <option value="720">1 month</option>
-            <option value="2160">3 months</option>
-          {{end}}
-        </select>
-      </div>
+			<div class="field-row compact">
+				<label class="field-label">--expiry</label>
+				<select class="select-input field-md" name="expiry_hours">
+					<option value="1">1h</option>
+					<option value="6" selected>6h</option>
+					<option value="12">12h</option>
+					<option value="24">24h</option>
+					{{ if .Admin }}
+					<option value="168">7 days</option>
+					<option value="720">1 month</option>
+					<option value="2160">3 months</option>
+					{{ end }}
+				</select>
+			</div>
 
-      <button type="submit" class="primary-action-button field-lg">&gt; start upload</button>
-    </form>
-  </div>
+			<button type="submit" class="primary-action-button field-lg">
+				&gt; start upload
+			</button>
+		</form>
+	</div>
 
-  <div class="editor-line" aria-hidden="true">
-    <span class="line-gutter">--</span>
-    <div class="section-rule"></div>
-  </div>
+	<div class="editor-line" aria-hidden="true">
+		<span class="line-gutter">--</span>
+		<div class="section-rule"></div>
+	</div>
 
-  <div class="editor-line">
-    <span class="line-gutter" aria-hidden="true">05</span>
-    <pre id="progress" class="progress-output"></pre>
-  </div>
+	<div class="editor-line">
+		<span class="line-gutter" aria-hidden="true">05</span>
+		<pre id="progress" class="progress-output"></pre>
+	</div>
 
-  <div class="editor-line">
-    <span class="line-gutter" aria-hidden="true">06</span>
-    <div id="result" class="result-output"></div>
-  </div>
+	<div class="editor-line">
+		<span class="line-gutter" aria-hidden="true">06</span>
+		<div id="result" class="result-output"></div>
+	</div>
 </div>
 <script type="module" src="/static/js/upload.js"></script>
-{{template "base_bottom" .}}
-{{end}}
+{{ template "base_bottom" . }}
+{{ end }}

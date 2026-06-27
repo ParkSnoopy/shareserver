@@ -9,10 +9,10 @@
 			aria-controls="archiveSidebar"
 			aria-expanded="true"
 		>
-			&gt; hide archives
+			&gt; hide Search
 		</button>
-		<aside id="archiveSidebar" class="api-sidebar" aria-label="archives">
-			<h3># archives</h3>
+		<aside id="archiveSidebar" class="api-sidebar" aria-label="Search">
+			<h3># Search</h3>
 			<form class="lookup-form" method="post" action="/">
 				<input type="hidden" name="csrf" value="{{.CSRF}}">
 				<label class="field-label" for="lookupKey">--private-key</label>
@@ -36,8 +36,8 @@
 
 			<div class="sidebar-rule" aria-hidden="true"></div>
 
-			<nav class="api-index" aria-label="archive list">
-				<h3># list</h3>
+			<nav class="api-index" aria-label="search results">
+				<h3># List</h3>
 				<div
 					class="api-index-list"
 					data-archive-list
@@ -75,8 +75,8 @@
 				share. list files, open preview, download.{{ end }}
 			</p>
 
-			<nav id="listing" class="api-index" aria-label="files">
-				<h3># files</h3>
+			<nav id="listing" class="api-index" aria-label="files" hidden>
+				<h3># Files</h3>
 				<p class="muted">run archive command first.</p>
 			</nav>
 
@@ -91,12 +91,15 @@
 				data-manifest="{{.Share.ZipManifest}}"
 			>
 				{{ if .Share.Encrypted }}
-				<label class="field-label" for="password">--password</label>
+				<label class="field-label" for="sharePassword">--password</label>
 				<input
 					class="text-input field-md"
-					id="password"
+					id="sharePassword"
 					type="password"
-					autocomplete="current-password"
+					autocomplete="off"
+					autocapitalize="none"
+					autocorrect="off"
+					spellcheck="false"
 					placeholder="password"
 				>
 				<button
@@ -119,19 +122,19 @@
 
 			<pre id="progress" class="progress-output"></pre>
 
-			<section id="previewPane" class="api-detail detail-pane">
-				<h3># archive</h3>
+			<section id="previewPane" class="api-detail detail-pane" hidden>
+				<h3># Archive</h3>
 				<p class="comment-text"># select a file after archive loads.</p>
 			</section>
 			{{ end }}
 			{{ else }}
-			<h1># shares</h1>
+			<h1># Shares</h1>
 			<p class="comment-text">
 				# choose an archive from left, or enter a private key.
 			</p>
 			<div class="section-rule" aria-hidden="true"></div>
 			<section class="api-detail detail-pane">
-				<h3># archive</h3>
+				<h3># Archive</h3>
 				<p class="comment-text"># no archive selected.</p>
 			</section>
 			{{ end }}

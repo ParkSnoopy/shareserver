@@ -1,4 +1,3 @@
-const DOWNLOAD_PREFIX = "/__download__/";
 const WORKER_URL = "/download-sw.js";
 const DOWNLOAD_MESSAGE_TIMEOUT_MS = 5000;
 
@@ -44,20 +43,12 @@ export function contentDispositionFor(name) {
 	return `attachment; filename="${asciiFilename(safe)}"; filename*=UTF-8''${encodeRFC5987(safe)}`;
 }
 
-// downloadURLPath places the safe filename in the staged service-worker URL.
-export function downloadURLPath(token, name) {
-	return `${DOWNLOAD_PREFIX}${encodeURIComponent(token)}/${encodeURIComponent(safeDownloadName(name))}`;
+// downloadURLPath keeps staged client-side files under the visible share URL.
+export function downloadURLPath(shareID, name) {
+	return `/s/${encodeURIComponent(shareID)}/f/${encodeURIComponent(safeDownloadName(name))}`;
 }
 
-// isAndroid detects Android clients that need staged downloads for filenames.
-function isAndroid() {
-	return (
-		typeof navigator !== "undefined" &&
-		/\bAndroid\b/i.test(navigator.userAgent || "")
-	);
-}
-
-function canStageDownload() {
+export function canStageDownload() {
 	return (
 		typeof window !== "undefined" &&
 		window.isSecureContext &&
@@ -67,7 +58,7 @@ function canStageDownload() {
 	);
 }
 
-// waitForController avoids staging Android downloads before the worker owns page fetches.
+// waitForController avoids staging downloads before the worker owns page fetches.
 function waitForController() {
 	if (navigator.serviceWorker.controller) return Promise.resolve();
 	return new Promise((resolve, reject) => {
@@ -105,17 +96,6 @@ async function ensureDownloadWorker() {
 	return workerReady;
 }
 
-// randomToken creates an unguessable cache key for one staged download.
-function randomToken() {
-	if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
-	const bytes = new Uint8Array(16);
-	if (globalThis.crypto?.getRandomValues) {
-		globalThis.crypto.getRandomValues(bytes);
-		return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
-	}
-	return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
-
 // namedFile carries the sanitized filename when the browser supports File.
 function namedFile(blob, name) {
 	const type = blob.type || "application/octet-stream";
@@ -126,9 +106,8 @@ function namedFile(blob, name) {
 }
 
 // clickDownload triggers a hidden-anchor download. Staged HTTP URLs rely on
-// Content-Disposition instead of the download attribute because Android Chrome
-// can ignore or cancel synthetic downloads when both are present.
-function clickDownload(href, name, useDownloadAttribute = true) {
+// Content-Disposition so the URL stays under /s/{shareID}/f/{filename}.
+export function clickDownload(href, name, useDownloadAttribute = true) {
 	const a = document.createElement("a");
 	a.href = href;
 	if (useDownloadAttribute) a.download = name;
@@ -137,6 +116,21 @@ function clickDownload(href, name, useDownloadAttribute = true) {
 	document.body.append(a);
 	a.click();
 	setTimeout(() => a.remove(), 1000);
+}
+
+// clickPreparedDownload follows the prepared transfer URL without replacing the
+// visible link href. In insecure LAN browsers the visible href can stay under
+// /s/{shareID}/f/{filename} while the hidden click uses a blob: URL fallback.
+// Staged service-worker URLs (no download attribute) are keyed by pathname in
+// the worker, so a per-click cache-buster makes every tap a distinct
+// navigation; without it browsers dedupe a same-URL reload and the second
+// download never starts.
+export function clickPreparedDownload(prepared) {
+	let href = prepared.clickHref || prepared.href;
+	if (prepared.useDownloadAttribute === false && href) {
+		href = `${href}${href.includes("?") ? "&" : "?"}d=${Date.now()}`;
+	}
+	clickDownload(href, prepared.downloadName, prepared.useDownloadAttribute);
 }
 
 // postDownloadMessage sends staged file data to the active download worker.
@@ -166,10 +160,10 @@ function postDownloadMessage(message) {
 	});
 }
 
-// stagedDownloadURL stores one response so Android sees filename headers.
-async function stagedDownloadURL(file, name) {
+// stagedDownloadURL stores a response at /s/{shareID}/f/{filename}.
+async function stagedDownloadURL(file, shareID, name) {
 	await ensureDownloadWorker();
-	const url = downloadURLPath(randomToken(), name);
+	const url = downloadURLPath(shareID, name);
 	await postDownloadMessage({
 		type: "stage-download",
 		url,
@@ -188,22 +182,25 @@ function forgetStagedDownload(url) {
 }
 
 // objectDownload prepares a blob: URL for clients that honor anchor filenames.
-function objectDownload(file, name) {
+function objectDownload(file, name, publicHref = "") {
 	const url = URL.createObjectURL(file);
 	return {
-		href: url,
+		href: publicHref || url,
+		clickHref: publicHref ? url : "",
 		downloadName: name,
+		useDownloadAttribute: true,
 		cleanup: () => setTimeout(() => URL.revokeObjectURL(url), 1000),
 	};
 }
 
 // prepareBlobDownload resolves the final href before the user taps the link.
-export async function prepareBlobDownload(blob, name) {
+export async function prepareBlobDownload(blob, name, shareID = "") {
 	const downloadName = safeDownloadName(name);
 	const file = namedFile(blob, downloadName);
-	if (isAndroid() && canStageDownload()) {
+	const publicHref = shareID ? downloadURLPath(shareID, downloadName) : "";
+	if (shareID && canStageDownload()) {
 		try {
-			const url = await stagedDownloadURL(file, downloadName);
+			const url = await stagedDownloadURL(file, shareID, downloadName);
 			return {
 				href: url,
 				downloadName,
@@ -212,16 +209,5 @@ export async function prepareBlobDownload(blob, name) {
 			};
 		} catch {}
 	}
-	return objectDownload(file, downloadName);
-}
-
-// saveBlob saves an in-browser entry with its uploaded filename.
-export async function saveBlob(blob, name) {
-	const prepared = await prepareBlobDownload(blob, name);
-	clickDownload(
-		prepared.href,
-		prepared.downloadName,
-		prepared.useDownloadAttribute,
-	);
-	prepared.cleanup();
+	return objectDownload(file, downloadName, publicHref);
 }

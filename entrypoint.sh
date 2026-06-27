@@ -4,7 +4,7 @@ set -x
 cd /app
 
 # Ensure SQLite Database Directory and BLOB Directory
-mkdir -p "/app/data/blobs"
+mkdir -p "data/blobs"
 
 # Update App Secret
 cp .env.example .env

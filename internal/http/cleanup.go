@@ -36,17 +36,12 @@ func (h *Handler) nextMidnight() time.Time {
 
 // PurgeExpired deletes blob files and rows after an expired share passes its grace period.
 func (h *Handler) PurgeExpired() int {
-	now := time.Now().UTC()
-	cutoff := now.Add(-24 * time.Hour)
-	count := 0
+	now := time.Now().UTC() // background goroutine — owns its clock
 	active := share.ActiveAt(now)
 	remover := share.NewRemover(h.Store)
-	for _, s := range h.Store.Purgeable() {
-		if !active.IsExpired(s.ExpiresAt) {
-			continue
-		}
-		exp, _ := time.Parse(time.RFC3339Nano, s.ExpiresAt.String)
-		if exp.After(cutoff) {
+	count := 0
+	for _, s := range h.Store.WithExpiry() {
+		if !active.IsPurgeable(s.ExpiresAt) {
 			continue
 		}
 		if err := remover.Remove(s); err != nil {

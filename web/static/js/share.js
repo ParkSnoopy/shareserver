@@ -1,7 +1,8 @@
 import { ArchiveErrorCode, openArchive } from "./archive.js";
-import { prepareBlobDownload } from "./download.js";
+import { armDownloadAction } from "./download-action.js";
 import { fmtBytes, Progress } from "./progress.js";
 import { normalizeText } from "./text.js";
+import { settlePasswordInput } from "./ime.js";
 import { canPreview } from "./zip.js";
 
 const root = document.getElementById("share");
@@ -9,25 +10,50 @@ const progress = new Progress(document.getElementById("progress"));
 const listing = document.getElementById("listing");
 const previewPane = document.getElementById("previewPane");
 const loadBtn = document.getElementById("loadBtn");
-const pass = document.getElementById("password");
+const pass = document.getElementById("sharePassword");
 const encrypted =
 	root.dataset.encrypted === "true" || root.dataset.encrypted === "1";
+function debugLog(event, data = {}) {
+	const sink = globalThis.shareserverDecryptDebug;
+	if (typeof sink === "function") sink(event, data);
+}
+let passwordComposing = false;
 let entries = null;
 let manifest = [];
 let previewURL = "";
+let openURL = "";
 
 try {
 	manifest = JSON.parse(root.dataset.manifest || "[]");
-} catch {}
+} catch (err) {
+	debugLog("manifest-parse-failed", { error: err?.message || String(err) });
+}
+debugLog("page-ready", {
+	shareID: root.dataset.id || "",
+	encrypted,
+	manifestEntries: manifest.length,
+	userAgent: navigator.userAgent,
+	platform: navigator.platform,
+	vendor: navigator.vendor,
+	secureContext: window.isSecureContext,
+	subtleCrypto: Boolean(globalThis.crypto?.subtle),
+	serviceWorkerController: Boolean(navigator.serviceWorker?.controller),
+});
 
 let activeRow = null;
 let downloadedBlob = null;
-let downloadTicket = 0;
-let downloadCleanup = null;
+let downloadCleanup = () => {};
 
 // fetchBlobWithProgress downloads the stored archive while updating byte progress.
 async function fetchBlobWithProgress(id, fallbackTotal) {
 	const res = await fetch(`/blob/${id}`);
+	debugLog("blob-response", {
+		status: res.status,
+		ok: res.ok,
+		contentLength: res.headers.get("content-length") || "",
+		contentType: res.headers.get("content-type") || "",
+		fallbackTotal,
+	});
 	if (!res.ok) throw Error(`download failed ${res.status}`);
 	const total = Number(res.headers.get("content-length") || fallbackTotal) || 0;
 	const reader = res.body.getReader();
@@ -47,28 +73,47 @@ async function fetchBlobWithProgress(id, fallbackTotal) {
 		all.set(chunk, offset);
 		offset += chunk.length;
 	}
+	debugLog("blob-fetched", { loaded, chunks: chunks.length });
 	return new Blob([all]);
 }
 
 // load fetches the archive, opens it through the pure archive seam, and renders once.
 async function load() {
-	if (entries) return entries;
+	if (entries) {
+		debugLog("load-skip-cached", { entries: entries.length });
+		return entries;
+	}
 	const id = root.dataset.id;
+	const fallbackTotal = manifest.find(Boolean)?.size || 0;
+	debugLog("load-start", {
+		shareID: id,
+		encrypted,
+		fallbackTotal,
+		listingHidden: listing.hidden,
+		previewHidden: previewPane.hidden,
+	});
 	if (!downloadedBlob) {
-		downloadedBlob = await fetchBlobWithProgress(
-			id,
-			manifest.find(Boolean)?.size || 0,
-		);
+		downloadedBlob = await fetchBlobWithProgress(id, fallbackTotal);
 	}
 	progress.done("download", downloadedBlob.size);
+
+	let cipher = {};
+	if (encrypted) {
+		cipher = JSON.parse(root.dataset.cipher || "{}");
+	}
+	const passwordValue = pass?.value || "";
+	debugLog("open-archive", {
+		encrypted,
+		downloadedBlobSize: downloadedBlob.size,
+	});
 
 	let stopDecrypt = () => {};
 	let stopUnzip = () => {};
 	try {
 		entries = await openArchive(downloadedBlob, {
 			encrypted,
-			password: pass?.value || "",
-			cipher: encrypted ? JSON.parse(root.dataset.cipher || "{}") : {},
+			password: passwordValue,
+			cipher,
 			manifest,
 			onDecryptStart: (blob) => {
 				stopDecrypt = progress.pulse("decrypt", blob.size, "working");
@@ -77,6 +122,11 @@ async function load() {
 				stopDecrypt();
 				stopDecrypt = () => {};
 				progress.done("decrypt", blob.size);
+			},
+			onDecryptDebug: (event, data) => {
+				debugLog(event, data);
+				if (event === "crypto-fallback-load") progress.state("decrypt", "loading pure JS");
+				else if (event === "crypto-fallback") progress.state("decrypt", "working");
 			},
 			onUnzipStart: (blob) => {
 				stopUnzip = progress.pulse("unzip", blob.size, "working");
@@ -87,6 +137,7 @@ async function load() {
 				progress.done("unzip", blob.size);
 			},
 		});
+		debugLog("open-archive-done", { entries: entries.length });
 	} finally {
 		stopDecrypt();
 		stopUnzip();
@@ -101,9 +152,11 @@ async function load() {
 
 // renderList replaces the archive list with file rows and opens the first entry.
 function renderList() {
+	listing.hidden = false;
+	previewPane.hidden = false;
 	listing.innerHTML = "";
 	const title = document.createElement("h3");
-	title.textContent = "# files";
+	title.textContent = "# Files";
 	const list = document.createElement("div");
 	list.className = "api-index-list";
 	for (const entry of entries) list.append(rowFor(entry));
@@ -149,13 +202,34 @@ function entryPreviewURL(entry, forcedType = "") {
 	return URL.createObjectURL(blob);
 }
 
+// unsafeRenderType identifies archive entries that would execute scripts (or
+// run XSLT) if a browser rendered them as a top-level document. Opening such
+// a file in a new window would give it the share site's origin, so the click
+// handler forces text/plain to show source instead of executing it.
+function unsafeRenderType(entry) {
+	const type = (entry.type || "").toLowerCase();
+	const name = entry.name.toLowerCase();
+	return (
+		type === "text/html" ||
+		type === "image/svg+xml" ||
+		type === "application/xml" ||
+		type === "text/xml" ||
+		name.endsWith(".html") ||
+		name.endsWith(".htm") ||
+		name.endsWith(".svg") ||
+		name.endsWith(".xml") ||
+		name.endsWith(".xhtml") ||
+		name.endsWith(".xht")
+	);
+}
 // clearPreview revokes old preview/download URLs and clears row selection state.
 function clearPreview() {
-	downloadTicket += 1;
 	if (previewURL) URL.revokeObjectURL(previewURL);
 	previewURL = "";
-	if (downloadCleanup) downloadCleanup();
-	downloadCleanup = null;
+	if (openURL) URL.revokeObjectURL(openURL);
+	openURL = "";
+	downloadCleanup();
+	downloadCleanup = () => {};
 	if (activeRow) activeRow.classList.remove("active");
 	activeRow = null;
 }
@@ -164,7 +238,7 @@ function clearPreview() {
 function showEmptyDetail(message) {
 	clearPreview();
 	previewPane.replaceChildren(
-		heading("# archive"),
+		heading("# Archive"),
 		comment(message || "# select a file."),
 	);
 }
@@ -184,34 +258,6 @@ function comment(text) {
 	return p;
 }
 
-// armDownloadLink prepares the Android-safe URL before the user clicks it.
-function armDownloadLink(link, entry) {
-	const ticket = ++downloadTicket;
-	link.textContent = "> preparing";
-	link.removeAttribute("href");
-	link.setAttribute("aria-disabled", "true");
-	prepareBlobDownload(typedBlob(entry), entry.name)
-		.then((prepared) => {
-			if (ticket !== downloadTicket) {
-				prepared.cleanup();
-				return;
-			}
-			downloadCleanup = prepared.cleanup;
-			link.href = prepared.href;
-			if (prepared.useDownloadAttribute === false) {
-				link.removeAttribute("download");
-			} else {
-				link.download = prepared.downloadName;
-			}
-			link.textContent = "> download";
-			link.removeAttribute("aria-disabled");
-		})
-		.catch((err) => {
-			if (ticket !== downloadTicket) return;
-			link.textContent = "> download unavailable";
-			link.title = err.message || String(err);
-		});
-}
 
 // openEntry selects a file, exposes download, and renders its preview area.
 function openEntry(entry, row) {
@@ -222,16 +268,7 @@ function openEntry(entry, row) {
 	actions.className = "detail-actions";
 	const download = document.createElement("a");
 	download.className = "primary-action-button field-md";
-	download.addEventListener("click", (event) => {
-		if (download.getAttribute("aria-disabled") === "true") {
-			event.preventDefault();
-			return;
-		}
-		const cleanup = downloadCleanup;
-		downloadCleanup = null;
-		if (cleanup) setTimeout(cleanup, 1000);
-	});
-	armDownloadLink(download, entry);
+	downloadCleanup = armDownloadAction(download, entry, root.dataset.id);
 	actions.append(download);
 
 	previewPane.replaceChildren(
@@ -251,11 +288,32 @@ function metaLine(entry) {
 	return meta;
 }
 
-// previewWell wraps one preview renderer in the shared detail styling.
+// previewWell wraps one preview renderer in the shared detail styling and
+// opens the entry in a fresh, wrapper-free browser window on click so the
+// browser handles the file natively (full-size image, native PDF/video
+// viewer, plain text). Native media controls stay usable: clicks on a
+// <video>/<audio> element are left alone, and the well surface around them
+// still opens the new window.
 function previewWell(entry) {
 	const well = document.createElement("div");
 	well.className = "archive-preview preview-well";
+	well.title = "Open in new window";
 	well.append(previewFor(entry));
+	well.addEventListener("click", (event) => {
+		const t = event.target;
+		if (t instanceof HTMLVideoElement || t instanceof HTMLAudioElement) return;
+		// HTML/SVG/XML would execute with the share site's origin if a browser
+		// rendered them as a top-level document, so force text/plain (source
+		// view) for those and keep a dedicated openURL that clearPreview revokes.
+		const force = unsafeRenderType(entry) ? "text/plain" : "";
+		let url = force ? openURL : previewURL;
+		if (!url) {
+			url = entryPreviewURL(entry, force);
+			if (force) openURL = url;
+			else previewURL = url;
+		}
+		window.open(url, "_blank", "noopener");
+	});
 	return well;
 }
 
@@ -313,11 +371,20 @@ function previewFor(entry) {
 
 // loadEntries resets progress and reports list/decrypt errors without stale output.
 async function loadEntries() {
+	await settlePasswordInput(pass, () => passwordComposing, { onDebug: debugLog });
 	progress.reset();
 	entries = null;
 	try {
 		await load();
 	} catch (err) {
+		debugLog("load-failed", {
+			errorName: err?.name || "",
+			errorMessage: err?.message || String(err),
+			errorCode: err?.code || "",
+			phase: failurePhase(err),
+			causeName: err?.cause?.name || "",
+			causeMessage: err?.cause?.message || "",
+		});
 		progress.fail(failurePhase(err), err.message || "archive open failed");
 	}
 }
@@ -326,7 +393,8 @@ async function loadEntries() {
 function failurePhase(err) {
 	if (
 		err?.code === ArchiveErrorCode.PasswordRequired ||
-		err?.code === ArchiveErrorCode.WrongPassword
+		err?.code === ArchiveErrorCode.WrongPassword ||
+		err?.code === ArchiveErrorCode.UnsupportedCrypto
 	) {
 		return "decrypt";
 	}
@@ -336,10 +404,22 @@ function failurePhase(err) {
 
 loadBtn.onclick = loadEntries;
 if (pass) {
+	pass.addEventListener("compositionstart", () => {
+		debugLog("password-composition-start");
+		passwordComposing = true;
+	});
+	pass.addEventListener("compositionend", () => {
+		passwordComposing = false;
+		debugLog("password-composition-end");
+	});
 	pass.addEventListener("keydown", (event) => {
 		if (event.key === "Enter") {
 			event.preventDefault();
-			loadEntries();
+			debugLog("password-enter", {
+				isComposing: event.isComposing,
+				passwordComposing,
+			});
+			if (!event.isComposing && !passwordComposing) loadEntries();
 		}
 	});
 }
