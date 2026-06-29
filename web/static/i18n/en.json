@@ -80,6 +80,7 @@
 		"showActions": "show file actions",
 		"openNewWindow": "Open in new window",
 		"noPreview": "no inline preview. click to view raw data.",
+		"downloadAll": "> download all as zip",
 		"archiveOpenFailed": "archive open failed"
 	},
 	"admin": {
@@ -129,8 +130,7 @@
 		"working": "working",
 		"fetching": "fetching",
 		"done": "done",
-		"failed": "failed",
-		"loadingPureJS": "loading pure JS"
+		"failed": "failed"
 	},
 	"archiveError": {
 		"passwordRequired": "password required",

@@ -79,8 +79,9 @@ export async function filesToZip(files) {
 }
 // unzipBytes expands an archive into named browser blobs for preview and download.
 export async function unzipBytes(buf) {
+	const input = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
 	const out = await new Promise((resolve, reject) => {
-		unzip(new Uint8Array(buf), {}, (err, data) => {
+		unzip(input, {}, (err, data) => {
 			if (err) reject(err);
 			else resolve(data);
 		});
@@ -91,6 +92,23 @@ export async function unzipBytes(buf) {
 		blob: new Blob([bytes]),
 		size: bytes.byteLength,
 	}));
+}
+// entriesToZip re-packages opened archive entries into a single zip blob for
+// "download all" — each entry's raw bytes is re-compressed at level 6.
+export async function entriesToZip(entries) {
+	const seen = new Set();
+	const input = {};
+	for (const entry of entries) {
+		const name = safeName(entry.name, seen);
+		input[name] = entry.bytes || new Uint8Array(await entry.blob.arrayBuffer());
+	}
+	const zipped = await new Promise((resolve, reject) => {
+		zip(input, { level: 6 }, (err, data) => {
+			if (err) reject(err);
+			else resolve(data);
+		});
+	});
+	return new Blob([zipped], { type: "application/zip" });
 }
 // canPreview decides whether an entry can render inline instead of download-only.
 export function canPreview(name, type = "") {

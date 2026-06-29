@@ -43,6 +43,19 @@ describe("openArchive", () => {
 		expect(await entries[0].blob.text()).toBe("hello");
 	});
 
+	test("opens a plain archive from a pre-read Uint8Array source", async () => {
+		const { blob, manifest } = await zippedFixture(
+			fileFixture("direct.bin", "bytes", "application/octet-stream"),
+		);
+
+		const source = new Uint8Array(await blob.arrayBuffer());
+		const entries = await openArchive(source, { manifest });
+
+		expect(entries).toHaveLength(1);
+		expect(entries[0].name).toBe("direct.bin");
+		expect(await entries[0].blob.text()).toBe("bytes");
+	});
+
 	test("reports corrupt archives distinctly from wrong passwords", async () => {
 		const err = await expectArchiveError(
 			openArchive(new Blob([new Uint8Array([1, 2, 3, 4])])),
@@ -90,7 +103,7 @@ describe("openArchive", () => {
 
 		const events = [];
 		const record = (phase) => (blob) =>
-			events.push({ phase, size: blob.size });
+			events.push({ phase, size: blob.size || blob.byteLength });
 
 		const entries = await openArchive(encrypted.blob, {
 			encrypted: true,

@@ -80,6 +80,7 @@
 		"showActions": "파일 작업 표시",
 		"openNewWindow": "새 창에서 열기",
 		"noPreview": "인라인 미리보기 없음. 클릭해서 RAW 데이터 확인.",
+		"downloadAll": "> 모두 zip으로 다운로드",
 		"archiveOpenFailed": "아카이브 열기 실패"
 	},
 	"admin": {
@@ -129,8 +130,7 @@
 		"working": "처리 중",
 		"fetching": "가져오는 중",
 		"done": "완료",
-		"failed": "실패",
-		"loadingPureJS": "순수 JS 로드 중"
+		"failed": "실패"
 	},
 	"archiveError": {
 		"passwordRequired": "비밀번호 필요",

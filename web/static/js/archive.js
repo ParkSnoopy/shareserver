@@ -40,7 +40,12 @@ function isUnsupportedCrypto(err) {
 }
 
 // openArchive decrypts when needed, unzips the archive, and classifies entries.
-export async function openArchive(blob, options = {}) {
+// Accepts a Blob or a pre-read Uint8Array; when bytes are already in memory
+// (from the streaming fetch) no ArrayBuffer roundtrip is needed. When
+// encrypted, the plaintext bytes flow directly into unzip without a Blob
+// roundtrip — critical on memory-constrained mobile browsers where duplicated
+// large buffers crash the tab.
+export async function openArchive(source, options = {}) {
 	const {
 		encrypted = false,
 		password = "",
@@ -53,7 +58,7 @@ export async function openArchive(blob, options = {}) {
 		onUnzipDone = null,
 	} = options;
 
-	let archiveBlob = blob;
+	let archiveBytes = null;
 	if (encrypted) {
 		if (!password) {
 			throw new ArchiveError(
@@ -61,10 +66,11 @@ export async function openArchive(blob, options = {}) {
 				translate("archiveError.passwordRequired"),
 			);
 		}
-		onDecryptStart?.(archiveBlob);
+		onDecryptStart?.(source);
 		try {
-			archiveBlob = await decryptBlob(archiveBlob, password, cipher, {
+			archiveBytes = await decryptBlob(source, password, cipher, {
 				onDebug: onDecryptDebug,
+				returnBytes: true,
 			});
 		} catch (err) {
 			if (isUnsupportedCrypto(err)) {
@@ -80,13 +86,17 @@ export async function openArchive(blob, options = {}) {
 				err,
 			);
 		}
-		onDecryptDone?.(archiveBlob);
+		onDecryptDone?.(archiveBytes);
+	} else if (source instanceof Uint8Array) {
+		archiveBytes = source;
+	} else {
+		archiveBytes = new Uint8Array(await source.arrayBuffer());
 	}
 
-	onUnzipStart?.(archiveBlob);
+	onUnzipStart?.(archiveBytes);
 	let raw;
 	try {
-		raw = await unzipBytes(await archiveBlob.arrayBuffer());
+		raw = await unzipBytes(archiveBytes);
 	} catch (err) {
 		throw archiveError(
 			ArchiveErrorCode.CorruptArchive,
@@ -94,7 +104,8 @@ export async function openArchive(blob, options = {}) {
 			err,
 		);
 	}
-	onUnzipDone?.(archiveBlob);
+	onUnzipDone?.(archiveBytes);
+	archiveBytes = null;
 
 	return raw.map((entry) => {
 		const type = typeForEntry(entry, manifest);

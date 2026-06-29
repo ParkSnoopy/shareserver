@@ -80,6 +80,7 @@
 		"showActions": "显示文件操作",
 		"openNewWindow": "在新窗口打开",
 		"noPreview": "无内联预览。点击查看原始数据。",
+		"downloadAll": "> 全部下载为 zip",
 		"archiveOpenFailed": "归档打开失败"
 	},
 	"admin": {
@@ -129,8 +130,7 @@
 		"working": "处理中",
 		"fetching": "获取中",
 		"done": "完成",
-		"failed": "失败",
-		"loadingPureJS": "加载纯 JS"
+		"failed": "失败"
 	},
 	"archiveError": {
 		"passwordRequired": "需要密码",

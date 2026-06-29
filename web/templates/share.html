@@ -14,7 +14,7 @@
 		</button>
 		<aside
 			id="archiveSidebar"
-			class="api-sidebar is-collapsed"
+			class="api-sidebar {{ if .Selected }}is-collapsed{{ end }}"
 			aria-label="Search"
 			data-i18n-aria-label="share.searchLabel"
 		>
@@ -117,6 +117,7 @@
 				id="share"
 				class="input-panel share-control"
 				data-id="{{.Share.ID}}"
+				data-title="{{.Share.Title}}"
 				data-encrypted="{{.Share.Encrypted}}"
 				data-cipher="{{.Share.CipherMeta}}"
 				data-manifest="{{.Share.ZipManifest}}"

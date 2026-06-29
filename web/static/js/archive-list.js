@@ -63,6 +63,10 @@ function renderArchiveLinks(list, links) {
 }
 
 // setupSidebarToggle controls mobile archive visibility.
+// On mobile the sidebar starts expanded when no share is selected (home,
+// search results) and collapsed when a share detail is open. Selecting an
+// archive entry navigates to /s/{id} where the sidebar collapses to give the
+// share content room.
 function setupSidebarToggle() {
 	const toggle = document.querySelector("[data-sidebar-toggle]");
 	const sidebar = document.getElementById(
@@ -70,6 +74,7 @@ function setupSidebarToggle() {
 	);
 	if (!toggle || !sidebar) return;
 	const layout = toggle.closest(".api-doc-layout");
+	const selected = layout?.dataset.selected === "true";
 	const mobile = window.matchMedia("(max-width: 760px)");
 	const setCollapsed = (collapsed) => {
 		sidebar.classList.toggle("is-collapsed", collapsed);
@@ -89,12 +94,12 @@ function setupSidebarToggle() {
 		if (mobile.matches && event.target.closest("a.api-index-row"))
 			setCollapsed(true);
 	});
-	setCollapsed(mobile.matches);
+	setCollapsed(mobile.matches && selected);
 	onLanguageChange(() =>
 		setCollapsed(sidebar.classList.contains("is-collapsed")),
 	);
 	mobile.addEventListener("change", () => {
-		setCollapsed(mobile.matches);
+		setCollapsed(mobile.matches && selected);
 	});
 	const keyInput = sidebar.querySelector("[data-lookup-key]");
 	keyInput?.addEventListener("keydown", (event) => {

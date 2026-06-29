@@ -1,10 +1,11 @@
 import { ArchiveErrorCode, openArchive } from "./archive.js";
 import { armDownloadAction } from "./download-action.js";
+import { clickPreparedDownload, prepareBlobDownload, safeDownloadName } from "./download.js";
 import { fmtBytes, Progress } from "./progress.js";
 import { initI18n, onLanguageChange, translate } from "./i18n.js";
 import { normalizeText } from "./text.js";
 import { settlePasswordInput } from "./ime.js";
-import { canPreview } from "./zip.js";
+import { canPreview, entriesToZip } from "./zip.js";
 
 await initI18n();
 
@@ -54,7 +55,9 @@ let activeRow = null;
 let downloadedBlob = null;
 let downloadCleanup = () => {};
 
-// fetchBlobWithProgress downloads the stored archive while updating byte progress.
+// fetchBlobWithProgress downloads the stored archive while updating byte
+// progress. Returns a Uint8Array read directly into a single pre-sized buffer
+// to avoid the memory spike of accumulating chunk arrays and copying them.
 async function fetchBlobWithProgress(id, fallbackTotal) {
 	const res = await fetch(`/blob/${id}`);
 	debugLog("blob-response", {
@@ -65,26 +68,25 @@ async function fetchBlobWithProgress(id, fallbackTotal) {
 		fallbackTotal,
 	});
 	if (!res.ok) throw Error(`download failed ${res.status}`);
-	const total = Number(res.headers.get("content-length") || fallbackTotal) || 0;
-	const reader = res.body.getReader();
-	const chunks = [];
-	let loaded = 0;
+	const total =
+		Number(res.headers.get("content-length") || fallbackTotal) || 0;
 	progress.set("download", 0, total, translate("state.fetching"));
+	const reader = res.body.getReader();
+	// Pre-allocate one buffer at the known size so the stream is read
+	// directly into place — no chunk array, no concatenation copy. On large
+	// encrypted shares this avoids a second full-size buffer that crashes
+	// memory-constrained mobile tabs on repeat visits.
+	const buf = new Uint8Array(total);
+	let loaded = 0;
 	while (true) {
 		const { done, value } = await reader.read();
 		if (done) break;
-		chunks.push(value);
+		buf.set(value, loaded);
 		loaded += value.length;
 		progress.set("download", loaded, total, translate("state.fetching"));
 	}
-	const all = new Uint8Array(loaded);
-	let offset = 0;
-	for (const chunk of chunks) {
-		all.set(chunk, offset);
-		offset += chunk.length;
-	}
-	debugLog("blob-fetched", { loaded, chunks: chunks.length });
-	return new Blob([all]);
+	debugLog("blob-fetched", { loaded, total, bufLength: buf.byteLength });
+	return buf;
 }
 
 // load fetches the archive, opens it through the pure archive seam, and renders once.
@@ -105,7 +107,7 @@ async function load() {
 	if (!downloadedBlob) {
 		downloadedBlob = await fetchBlobWithProgress(id, fallbackTotal);
 	}
-	progress.done("download", downloadedBlob.size);
+	progress.done("download", downloadedBlob.byteLength);
 
 	let cipher = {};
 	if (encrypted) {
@@ -114,7 +116,7 @@ async function load() {
 	const passwordValue = pass?.value || "";
 	debugLog("open-archive", {
 		encrypted,
-		downloadedBlobSize: downloadedBlob.size,
+		downloadedBlobSize: downloadedBlob.byteLength,
 	});
 
 	let stopDecrypt = () => {};
@@ -128,39 +130,40 @@ async function load() {
 			onDecryptStart: (blob) => {
 				stopDecrypt = progress.pulse(
 					"decrypt",
-					blob.size,
+					blob.size || blob.byteLength,
 					translate("state.working"),
 				);
 			},
-			onDecryptDone: (blob) => {
+			onDecryptDone: (plain) => {
 				stopDecrypt();
 				stopDecrypt = () => {};
-				progress.done("decrypt", blob.size);
+				progress.done("decrypt", plain.size || plain.byteLength);
 			},
 			onDecryptDebug: (event, data) => {
 				debugLog(event, data);
-				if (event === "crypto-fallback-load")
-					progress.state("decrypt", translate("state.loadingPureJS"));
-				else if (event === "crypto-fallback")
-					progress.state("decrypt", translate("state.working"));
 			},
-			onUnzipStart: (blob) => {
+			onUnzipStart: (plain) => {
 				stopUnzip = progress.pulse(
 					"unzip",
-					blob.size,
+					plain.size || plain.byteLength,
 					translate("state.working"),
 				);
 			},
-			onUnzipDone: (blob) => {
+			onUnzipDone: (plain) => {
 				stopUnzip();
 				stopUnzip = () => {};
-				progress.done("unzip", blob.size);
+				progress.done("unzip", plain.size || plain.byteLength);
 			},
 		});
 		debugLog("open-archive-done", { entries: entries.length });
 	} finally {
 		stopDecrypt();
 		stopUnzip();
+		// Drop the ciphertext blob reference now that entries hold the
+		// decrypted file bytes. On large encrypted shares the ciphertext
+		// can be hundreds of MB; keeping it alive alongside the plaintext
+		// entries crashes memory-constrained mobile tabs.
+		downloadedBlob = null;
 	}
 
 	renderList();
@@ -180,7 +183,14 @@ function renderList() {
 	const list = document.createElement("div");
 	list.className = "api-index-list";
 	for (const entry of entries) list.append(rowFor(entry));
-	listing.append(title, list);
+	if (entries.length > 1) {
+		const actions = document.createElement("div");
+		actions.className = "detail-actions";
+		actions.append(downloadAllButton());
+		listing.append(title, list, actions);
+	} else {
+		listing.append(title, list);
+	}
 	if (entries.length) openEntry(entries[0], list.firstElementChild);
 	else showEmptyDetail(translate("share.archiveEmpty"));
 }
@@ -206,6 +216,41 @@ function rowFor(entry) {
 
 	row.append(name, method);
 	return row;
+}
+
+// downloadAllButton builds the "download all as zip" action: re-zips every
+// opened entry into one archive and stages it through the same secure
+// download path as individual files. The zip name is derived from the share
+// title so it is recognizable in the user's downloads folder.
+function downloadAllButton() {
+	const button = document.createElement("button");
+	button.type = "button";
+	button.className = "primary-action-button field-md";
+	button.textContent = translate("share.downloadAll");
+	button.dataset.zipBusy = "";
+	button.addEventListener("click", async () => {
+		if (button.dataset.zipBusy === "1") return;
+		button.dataset.zipBusy = "1";
+		debugLog("download-all-start", { entries: entries?.length || 0 });
+		try {
+			const zipBlob = await entriesToZip(entries);
+			const zipName = safeDownloadName(`${root.dataset.title || "archive"}.zip`);
+			const prepared = await prepareBlobDownload(zipBlob, zipName, root.dataset.id, {
+				onDebug: debugLog,
+			});
+			clickPreparedDownload(prepared);
+			prepared.cleanup();
+			debugLog("download-all-done", { zipName, bytes: zipBlob.size });
+		} catch (err) {
+			debugLog("download-all-failed", {
+				errorName: err?.name || "",
+				errorMessage: err?.message || String(err),
+			});
+		} finally {
+			delete button.dataset.zipBusy;
+		}
+	});
+	return button;
 }
 
 // typedBlob restores an entry MIME type before preview or download.

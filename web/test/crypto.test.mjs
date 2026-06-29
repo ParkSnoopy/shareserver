@@ -57,6 +57,32 @@ describe("password canonicalization", () => {
 		expect(JSON.stringify(events)).not.toContain("café");
 		expect(JSON.stringify(events)).not.toContain("cafe\u0301");
 	});
+
+	test("returnBytes returns Uint8Array instead of Blob", async () => {
+		const encrypted = await encryptBlob(new Blob(["zip-bytes"]), "pw");
+		const result = await decryptBlob(encrypted.blob, "pw", encrypted.meta, {
+			returnBytes: true,
+		});
+		expect(result).toBeInstanceOf(Uint8Array);
+		expect(new TextDecoder().decode(result)).toBe("zip-bytes");
+	});
+
+	test("accepts pre-read Uint8Array source without Blob roundtrip", async () => {
+		const encrypted = await encryptBlob(new Blob(["zip-bytes"]), "pw");
+		const source = new Uint8Array(await encrypted.blob.arrayBuffer());
+		const result = await decryptBlob(source, "pw", encrypted.meta, {
+			returnBytes: true,
+		});
+		expect(result).toBeInstanceOf(Uint8Array);
+		expect(new TextDecoder().decode(result)).toBe("zip-bytes");
+	});
+
+	test("decrypt rejects wrong password", async () => {
+		const encrypted = await encryptBlob(new Blob(["zip-bytes"]), "correct");
+		await expect(
+			decryptBlob(encrypted.blob, "wrong", encrypted.meta),
+		).rejects.toThrow("wrong password");
+	});
 });
 
 // withInsecureContext runs `fn` with globalThis.crypto replaced by a stub that
@@ -81,115 +107,18 @@ async function withInsecureContext(fn) {
 	}
 }
 
-// withDevEnv stubs globalThis.document with the dev-mode meta tag so the noble
-// fallback is permitted, mirroring the <meta name="shareserver-env" content="dev">
-// the server emits in dev mode. Compose with withInsecureContext for the full
-// plain-HTTP-LAN-in-dev scenario. Always restores prior document state.
-async function withDevEnv(fn) {
-	const real = globalThis.document;
-	const stub = {
-		querySelector: (sel) =>
-			sel === 'meta[name="shareserver-env"]'
-				? { getAttribute: (attr) => (attr === "content" ? "dev" : null) }
-				: null,
-	};
-	Object.defineProperty(globalThis, "document", {
-		value: stub,
-		configurable: true,
-		writable: true,
-	});
-	try {
-		return await fn();
-	} finally {
-		if (real === undefined) {
-			delete globalThis.document;
-		} else {
-			Object.defineProperty(globalThis, "document", {
-				value: real,
-				configurable: true,
-				writable: true,
-			});
-		}
-	}
-}
-
-describe("pure-JS fallback (insecure context)", () => {
-	test("subtle-encrypted blob decrypts via noble fallback", async () => {
-		// Encrypt with the native subtle backend (secure context).
-		const encrypted = await encryptBlob(new Blob(["zip-bytes"]), "café");
-
-		// Decrypt with subtle disabled -> noble fallback must read the same wire bytes.
-		const plain = await withDevEnv(() =>
-			withInsecureContext(() => decryptBlob(encrypted.blob, "café", encrypted.meta)),
-		);
-		expect(await plain.text()).toBe("zip-bytes");
-	});
-
-	test("noble-encrypted blob decrypts via subtle backend", async () => {
-		// Encrypt with subtle disabled -> noble fallback writes the wire bytes.
-		const encrypted = await withDevEnv(() =>
-			withInsecureContext(() => encryptBlob(new Blob(["zip-bytes"]), "café")),
-		);
-
-		// Decrypt with the native subtle backend (secure context).
-		const plain = await decryptBlob(encrypted.blob, "café", encrypted.meta);
-		expect(await plain.text()).toBe("zip-bytes");
-	});
-
-	test("noble fallback reports backend and rejects wrong password", async () => {
-		const encrypted = await encryptBlob(new Blob(["zip-bytes"]), "café");
-		const events = [];
+describe("insecure context", () => {
+	test("encrypt fails closed without crypto.subtle", async () => {
 		await expect(
-		withDevEnv(() =>
-			withInsecureContext(() =>
-				decryptBlob(encrypted.blob, "wrong", encrypted.meta, {
-					onDebug: (event, data) => events.push({ event, data }),
-				}),
-			),
-		),
-		).rejects.toThrow("wrong password");
-		expect(events.map((e) => e.event)).toContain("crypto-fallback");
-		expect(events.find((e) => e.event === "crypto-fallback").data).toEqual({
-			backend: "noble",
-		});
-		// debug payload must not leak the password
-		expect(JSON.stringify(events)).not.toContain("café");
+			withInsecureContext(() => encryptBlob(new Blob(["zip-bytes"]), "pw")),
+		).rejects.toThrow(/HTTPS or localhost/);
 	});
 
-	test("fallback-load event precedes crypto-fallback on first noble fetch", async () => {
-		// Fresh module import so nobleBackendPromise starts null and the load
-		// event fires; a cached nobleBackendPromise skips the fetch (and event).
-		const fresh = await import(`../static/js/crypto.js?fresh=${Date.now()}`);
-		const encrypted = await fresh.encryptBlob(new Blob(["zip-bytes"]), "café");
-		const events = [];
-		await expect(
-		withDevEnv(() =>
-			withInsecureContext(() =>
-				fresh.decryptBlob(encrypted.blob, "wrong", encrypted.meta, {
-					onDebug: (event, data) => events.push({ event, data }),
-				}),
-			),
-		),
-		).rejects.toThrow("wrong password");
-		const names = events.map((e) => e.event);
-		expect(names).toContain("crypto-fallback-load");
-		expect(names.indexOf("crypto-fallback")).toBeGreaterThan(
-			names.indexOf("crypto-fallback-load"),
-		);
-		expect(
-			events.find((e) => e.event === "crypto-fallback-load").data,
-		).toEqual({ backend: "noble" });
-		expect(JSON.stringify(events)).not.toContain("café");
-	});
-	test("prod blocks noble fallback on insecure context", async () => {
-		// Fresh module import so nobleBackendPromise starts null. Without the
-		// dev meta tag, selectBackend must fail closed instead of attempting the
-		// noble fallback, even though crypto.subtle is absent.
-		const fresh = await import(`../static/js/crypto.js?fresh=${Date.now()}`);
-		const encrypted = await fresh.encryptBlob(new Blob(["zip-bytes"]), "café");
+	test("decrypt fails closed without crypto.subtle", async () => {
+		const encrypted = await encryptBlob(new Blob(["zip-bytes"]), "pw");
 		await expect(
 			withInsecureContext(() =>
-				fresh.decryptBlob(encrypted.blob, "café", encrypted.meta),
+				decryptBlob(encrypted.blob, "pw", encrypted.meta),
 			),
 		).rejects.toThrow(/HTTPS or localhost/);
 	});

@@ -25,20 +25,11 @@ function unsupportedCryptoError(cause) {
 
 // hasSubtle is true only on secure contexts (HTTPS or localhost). Chrome
 // disables crypto.subtle on insecure origins, so encrypted shares opened over
-// plain-HTTP LAN IPs need the noble fallback below to decrypt at all.
+// plain-HTTP LAN IPs cannot be decrypted — the page shows a clear error
+// instead of attempting a pure-JS fallback that would crash memory-constrained
+// mobile browsers on large archives.
 function hasSubtle() {
 	return Boolean(globalThis.crypto?.subtle);
-}
-
-// isDevEnv reports whether the page declared DEBUG=1 via a meta tag
-// (<meta name="shareserver-env" content="dev">) emitted by the server template.
-// The noble pure-JS fallback is dev-only: production must serve HTTPS so
-// crypto.subtle is available, rather than run crypto from JS a network MITM
-// could have swapped over plain HTTP. Bun tests have no document, so this
-// returns false there unless a test stubs globalThis.document.
-function isDevEnv() {
-	const meta = globalThis.document?.querySelector('meta[name="shareserver-env"]');
-	return meta?.getAttribute("content") === "dev";
 }
 
 // passwordForms tries canonically equivalent strings so mobile keyboards and
@@ -67,11 +58,10 @@ function passwordShape(value, raw) {
 	};
 }
 
-// A crypto backend derives an AES-256 key from a password and runs AES-GCM.
-// Both backends emit the same wire bytes (PBKDF2-HMAC-SHA-384 -> 32-byte key,
-// AES-256-GCM, 12-byte nonce, no AAD, 16-byte tag appended), so a share
-// encrypted on a secure-context desktop decrypts on an insecure-context phone
-// and vice-versa. Key handles are opaque to callers and differ per backend.
+// The crypto backend derives an AES-256 key from a password and runs AES-GCM.
+// Wire bytes: PBKDF2-HMAC-SHA-384 -> 32-byte key, AES-256-GCM, 12-byte nonce,
+// no AAD, 16-byte tag appended. Only crypto.subtle is used — it is native,
+// fast, and available on all secure contexts.
 
 // subtleBackend wraps window.crypto.subtle (fast, native). Key handle: { subtle }.
 const subtleBackend = {
@@ -102,69 +92,16 @@ const subtleBackend = {
 	},
 };
 
-// nobleBackend wraps the vendored pure-JS @noble/hashes + @noble/ciphers so
-// insecure-context browsers (plain-HTTP LAN) can still decrypt. It is loaded
-// lazily via dynamic import so secure-context users never pay the fetch cost.
-// Relative specifiers resolve against this module's own URL in both the browser
-// (/static/vendor/noble/...) and Bun tests (web/static/vendor/noble/...).
-// Key handle: { raw: Uint8Array(32) }.
-let nobleBackendPromise = null;
-function loadNobleBackend(onDebug) {
-	if (!nobleBackendPromise) {
-		// Signal before the dynamic import so the UI can show a pure-JS notice
-		// while the vendored files are fetched. Skipped on cached loads
-		// (nobleBackendPromise already set) since no fetch then occurs.
-		onDebug?.("crypto-fallback-load", { backend: "noble" });
-		nobleBackendPromise = Promise.all([
-			import("../vendor/noble/hashes/pbkdf2.js"),
-			import("../vendor/noble/hashes/sha2.js"),
-			import("../vendor/noble/ciphers/aes.js"),
-		])
-			.then(([pbkdf2Mod, sha2Mod, aesMod]) => ({
-				deriveKey(passwordBytes, salt, iters) {
-					return pbkdf2Mod
-						.pbkdf2Async(sha2Mod.sha384, passwordBytes, salt, {
-							c: iters,
-							dkLen: 32,
-						})
-						.then((raw) => ({ raw }));
-				},
-				encrypt(kh, nonce, plaintext) {
-					return Promise.resolve(aesMod.gcm(kh.raw, nonce).encrypt(plaintext));
-				},
-				decrypt(kh, nonce, ciphertext) {
-					return Promise.resolve(aesMod.gcm(kh.raw, nonce).decrypt(ciphertext));
-				},
-			}))
-			.catch((err) => {
-				// A failed fallback load is retryable: clear so the next attempt
-				// re-imports instead of reusing a rejected promise.
-				nobleBackendPromise = null;
-				throw err;
-			});
-	}
-	return nobleBackendPromise;
-}
-
 // selectBackend returns the native subtle backend on secure contexts. On
-// insecure contexts (plain-HTTP LAN, where Chrome disables crypto.subtle) the
-// noble pure-JS fallback is permitted only in dev mode; production fails closed
-// with UnsupportedCryptoError so operators must serve HTTPS rather than run
-// crypto from potentially-tampered JS.
-async function selectBackend(onDebug) {
+// insecure contexts (plain-HTTP LAN, where Chrome disables crypto.subtle) it
+// fails closed with UnsupportedCryptoError so operators must serve HTTPS.
+async function selectBackend() {
 	if (hasSubtle()) return subtleBackend;
-	if (!isDevEnv()) throw unsupportedCryptoError();
-	try {
-		return await loadNobleBackend(onDebug);
-	} catch (err) {
-		throw unsupportedCryptoError(err);
-	}
+	throw unsupportedCryptoError();
 }
 
-// randomBytes generates salt/nonce material. crypto.getRandomValues is available
-// on insecure contexts too (only crypto.subtle is gated), so this works on the
-// plain-HTTP LAN phones that need the noble decrypt fallback. The call stays
-// bound to the Crypto instance (Bun rejects an unbound getRandomValues).
+// randomBytes generates salt/nonce material. crypto.getRandomValues is
+// available on insecure contexts too (only crypto.subtle is gated).
 function randomBytes(n) {
 	const api = globalThis.crypto;
 	if (!api || typeof api.getRandomValues !== "function") {
@@ -202,12 +139,14 @@ export async function encryptBlob(blob, password) {
 }
 
 // decryptBlob opens an encrypted share zip or reports a generic wrong-password error.
-export async function decryptBlob(blob, password, meta, options = {}) {
+// Accepts a Blob or a pre-read Uint8Array to avoid an ArrayBuffer roundtrip when
+// the caller already has the bytes in memory.
+export async function decryptBlob(source, password, meta, options = {}) {
 	const salt = ub64(meta.salt),
 		nonce = ub64(meta.nonce),
 		iterations = cipherIterations(meta),
-		body = new Uint8Array(await blob.arrayBuffer()),
 		rawPassword = String(password);
+	let body = source instanceof Uint8Array ? source : new Uint8Array(await source.arrayBuffer());
 	const subtleCrypto = hasSubtle();
 	options.onDebug?.("crypto-input", {
 		cipher: meta?.cipher || "",
@@ -217,10 +156,8 @@ export async function decryptBlob(blob, password, meta, options = {}) {
 		nonceBytes: nonce.byteLength,
 		blobBytes: body.byteLength,
 		subtleCrypto,
-		fallback: !subtleCrypto,
 	});
 	const backend = await selectBackend(options.onDebug);
-	if (!subtleCrypto) options.onDebug?.("crypto-fallback", { backend: "noble" });
 	let lastErr = null;
 	for (const passwordForm of passwordForms(rawPassword)) {
 		options.onDebug?.("crypto-attempt", {
@@ -234,10 +171,12 @@ export async function decryptBlob(blob, password, meta, options = {}) {
 				iterations,
 			);
 			const pt = await backend.decrypt(k, nonce, body);
+			body = null;
 			options.onDebug?.("crypto-attempt-result", {
 				form: passwordForm.label,
 				ok: true,
 			});
+			if (options.returnBytes) return pt;
 			return new Blob([pt], { type: "application/zip" });
 		} catch (err) {
 			lastErr = err;

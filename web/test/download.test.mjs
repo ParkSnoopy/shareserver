@@ -85,7 +85,7 @@ describe("download helpers", () => {
 			"attachment; filename=\"r_sum_ 2026.pdf\"; filename*=UTF-8''r%C3%A9sum%C3%A9%202026.pdf",
 		);
 	});
-	test("download staging stays desktop-only", () => {
+	test("download staging works on secure contexts including Android", () => {
 		expect(
 			withDownloadGlobals("Mozilla/5.0 (X11; Linux x86_64) Firefox/152", () =>
 				canStageDownload(),
@@ -95,7 +95,7 @@ describe("download helpers", () => {
 			withDownloadGlobals("Mozilla/5.0 (Linux; Android 10) Chrome/149", () =>
 				canStageDownload(),
 			),
-		).toBe(false);
+		).toBe(true);
 	});
 	test("staged service worker downloads are reusable until forgotten", async () => {
 		const listeners = loadDownloadWorker();
