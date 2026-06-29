@@ -26,6 +26,10 @@ let clipFiles = [];
 let clipPreviewURLs = [];
 let passwordComposing = false;
 
+function debugLog(event, data = {}) {
+	console.info(`[shareserver:upload] ${event}`, data);
+}
+
 // clearClipboardPreviews removes old object URLs and preview nodes from clipboard mode.
 function clearClipboardPreviews() {
 	for (const url of clipPreviewURLs) URL.revokeObjectURL(url);
@@ -316,8 +320,12 @@ clip.onclick = async () => {
 		}
 		if (clipFiles.length) showClipboard(clipFiles);
 		// no else: the box is always editable; placeholder guides when empty.
-	} catch (_err) {
+	} catch (err) {
 		// clipboard blocked — leave the editable box as-is; user can type or paste.
+		debugLog("clipboard-read-failed", {
+			errorName: err?.name || "",
+			errorMessage: err?.message || String(err),
+		});
 	}
 };
 

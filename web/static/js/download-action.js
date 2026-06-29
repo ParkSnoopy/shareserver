@@ -23,7 +23,8 @@ import {
 // The anchor's href stays under /s/{shareID}/f/{filename} for link semantics;
 // the click handler intercepts and routes through staging or blob fallback.
 // Returns a cleanup function that revokes any held blob URL.
-export function armDownloadAction(anchor, entry, shareID) {
+export function armDownloadAction(anchor, entry, shareID, options = {}) {
+	const debug = typeof options.onDebug === "function" ? options.onDebug : () => {};
 	anchor._entry = entry;
 	anchor.href = downloadURLPath(shareID, entry.name);
 	anchor.textContent = "> download";
@@ -39,16 +40,37 @@ export function armDownloadAction(anchor, entry, shareID) {
 		const e = anchor._entry;
 		if (!e) {
 			event.preventDefault();
+			debug("download-click-missing-entry", { shareID });
 			return;
 		}
+		debug("download-click", downloadDebugData(e, shareID));
 		if (canStageDownload()) {
 			event.preventDefault();
 			if (anchor.dataset.busy === "1") return;
 			anchor.dataset.busy = "1";
-			prepareBlobDownload(typedBlob(e), e.name, shareID)
+			prepareBlobDownload(typedBlob(e), e.name, shareID, { onDebug: debug })
 				.then((prepared) => {
+					debug("download-prepared", {
+						...downloadDebugData(e, shareID),
+						href: prepared.href || "",
+						clickHrefScheme: urlScheme(prepared.clickHref || prepared.href || ""),
+						useDownloadAttribute: prepared.useDownloadAttribute,
+					});
 					clickPreparedDownload(prepared);
+					debug("download-click-dispatched", {
+						...downloadDebugData(e, shareID),
+						href: prepared.href || "",
+						clickHrefScheme: urlScheme(prepared.clickHref || prepared.href || ""),
+						useDownloadAttribute: prepared.useDownloadAttribute,
+					});
 					prepared.cleanup();
+				})
+				.catch((err) => {
+					debug("download-prepare-failed", {
+						...downloadDebugData(e, shareID),
+						errorName: err?.name || "",
+						errorMessage: err?.message || String(err),
+					});
 				})
 				.finally(() => {
 					delete anchor.dataset.busy;
@@ -60,6 +82,10 @@ export function armDownloadAction(anchor, entry, shareID) {
 		blobURL = URL.createObjectURL(typedBlob(e));
 		anchor.href = blobURL;
 		anchor.download = safeDownloadName(e.name);
+		debug("download-object-url-ready", {
+			...downloadDebugData(e, shareID),
+			clickHrefScheme: "blob",
+		});
 	});
 
 	return () => {
@@ -71,4 +97,20 @@ export function armDownloadAction(anchor, entry, shareID) {
 // typedBlob restores an entry MIME type before staging or blob URL creation.
 function typedBlob(entry) {
 	return entry.type ? new Blob([entry.blob], { type: entry.type }) : entry.blob;
+}
+
+function downloadDebugData(entry, shareID) {
+	return {
+		shareID,
+		name: safeDownloadName(entry.name),
+		contentType: entry.type || "",
+		bytes: entry.blob?.size || 0,
+		secureContext: globalThis.window?.isSecureContext,
+		serviceWorkerController: Boolean(globalThis.navigator?.serviceWorker?.controller),
+	};
+}
+
+function urlScheme(url) {
+	const match = String(url || "").match(/^([a-z][a-z0-9+.-]*):/i);
+	return match ? match[1] : "same-origin";
 }

@@ -161,9 +161,17 @@ function postDownloadMessage(message) {
 }
 
 // stagedDownloadURL stores a response at /s/{shareID}/f/{filename}.
-async function stagedDownloadURL(file, shareID, name) {
+async function stagedDownloadURL(file, shareID, name, options = {}) {
+	const debug = typeof options.onDebug === "function" ? options.onDebug : () => {};
 	await ensureDownloadWorker();
 	const url = downloadURLPath(shareID, name);
+	debug("download-stage-start", {
+		url,
+		name,
+		bytes: file.size || 0,
+		contentType: file.type || "application/octet-stream",
+		serviceWorkerController: Boolean(navigator.serviceWorker?.controller),
+	});
 	await postDownloadMessage({
 		type: "stage-download",
 		url,
@@ -171,13 +179,25 @@ async function stagedDownloadURL(file, shareID, name) {
 		disposition: contentDispositionFor(name),
 		contentType: file.type || "application/octet-stream",
 	});
+	debug("download-stage-done", {
+		url,
+		name,
+		bytes: file.size || 0,
+		contentType: file.type || "application/octet-stream",
+	});
 	return url;
 }
 
 // forgetStagedDownload expires unused staged responses after one minute.
-function forgetStagedDownload(url) {
+function forgetStagedDownload(url, debug = () => {}) {
 	setTimeout(() => {
-		postDownloadMessage({ type: "forget-download", url }).catch(() => {});
+		postDownloadMessage({ type: "forget-download", url }).catch((err) => {
+			debug("download-forget-failed", {
+				url,
+				errorName: err?.name || "",
+				errorMessage: err?.message || String(err),
+			});
+		});
 	}, 60000);
 }
 
@@ -194,20 +214,37 @@ function objectDownload(file, name, publicHref = "") {
 }
 
 // prepareBlobDownload resolves the final href before the user taps the link.
-export async function prepareBlobDownload(blob, name, shareID = "") {
+export async function prepareBlobDownload(blob, name, shareID = "", options = {}) {
+	const debug = typeof options.onDebug === "function" ? options.onDebug : () => {};
 	const downloadName = safeDownloadName(name);
 	const file = namedFile(blob, downloadName);
 	const publicHref = shareID ? downloadURLPath(shareID, downloadName) : "";
 	if (shareID && canStageDownload()) {
 		try {
-			const url = await stagedDownloadURL(file, shareID, downloadName);
+			const url = await stagedDownloadURL(file, shareID, downloadName, {
+				onDebug: debug,
+			});
 			return {
 				href: url,
 				downloadName,
 				useDownloadAttribute: false,
-				cleanup: () => forgetStagedDownload(url),
+				cleanup: () => forgetStagedDownload(url, debug),
 			};
-		} catch {}
+		} catch (err) {
+			debug("download-stage-failed", {
+				name: downloadName,
+				bytes: file.size || 0,
+				contentType: file.type || "application/octet-stream",
+				errorName: err?.name || "",
+				errorMessage: err?.message || String(err),
+			});
+		}
 	}
+	debug("download-object-fallback", {
+		name: downloadName,
+		bytes: file.size || 0,
+		contentType: file.type || "application/octet-stream",
+		publicHref,
+	});
 	return objectDownload(file, downloadName, publicHref);
 }

@@ -147,8 +147,22 @@
 		};
 	}
 
+	function actionDiagnostics() {
+		const root = document.getElementById("share");
+		return {
+			path: location.pathname,
+			android: isAndroid,
+			serviceWorkerController: Boolean(navigator.serviceWorker?.controller),
+			shareID: root?.dataset.id || "",
+			encrypted: root?.dataset.encrypted || "",
+		};
+	}
+
 	function redactAndEnrich(event, data) {
-		const detail = { ...pageDiagnostics(), ...data };
+		const detail = {
+			...(event === "page-ready" ? pageDiagnostics() : actionDiagnostics()),
+			...data,
+		};
 		if (
 			event === "open-archive" ||
 			event === "load-failed" ||

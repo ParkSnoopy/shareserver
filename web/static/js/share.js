@@ -39,6 +39,13 @@ debugLog("page-ready", {
 	subtleCrypto: Boolean(globalThis.crypto?.subtle),
 	serviceWorkerController: Boolean(navigator.serviceWorker?.controller),
 });
+if (navigator.serviceWorker) {
+	navigator.serviceWorker.addEventListener("message", (event) => {
+		const message = event.data || {};
+		if (message.type !== "shareserver-download-debug") return;
+		debugLog(message.event || "download-worker-message", message.data || {});
+	});
+}
 
 let activeRow = null;
 let downloadedBlob = null;
@@ -268,7 +275,9 @@ function openEntry(entry, row) {
 	actions.className = "detail-actions";
 	const download = document.createElement("a");
 	download.className = "primary-action-button field-md";
-	downloadCleanup = armDownloadAction(download, entry, root.dataset.id);
+	downloadCleanup = armDownloadAction(download, entry, root.dataset.id, {
+		onDebug: debugLog,
+	});
 	actions.append(download);
 
 	previewPane.replaceChildren(

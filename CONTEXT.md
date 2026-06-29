@@ -55,3 +55,11 @@ _Avoid_: view, response (too generic)
 **Download action**:
 The per-entry download orchestration: secure-context service-worker staging vs insecure-context blob URL fallback. Owned by the Download action module.
 _Avoid_: download handler, click handler (too narrow)
+
+**Debug log**:
+Client-side diagnostic stream for share/archive/download flows. Page readiness records full browser identity once; later actions record compact context plus event-specific status/error data.
+_Avoid_: console noise, telemetry
+
+**Change log**:
+Date-grouped user-facing record of code changes in `CHANGELOG.md`, organized by concise base-verb impact headings: Add, Update, Fix. Updated alongside code changes.
+_Avoid_: commit log, raw diff summary

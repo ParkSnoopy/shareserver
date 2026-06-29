@@ -51,9 +51,15 @@ function stageDownload(data) {
 	if (!data.url || !data.file || !data.disposition) {
 		throw Error("invalid staged download");
 	}
-	downloads.set(downloadKey(data.url), {
+	const key = downloadKey(data.url);
+	downloads.set(key, {
 		file: data.file,
 		disposition: data.disposition,
+		contentType: data.contentType || "application/octet-stream",
+	});
+	logDownloadDebug("download-sw-staged", {
+		key,
+		bytes: data.file?.size || 0,
 		contentType: data.contentType || "application/octet-stream",
 	});
 }
@@ -66,6 +72,11 @@ async function downloadResponse(url) {
 	const key = downloadKey(url);
 	const staged = downloads.get(key);
 	if (!staged) {
+		logDownloadDebug("download-sw-response", {
+			key,
+			status: 404,
+			error: "download expired",
+		});
 		return new Response("download expired\n", {
 			status: 404,
 			headers: { "Content-Type": "text/plain; charset=utf-8" },
@@ -73,6 +84,13 @@ async function downloadResponse(url) {
 	}
 	try {
 		const body = await staged.file.arrayBuffer();
+		logDownloadDebug("download-sw-response", {
+			key,
+			status: 200,
+			bytes: body.byteLength,
+			contentType: staged.contentType,
+			disposition: staged.disposition,
+		});
 		return new Response(body, {
 			headers: {
 				"Cache-Control": "no-store",
@@ -81,9 +99,33 @@ async function downloadResponse(url) {
 			},
 		});
 	} catch (err) {
+		logDownloadDebug("download-sw-response", {
+			key,
+			status: 500,
+			errorName: err?.name || "",
+			errorMessage: err?.message || String(err),
+		});
 		return new Response("download read failed\n", {
 			status: 500,
 			headers: { "Content-Type": "text/plain; charset=utf-8" },
 		});
 	}
+}
+
+function logDownloadDebug(event, data) {
+	if (typeof self.clients?.matchAll !== "function") return;
+	self.clients
+		.matchAll({ type: "window", includeUncontrolled: true })
+		.then((clients) => {
+			for (const client of clients) {
+				client.postMessage({ type: "shareserver-download-debug", event, data });
+			}
+		})
+		.catch((err) => {
+			console.warn("[shareserver:download-sw] debug delivery failed", {
+				event,
+				errorName: err?.name || "",
+				errorMessage: err?.message || String(err),
+			});
+		});
 }
