@@ -3,9 +3,11 @@
 <div class="share-source-buffer">
 	<div class="api-detail detail-pane">
 		<h1># {{ .StatusCode }}</h1>
-		<p class="err">{{ .Message }}</p>
+		<p class="err" {{ if .MessageKey }} data-i18n="{{ .MessageKey }}" {{ end }}>
+			{{ .Message }}
+		</p>
 		<p class="comment-text">
-			# redirect home in
+			<span data-i18n="error.redirectHome"># redirect home in</span>
 			<span
 				data-redirect-countdown
 				data-seconds="{{.RedirectSeconds}}"

@@ -33,7 +33,9 @@ func setupTemplates(tz *time.Location) *template.Template {
 			return t.In(tz).Format("2006-01-02 15:04:05")
 		},
 	}
-	return template.Must(template.New("").Funcs(funcs).ParseGlob(templateGlob()))
+	dir := templateDir()
+	t := template.Must(template.New("").Funcs(funcs).ParseGlob(filepath.Join(dir, "*.html")))
+	return template.Must(t.ParseGlob(filepath.Join(dir, "admin", "*.html")))
 }
 
 // render writes a normal 200 HTML template response with shared template data.
@@ -59,20 +61,21 @@ func (h *Handler) renderStatus(w http.ResponseWriter, r *http.Request, status in
 	}
 }
 
-// templateGlob finds templates from repo root or package test working directories.
-func templateGlob() string {
+// templateDir finds web/templates from repo root or package test working directories.
+func templateDir() string {
 	dir, err := os.Getwd()
 	if err != nil {
-		return "web/templates/*.html"
+		return filepath.Join("web", "templates")
 	}
 	for {
-		pattern := filepath.Join(dir, "web", "templates", "*.html")
+		path := filepath.Join(dir, "web", "templates")
+		pattern := filepath.Join(path, "*.html")
 		if matches, _ := filepath.Glob(pattern); len(matches) > 0 {
-			return pattern
+			return path
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "web/templates/*.html"
+			return filepath.Join("web", "templates")
 		}
 		dir = parent
 	}

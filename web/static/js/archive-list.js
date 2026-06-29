@@ -1,3 +1,7 @@
+import { initI18n, onLanguageChange, translate } from "./i18n.js";
+
+await initI18n();
+
 const STORE_KEY = "shareserver.archiveList";
 const ARM_KEY = "shareserver.archiveListArmed";
 
@@ -58,7 +62,7 @@ function renderArchiveLinks(list, links) {
 	return true;
 }
 
-// setupSidebarToggle controls mobile archive visibility and selected-share collapse.
+// setupSidebarToggle controls mobile archive visibility.
 function setupSidebarToggle() {
 	const toggle = document.querySelector("[data-sidebar-toggle]");
 	const sidebar = document.getElementById(
@@ -66,7 +70,6 @@ function setupSidebarToggle() {
 	);
 	if (!toggle || !sidebar) return;
 	const layout = toggle.closest(".api-doc-layout");
-	const hasSelectedArchive = layout?.dataset.selected === "true";
 	const mobile = window.matchMedia("(max-width: 760px)");
 	const setCollapsed = (collapsed) => {
 		sidebar.classList.toggle("is-collapsed", collapsed);
@@ -75,7 +78,9 @@ function setupSidebarToggle() {
 			mobile.matches && !collapsed,
 		);
 		toggle.setAttribute("aria-expanded", String(!collapsed));
-		toggle.textContent = collapsed ? "> show Search" : "> hide Search";
+		toggle.textContent = collapsed
+			? translate("share.showSearch")
+			: translate("share.hideSearch");
 	};
 	toggle.addEventListener("click", () => {
 		setCollapsed(!sidebar.classList.contains("is-collapsed"));
@@ -84,9 +89,12 @@ function setupSidebarToggle() {
 		if (mobile.matches && event.target.closest("a.api-index-row"))
 			setCollapsed(true);
 	});
-	setCollapsed(mobile.matches && hasSelectedArchive);
+	setCollapsed(mobile.matches);
+	onLanguageChange(() =>
+		setCollapsed(sidebar.classList.contains("is-collapsed")),
+	);
 	mobile.addEventListener("change", () => {
-		setCollapsed(mobile.matches && hasSelectedArchive);
+		setCollapsed(mobile.matches);
 	});
 	const keyInput = sidebar.querySelector("[data-lookup-key]");
 	keyInput?.addEventListener("keydown", (event) => {

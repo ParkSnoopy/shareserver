@@ -1,9 +1,12 @@
 import { ArchiveErrorCode, openArchive } from "./archive.js";
 import { armDownloadAction } from "./download-action.js";
 import { fmtBytes, Progress } from "./progress.js";
+import { initI18n, onLanguageChange, translate } from "./i18n.js";
 import { normalizeText } from "./text.js";
 import { settlePasswordInput } from "./ime.js";
 import { canPreview } from "./zip.js";
+
+await initI18n();
 
 const root = document.getElementById("share");
 const progress = new Progress(document.getElementById("progress"));
@@ -66,13 +69,13 @@ async function fetchBlobWithProgress(id, fallbackTotal) {
 	const reader = res.body.getReader();
 	const chunks = [];
 	let loaded = 0;
-	progress.set("download", 0, total, "fetching");
+	progress.set("download", 0, total, translate("state.fetching"));
 	while (true) {
 		const { done, value } = await reader.read();
 		if (done) break;
 		chunks.push(value);
 		loaded += value.length;
-		progress.set("download", loaded, total, "fetching");
+		progress.set("download", loaded, total, translate("state.fetching"));
 	}
 	const all = new Uint8Array(loaded);
 	let offset = 0;
@@ -123,7 +126,11 @@ async function load() {
 			cipher,
 			manifest,
 			onDecryptStart: (blob) => {
-				stopDecrypt = progress.pulse("decrypt", blob.size, "working");
+				stopDecrypt = progress.pulse(
+					"decrypt",
+					blob.size,
+					translate("state.working"),
+				);
 			},
 			onDecryptDone: (blob) => {
 				stopDecrypt();
@@ -132,11 +139,17 @@ async function load() {
 			},
 			onDecryptDebug: (event, data) => {
 				debugLog(event, data);
-				if (event === "crypto-fallback-load") progress.state("decrypt", "loading pure JS");
-				else if (event === "crypto-fallback") progress.state("decrypt", "working");
+				if (event === "crypto-fallback-load")
+					progress.state("decrypt", translate("state.loadingPureJS"));
+				else if (event === "crypto-fallback")
+					progress.state("decrypt", translate("state.working"));
 			},
 			onUnzipStart: (blob) => {
-				stopUnzip = progress.pulse("unzip", blob.size, "working");
+				stopUnzip = progress.pulse(
+					"unzip",
+					blob.size,
+					translate("state.working"),
+				);
 			},
 			onUnzipDone: (blob) => {
 				stopUnzip();
@@ -163,13 +176,13 @@ function renderList() {
 	previewPane.hidden = false;
 	listing.innerHTML = "";
 	const title = document.createElement("h3");
-	title.textContent = "# Files";
+	title.textContent = translate("share.filesTitle");
 	const list = document.createElement("div");
 	list.className = "api-index-list";
 	for (const entry of entries) list.append(rowFor(entry));
 	listing.append(title, list);
 	if (entries.length) openEntry(entries[0], list.firstElementChild);
-	else showEmptyDetail("# archive empty.");
+	else showEmptyDetail(translate("share.archiveEmpty"));
 }
 
 // rowFor builds one keyboard-clickable file row with previewability metadata.
@@ -177,7 +190,9 @@ function rowFor(entry) {
 	const row = document.createElement("button");
 	row.className = "api-index-row";
 	const previewable = entry.previewable ?? canPreview(entry.name, entry.type);
-	row.title = previewable ? "open preview" : "show file actions";
+	row.title = previewable
+		? translate("share.openPreview")
+		: translate("share.showActions");
 	row.onclick = () => openEntry(entry, row);
 
 	const name = document.createElement("span");
@@ -245,8 +260,8 @@ function clearPreview() {
 function showEmptyDetail(message) {
 	clearPreview();
 	previewPane.replaceChildren(
-		heading("# Archive"),
-		comment(message || "# select a file."),
+		heading(translate("share.archiveTitle")),
+		comment(message || translate("share.selectFile")),
 	);
 }
 
@@ -264,7 +279,6 @@ function comment(text) {
 	p.textContent = text;
 	return p;
 }
-
 
 // openEntry selects a file, exposes download, and renders its preview area.
 function openEntry(entry, row) {
@@ -306,11 +320,15 @@ function metaLine(entry) {
 function previewWell(entry) {
 	const well = document.createElement("div");
 	well.className = "archive-preview preview-well";
-	well.title = "Open in new window";
+	well.title = translate("share.openNewWindow");
 	well.append(previewFor(entry));
 	well.addEventListener("click", (event) => {
-		const t = event.target;
-		if (t instanceof HTMLVideoElement || t instanceof HTMLAudioElement) return;
+		const target = event.target;
+		if (
+			target instanceof HTMLVideoElement ||
+			target instanceof HTMLAudioElement
+		)
+			return;
 		// HTML/SVG/XML would execute with the share site's origin if a browser
 		// rendered them as a top-level document, so force text/plain (source
 		// view) for those and keep a dedicated openURL that clearPreview revokes.
@@ -374,13 +392,15 @@ function previewFor(entry) {
 	}
 	const note = document.createElement("div");
 	note.className = "muted";
-	note.textContent = "no inline preview. use download.";
+	note.textContent = translate("share.noPreview");
 	return note;
 }
 
 // loadEntries resets progress and reports list/decrypt errors without stale output.
 async function loadEntries() {
-	await settlePasswordInput(pass, () => passwordComposing, { onDebug: debugLog });
+	await settlePasswordInput(pass, () => passwordComposing, {
+		onDebug: debugLog,
+	});
 	progress.reset();
 	entries = null;
 	try {
@@ -394,7 +414,10 @@ async function loadEntries() {
 			causeName: err?.cause?.name || "",
 			causeMessage: err?.cause?.message || "",
 		});
-		progress.fail(failurePhase(err), err.message || "archive open failed");
+		progress.fail(
+			failurePhase(err),
+			err.message || translate("share.archiveOpenFailed"),
+		);
 	}
 }
 
@@ -432,3 +455,7 @@ if (pass) {
 		}
 	});
 }
+
+onLanguageChange(() => {
+	if (entries) renderList();
+});

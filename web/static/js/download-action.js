@@ -20,16 +20,18 @@ import {
 	prepareBlobDownload,
 	safeDownloadName,
 } from "./download.js";
+import { translate } from "./i18n.js";
 
 // armDownloadAction wires a download anchor's click handler and visible href.
 // The anchor's href stays under /s/{shareID}/f/{filename} for link semantics;
 // the click handler intercepts and routes through staging or blob fallback.
 // Returns a cleanup function that revokes any held blob URL.
 export function armDownloadAction(anchor, entry, shareID, options = {}) {
-	const debug = typeof options.onDebug === "function" ? options.onDebug : () => {};
+	const debug =
+		typeof options.onDebug === "function" ? options.onDebug : () => {};
 	anchor._entry = entry;
 	anchor.href = downloadURLPath(shareID, entry.name);
-	anchor.textContent = "> download";
+	anchor.textContent = translate("action.download");
 	anchor.removeAttribute("aria-disabled");
 
 	let blobURL = "";
@@ -55,14 +57,18 @@ export function armDownloadAction(anchor, entry, shareID, options = {}) {
 					debug("download-prepared", {
 						...downloadDebugData(e, shareID),
 						href: prepared.href || "",
-						clickHrefScheme: urlScheme(prepared.clickHref || prepared.href || ""),
+						clickHrefScheme: urlScheme(
+							prepared.clickHref || prepared.href || "",
+						),
 						useDownloadAttribute: prepared.useDownloadAttribute,
 					});
 					clickPreparedDownload(prepared);
 					debug("download-click-dispatched", {
 						...downloadDebugData(e, shareID),
 						href: prepared.href || "",
-						clickHrefScheme: urlScheme(prepared.clickHref || prepared.href || ""),
+						clickHrefScheme: urlScheme(
+							prepared.clickHref || prepared.href || "",
+						),
 						useDownloadAttribute: prepared.useDownloadAttribute,
 					});
 					prepared.cleanup();
@@ -108,7 +114,9 @@ function downloadDebugData(entry, shareID) {
 		contentType: entry.type || "",
 		bytes: entry.blob?.size || 0,
 		secureContext: globalThis.window?.isSecureContext,
-		serviceWorkerController: Boolean(globalThis.navigator?.serviceWorker?.controller),
+		serviceWorkerController: Boolean(
+			globalThis.navigator?.serviceWorker?.controller,
+		),
 	};
 }
 

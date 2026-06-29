@@ -3,19 +3,19 @@
 <div class="source-buffer">
 	<div class="editor-line">
 		<span class="line-gutter" aria-hidden="true">01</span>
-		<h1># Upload</h1>
+		<h1 data-i18n="upload.title"># Upload</h1>
 	</div>
 
 	<div class="editor-line">
 		<span class="line-gutter" aria-hidden="true">02</span>
-		<p class="comment-text">
+		<p class="comment-text" data-i18n="upload.intro">
 			# drop files, paste clipboard, set policy, upload.
 		</p>
 	</div>
 
 	<div class="editor-line">
 		<span class="line-gutter" aria-hidden="true">03</span>
-		<p class="comment-text">
+		<p class="comment-text" data-i18n="upload.privacy">
 			# password encrypts in browser. private key only hides from public list.
 		</p>
 	</div>
@@ -35,25 +35,31 @@
 			<input type="hidden" name="csrf" value="{{.CSRF}}">
 
 			<div class="field-row">
-				<label class="field-label">--title</label>
+				<label class="field-label" data-i18n="upload.titleLabel">--title</label>
 				<input class="text-input field-md" name="title" autocomplete="off">
 			</div>
 
 			<div class="field-row">
-				<label class="field-label">--source</label>
+				<label class="field-label" data-i18n="upload.sourceLabel"
+					>--source</label
+				>
 				<select class="select-input field-md" id="source">
-					<option value="file">file</option>
-					<option value="clipboard">clipboard</option>
+					<option value="file" data-i18n="upload.sourceFile">file</option>
+					<option value="clipboard" data-i18n="upload.sourceClipboard">
+						clipboard
+					</option>
 				</select>
 			</div>
 
 			<section id="fileSource" class="field-row">
-				<label class="field-label">--files</label>
+				<label class="field-label" data-i18n="upload.filesLabel">--files</label>
 				<label id="dropzone" class="dropzone field-full" for="files">
-					<span class="command-text"
+					<span class="command-text" data-i18n="upload.dropFiles"
 						>&gt; drop files here or click to select</span
 					>
-					<span class="muted">zip/encrypt runs before upload</span>
+					<span class="muted" data-i18n="upload.zipHint"
+						>zip/encrypt runs before upload</span
+					>
 				</label>
 				<input class="native-file" id="files" type="file" multiple>
 				<div id="fileSize" class="muted status-line"></div>
@@ -61,9 +67,11 @@
 			</section>
 
 			<section id="clipSource" class="field-row" hidden>
-				<label class="field-label">--clipboard</label>
+				<label class="field-label" data-i18n="upload.clipboardLabel"
+					>--clipboard</label
+				>
 				<button type="button" id="clip" class="primary-action-button field-md">
-					&gt; read clipboard
+					<span data-i18n="upload.readClipboard">&gt; read clipboard</span>
 				</button>
 				<div
 					id="clipbox"
@@ -71,6 +79,7 @@
 					class="textarea-input field-full"
 					contenteditable="true"
 					data-placeholder="type or paste text here. paste file/image to attach media."
+					data-i18n-placeholder="upload.clipboardPlaceholder"
 				></div>
 				<button
 					type="button"
@@ -78,37 +87,47 @@
 					class="copy-button field-sm"
 					hidden
 				>
-					collapse
+					<span data-i18n="upload.collapse">collapse</span>
 				</button>
 			</section>
 
 			<div class="field-grid">
 				<div class="field-row compact">
-					<label class="field-label">--visibility</label>
+					<label class="field-label" data-i18n="upload.visibilityLabel"
+						>--visibility</label
+					>
 					<select
 						class="select-input field-md"
 						name="visibility"
 						id="visibility"
 					>
-						<option value="public">public</option>
-						<option value="private">private</option>
+						<option value="public" data-i18n="upload.public">public</option>
+						<option value="private" data-i18n="upload.private">private</option>
 					</select>
 				</div>
 
 				<div class="field-row compact" id="privateKeyRow" hidden>
-					<label class="field-label" id="privateKeyLabel">--private-key</label>
+					<label
+						class="field-label"
+						id="privateKeyLabel"
+						data-i18n="upload.privateKeyLabel"
+						>--private-key</label
+					>
 					<input
 						class="text-input field-md"
 						name="private_key"
 						id="privateKey"
 						autocomplete="off"
 						placeholder="share with people who know this key"
+						data-i18n-placeholder="upload.privateKeyPlaceholder"
 					>
 				</div>
 			</div>
 
 			<div class="field-row compact">
-				<label class="field-label">--password</label>
+				<label class="field-label" data-i18n="upload.passwordLabel"
+					>--password</label
+				>
 				<input
 					class="text-input field-md"
 					name="password"
@@ -118,26 +137,29 @@
 					autocorrect="off"
 					spellcheck="false"
 					placeholder="optional encryption"
+					data-i18n-placeholder="upload.passwordPlaceholder"
 				>
 			</div>
 
 			<div class="field-row compact">
-				<label class="field-label">--expiry</label>
+				<label class="field-label" data-i18n="upload.expiryLabel"
+					>--expiry</label
+				>
 				<select class="select-input field-md" name="expiry_hours">
 					<option value="1">1h</option>
 					<option value="6" selected>6h</option>
 					<option value="12">12h</option>
 					<option value="24">24h</option>
 					{{ if .Admin }}
-					<option value="168">7 days</option>
-					<option value="720">1 month</option>
-					<option value="2160">3 months</option>
+					<option value="168" data-i18n="upload.sevenDays">7 days</option>
+					<option value="720" data-i18n="upload.oneMonth">1 month</option>
+					<option value="2160" data-i18n="upload.threeMonths">3 months</option>
 					{{ end }}
 				</select>
 			</div>
 
 			<button type="submit" class="primary-action-button field-lg">
-				&gt; start upload
+				<span data-i18n="upload.start">&gt; start upload</span>
 			</button>
 		</form>
 	</div>

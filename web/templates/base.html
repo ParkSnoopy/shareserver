@@ -1,9 +1,10 @@
 {{define "base_top"}}
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="dark">
     <title>{{.Title}}</title>
     <link rel="stylesheet" href="/static/css/app.css">
     {{if .Dev}}
@@ -14,30 +15,28 @@
   <body>
     <nav class="tabs">
       <a class="logo" href="/">share://</a>
-      <a href="/upload">upload</a>
-      <a href="/admin">admin</a>
+      <a href="/upload" data-i18n="nav.upload">upload</a>
+      <a href="/admin" data-i18n="nav.admin">admin</a>
       {{if .Admin}}
         <form method="post" action="/admin/logout">
           <input type="hidden" name="csrf" value="{{.CSRF}}">
-          <button>logout</button>
+          <button data-i18n="nav.logout">logout</button>
         </form>
       {{end}}
     </nav>
     <main class="shell">
       {{if .Dev}}
         <section class="api-detail detail-pane" role="status">
-          <h3># Dev Mode</h3>
-          <p class="err">DEBUG=1 is active.</p>
-          <p class="comment-text">
-            # local-only mode: default admin password and ephemeral secrets may be
-            allowed. Use DEBUG=0 for production.
-          </p>
+          <h3 data-i18n="dev.title"># Dev Mode</h3>
+          <p class="err" data-i18n="dev.active">DEBUG=1 is active.</p>
+          <p class="comment-text" data-i18n="dev.hint"># local-only mode: default admin password and ephemeral secrets may be allowed. Use DEBUG=0 for production.</p>
         </section>
       {{end}}
 {{end}}
 
 {{define "base_bottom"}}
     </main>
+    <script type="module" src="/static/js/i18n.js"></script>
   </body>
 </html>
 {{end}}

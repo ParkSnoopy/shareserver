@@ -79,6 +79,7 @@ func (h *Handler) notFoundPage(w http.ResponseWriter, r *http.Request) {
 		"Title":           "404",
 		"StatusCode":      http.StatusNotFound,
 		"Message":         "not found.",
+		"MessageKey":      "error.notFound",
 		"RedirectSeconds": 5,
 	})
 }
@@ -215,7 +216,6 @@ func validUUID(id string) bool { return uuidRE.MatchString(id) }
 
 // privateHash scopes private-key lookup hashes to the app secret.
 func (h *Handler) privateHash(k string) string { return auth.HMACKey(h.A.C.AppSecret, k) }
-
 
 // repoFile finds a repository-relative file from repo root or package test directories.
 func repoFile(parts ...string) string {

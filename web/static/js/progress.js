@@ -1,3 +1,5 @@
+import { translate } from "./i18n.js";
+
 // fmtBytes renders byte counts in compact binary units for terminal UI text.
 export function fmtBytes(n) {
 	if (!n) return "0 B";
@@ -22,7 +24,8 @@ export class Progress {
 	// reset clears visible lines and stops delayed or pulsing updates.
 	reset() {
 		if (this.timer) clearTimeout(this.timer);
-		if (this._pulseTimers) for (const t of this._pulseTimers) clearInterval(t);
+		if (this._pulseTimers)
+			for (const timer of this._pulseTimers) clearInterval(timer);
 		this.order = [];
 		this.seen = new Set();
 		this.failed = new Set();
@@ -52,7 +55,8 @@ export class Progress {
 	// line formats one transfer phase with percent, bytes, and state.
 	line(phase, done, total, state) {
 		const p = total ? done / total : 0;
-		return `${phase.padEnd(9)} ${this.bar(p)} ${String(Math.round(p * 100)).padStart(3)}% ${fmtBytes(done)} / ${fmtBytes(total)} ${state}`;
+		const label = translate(`phase.${phase}`);
+		return `${label.padEnd(9)} ${this.bar(p)} ${String(Math.round(p * 100)).padStart(3)}% ${fmtBytes(done)} / ${fmtBytes(total)} ${state}`;
 	}
 
 	// cancelPending removes a delayed update for a completed or failed phase.
@@ -105,9 +109,15 @@ export class Progress {
 			this.order.push(phase);
 		}
 		if (total)
-			this.lines.set(phase, this.line(phase, done, total, `failed: ${msg}`));
+			this.lines.set(
+				phase,
+				this.line(phase, done, total, `${translate("state.failed")}: ${msg}`),
+			);
 		else
-			this.lines.set(phase, `${phase.padEnd(9)} ${this.bar(0)} failed: ${msg}`);
+			this.lines.set(
+				phase,
+				`${translate(`phase.${phase}`).padEnd(9)} ${this.bar(0)} ${translate("state.failed")}: ${msg}`,
+			);
 		this.render();
 	}
 
@@ -148,7 +158,10 @@ export class Progress {
 		const elapsed = (performance.now() - meta.start) / 1000;
 		const p = Math.min(0.95, elapsed / 8);
 		this.cancelPending(phase);
-		this.lines.set(phase, this.line(phase, Math.round(meta.total * p), meta.total, newState));
+		this.lines.set(
+			phase,
+			this.line(phase, Math.round(meta.total * p), meta.total, newState),
+		);
 		this.render();
 	}
 
@@ -165,7 +178,10 @@ export class Progress {
 			this.seen.add(phase);
 			this.order.push(phase);
 		}
-		this.lines.set(phase, this.line(phase, total, total, "done"));
+		this.lines.set(
+			phase,
+			this.line(phase, total, total, translate("state.done")),
+		);
 		this.render();
 	}
 }

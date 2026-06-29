@@ -3,7 +3,7 @@
 <div class="grid">
 	<div class="row">
 		<span>01</span>
-		<h1># Admin Login</h1>
+		<h1 data-i18n="admin.loginTitle"># Admin Login</h1>
 	</div>
 
 	<div class="row">
@@ -16,13 +16,13 @@
 		<form class="panel" method="post" action="/admin/login">
 			<input type="hidden" name="csrf" value="{{.CSRF}}">
 
-			<label>user</label>
+			<label data-i18n="admin.user">user</label>
 			<input class="field-md" name="username">
 
-			<label>password</label>
+			<label data-i18n="admin.password">password</label>
 			<input class="field-md" type="password" name="password">
 
-			<button class="field-md">login</button>
+			<button class="field-md" data-i18n="admin.login">login</button>
 		</form>
 	</div>
 </div>

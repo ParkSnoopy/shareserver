@@ -1,7 +1,10 @@
 import { encryptBlob } from "./crypto.js";
 import { fmtBytes, Progress } from "./progress.js";
+import { initI18n, onLanguageChange, translate } from "./i18n.js";
 import { canPreview, filesToZip } from "./zip.js";
 import { settlePasswordInput } from "./ime.js";
+
+await initI18n();
 
 const form = document.getElementById("uploadForm");
 const maxBytes = Number(form.dataset.maxBytes || 0);
@@ -25,6 +28,7 @@ const fileList = document.getElementById("fileList");
 let clipFiles = [];
 let clipPreviewURLs = [];
 let passwordComposing = false;
+let selectedFiles = [];
 
 function debugLog(event, data = {}) {
 	console.info(`[shareserver:upload] ${event}`, data);
@@ -142,7 +146,13 @@ function previewClip(file) {
 function updateFileSize(files) {
 	const sum = files.reduce((acc, f) => acc + f.size, 0);
 	fileSize.textContent = files.length
-		? `${fmtBytes(sum)} (${files.length} file${files.length === 1 ? "" : "s"})`
+		? translate("upload.filesSummary", {
+				bytes: fmtBytes(sum),
+				count: files.length,
+				noun: translate(
+					files.length === 1 ? "upload.fileOne" : "upload.fileMany",
+				),
+			})
 		: "";
 	fileList.replaceChildren(
 		...files.map((file) => {
@@ -162,6 +172,7 @@ function updateFileSize(files) {
 
 // setFiles mirrors drag/drop selections into the real file input and UI summary.
 function setFiles(files) {
+	selectedFiles = files;
 	const dt = new DataTransfer();
 	for (const file of files) dt.items.add(file);
 	filesEl.files = dt.files;
@@ -196,8 +207,8 @@ dropzone.addEventListener("drop", (event) => {
 clipCollapse.addEventListener("click", () => {
 	clipbox.classList.toggle("clipbox-collapsed");
 	clipCollapse.textContent = clipbox.classList.contains("clipbox-collapsed")
-		? "expand"
-		: "collapse";
+		? translate("upload.expand")
+		: translate("upload.collapse");
 });
 
 // mimeExt maps clipboard mime types to a real extension so non-image content
@@ -351,17 +362,26 @@ function uploadFormData(out, size) {
 		if (csrf) xhr.setRequestHeader("X-CSRF-Token", csrf);
 		xhr.upload.onprogress = (event) => {
 			const loaded = event.lengthComputable ? Math.min(event.loaded, size) : 0;
-			progress.set("upload", loaded, size, "sending");
+			progress.set("upload", loaded, size, translate("state.sending"));
 		};
 		xhr.onload = () => {
 			if (xhr.status >= 200 && xhr.status < 300) {
 				resolve(JSON.parse(xhr.responseText));
 				return;
 			}
-			progress.set("upload", size, size, `failed ${xhr.status}`);
+			progress.set(
+				"upload",
+				size,
+				size,
+				`${translate("state.failed")} ${xhr.status}`,
+			);
 			reject(
 				Error(
-					`upload failed ${xhr.status}: ${xhr.responseText.trim() || xhr.statusText} (${fmtBytes(size)})`,
+					translate("upload.uploadFailed", {
+						status: xhr.status,
+						message: xhr.responseText.trim() || xhr.statusText,
+						size: fmtBytes(size),
+					}),
 				),
 			);
 		};
@@ -395,10 +415,14 @@ form.onsubmit = async (event) => {
 				];
 			}
 		}
-		if (!files.length) throw Error("choose file or paste clipboard");
+		if (!files.length) throw Error(translate("upload.noFile"));
 		if (!fd.get("title")) fd.set("title", basename(files[0].name));
 		const inputSize = files.reduce((sum, file) => sum + file.size, 0);
-		const stopZip = progress.pulse("zip", inputSize, "working");
+		const stopZip = progress.pulse(
+			"zip",
+			inputSize,
+			translate("state.working"),
+		);
 		let blob;
 		let manifest;
 		try {
@@ -411,7 +435,11 @@ form.onsubmit = async (event) => {
 		let cipherMeta = "";
 		const password = fd.get("password");
 		if (password) {
-			const stopEncrypt = progress.pulse("encrypt", zipSize, "working");
+			const stopEncrypt = progress.pulse(
+				"encrypt",
+				zipSize,
+				translate("state.working"),
+			);
 			try {
 				const enc = await encryptBlob(blob, password);
 				blob = enc.blob;
@@ -422,11 +450,14 @@ form.onsubmit = async (event) => {
 			progress.done("encrypt", zipSize);
 		}
 		if (maxBytes && blob.size > maxBytes) {
-			const msg = `upload too large after zip/encrypt: ${fmtBytes(blob.size)} / ${fmtBytes(maxBytes)}`;
+			const msg = translate("upload.tooLarge", {
+				actual: fmtBytes(blob.size),
+				max: fmtBytes(maxBytes),
+			});
 			progress.fail("upload", msg, blob.size, maxBytes);
 			throw Error(msg);
 		}
-		progress.set("upload", 0, zipSize, "sending");
+		progress.set("upload", 0, zipSize, translate("state.sending"));
 		const out = new FormData();
 		for (const key of [
 			"csrf",
@@ -442,7 +473,7 @@ form.onsubmit = async (event) => {
 		out.append("blob", blob, "share.blob");
 		const json = await uploadFormData(out, zipSize);
 		progress.done("upload", zipSize);
-		result.innerHTML = `<a class="cmd" href="${json.url}">${location.origin}${json.url}</a><br><span class="muted">raw ${fmtBytes(inputSize)} | zipped ${fmtBytes(zipSize)}</span>`;
+		result.innerHTML = `<a class="cmd" href="${json.url}">${location.origin}${json.url}</a><br><span class="muted">${translate("upload.resultMeta", { raw: fmtBytes(inputSize), zipped: fmtBytes(zipSize) })}</span>`;
 	} catch (err) {
 		const msg = err.message || String(err);
 		if (
@@ -466,3 +497,9 @@ if (passwordEl) {
 
 syncSource();
 syncVisibility();
+onLanguageChange(() => {
+	updateFileSize(selectedFiles);
+	if (clipbox.classList.contains("clipbox-collapsed")) {
+		clipCollapse.textContent = translate("upload.expand");
+	}
+});

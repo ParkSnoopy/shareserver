@@ -75,7 +75,7 @@
 			logLines.splice(0, logLines.length - maxPanelLines);
 		if (!panelBody) return;
 		panelBody.textContent = `${logLines.join("\n")}\n`;
-		panelBody.scrollTop = panelBody.scrollHeight;
+		panelBody.scrollTop = Number.MAX_SAFE_INTEGER;
 	}
 
 	function appendPanelLine(event, detail) {

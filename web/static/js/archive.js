@@ -1,4 +1,5 @@
 import { decryptBlob } from "./crypto.js";
+import { translate } from "./i18n.js";
 import { canPreview, mimeFromName, unzipBytes } from "./zip.js";
 
 export const ArchiveErrorCode = Object.freeze({
@@ -57,7 +58,7 @@ export async function openArchive(blob, options = {}) {
 		if (!password) {
 			throw new ArchiveError(
 				ArchiveErrorCode.PasswordRequired,
-				"password required",
+				translate("archiveError.passwordRequired"),
 			);
 		}
 		onDecryptStart?.(archiveBlob);
@@ -69,11 +70,15 @@ export async function openArchive(blob, options = {}) {
 			if (isUnsupportedCrypto(err)) {
 				throw archiveError(
 					ArchiveErrorCode.UnsupportedCrypto,
-					err.message || "encryption is not supported on this browser",
+					err.message || translate("archiveError.unsupportedCrypto"),
 					err,
 				);
 			}
-			throw archiveError(ArchiveErrorCode.WrongPassword, "wrong password", err);
+			throw archiveError(
+				ArchiveErrorCode.WrongPassword,
+				translate("archiveError.wrongPassword"),
+				err,
+			);
 		}
 		onDecryptDone?.(archiveBlob);
 	}
@@ -83,7 +88,11 @@ export async function openArchive(blob, options = {}) {
 	try {
 		raw = await unzipBytes(await archiveBlob.arrayBuffer());
 	} catch (err) {
-		throw archiveError(ArchiveErrorCode.CorruptArchive, "corrupt archive", err);
+		throw archiveError(
+			ArchiveErrorCode.CorruptArchive,
+			translate("archiveError.corruptArchive"),
+			err,
+		);
 	}
 	onUnzipDone?.(archiveBlob);
 

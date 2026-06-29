@@ -55,6 +55,7 @@ a {
 }
 .tabs a,
 .tabs button {
+	flex: 0 0 104px;
 	height: 40px;
 	padding: 0 16px;
 	border: 0;
@@ -65,8 +66,10 @@ a {
 	font: inherit;
 	display: flex;
 	align-items: center;
+	justify-content: center;
 }
 .tabs .logo {
+	flex-basis: 128px;
 	color: #fff;
 	padding: 0 24px;
 }

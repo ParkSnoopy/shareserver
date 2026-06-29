@@ -3,23 +3,36 @@
 <div class="grid">
 	<div class="row">
 		<span>01</span>
-		<h1># Admin</h1>
+		<h1 data-i18n="admin.title"># Admin</h1>
 	</div>
 
 	<div class="row">
 		<span>02</span>
-		<p>stored {{ mb .Used }} / {{ mb .Cap }}</p>
+		<p
+			data-i18n="admin.stored"
+			data-i18n-vars='{"used":"{{ mb .Used }}","cap":"{{ mb .Cap }}"}'
+		>
+			stored {{ mb .Used }} / {{ mb .Cap }}
+		</p>
 	</div>
 
 	<div class="row">
 		<span>03</span>
-		<p>active {{ .Active }} · expired {{ .Expired }} · purged {{ .Purged }}</p>
+		<p
+			data-i18n="admin.counts"
+			data-i18n-vars='{"active":"{{ .Active }}","expired":"{{ .Expired }}","purged":"{{ .Purged }}"}'
+		>
+			active {{ .Active }} · expired {{ .Expired }} · purged {{ .Purged }}
+		</p>
 	</div>
 
 	{{ if .StorageCleanupDone }}
 	<div class="row">
 		<span>04</span>
-		<p>
+		<p
+			data-i18n="admin.storageDone"
+			data-i18n-vars='{"files":"{{ .StorageOrphanFiles }}","rows":"{{ .StorageMissingRows }}"}'
+		>
 			Storage check finished: removed {{ .StorageOrphanFiles }} files not in the
 			database and cleared {{ .StorageMissingRows }} database records whose
 			files were missing.
@@ -34,12 +47,16 @@
 
 	<div class="row">
 		<span>06</span>
-		<h1># Actions</h1>
+		<h1 data-i18n="admin.actionsTitle"># Actions</h1>
 	</div>
 
 	<div class="row">
 		<span>07</span>
-		<p><a href="/admin/shares">inspect shares →</a></p>
+		<p>
+			<a href="/admin/shares" data-i18n="admin.inspectShares"
+				>inspect shares →</a
+			>
+		</p>
 	</div>
 
 	<div class="row">
@@ -47,7 +64,7 @@
 		<form method="post" action="/admin/storage/cleanup">
 			<input type="hidden" name="csrf" value="{{.CSRF}}">
 			<button type="submit" class="primary-action-button field-md">
-				clean up stored files now
+				<span data-i18n="admin.cleanStorage">clean up stored files now</span>
 			</button>
 		</form>
 	</div>

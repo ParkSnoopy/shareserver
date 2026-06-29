@@ -1,0 +1,50 @@
+{{ define "admin_shares.html" }}
+{{ template "base_top" . }}
+<div class="wide">
+	<h1 data-i18n="admin.sharesTitle"># Shares</h1>
+	<div class="section-rule" aria-hidden="true"></div>
+	<table class="admin-shares">
+		<thead>
+			<tr>
+				<th data-i18n="admin.id">id</th>
+				<th data-i18n="admin.shareTitle">title</th>
+				<th data-i18n="admin.state">state</th>
+				<th data-i18n="admin.size">size</th>
+				<th data-i18n="admin.uploadBy">upload by</th>
+				<th data-i18n="admin.expires">expires</th>
+				<th data-i18n="admin.actions">actions</th>
+			</tr>
+		</thead>
+		<tbody>
+			{{ range .Shares }}
+			<tr>
+				<td><a href="/s/{{.ID}}">{{ short .ID }}</a></td>
+				<td class="admin-title">{{ .Title }}</td>
+				<td>
+					{{ if eq .Visibility "public" }}
+					<span data-i18n="upload.public">public</span>{{ else }}
+					<span data-i18n="upload.private">private</span>{{ end }}
+					{{ if .Encrypted }}<span data-i18n="admin.encrypted">encrypted</span>
+					{{ else }}<span data-i18n="admin.plain">plain</span>{{ end }}
+					{{ if .PurgedAt.Valid }}<span data-i18n="admin.purged">purged</span>
+					{{ end }}
+				</td>
+				<td>{{ mb .Size }}</td>
+				<td>{{ .UploaderIP }}</td>
+				<td>
+					{{ if .ExpiresAt.Valid }}{{ fmtTime .ExpiresAt.String }}
+					{{ else }}<span data-i18n="admin.never">never</span>{{ end }}
+				</td>
+				<td>
+					<form method="post" action="/admin/shares/{{.ID}}/delete">
+						<input type="hidden" name="csrf" value="{{$.CSRF}}">
+						<button class="field-sm" data-i18n="admin.delete">delete</button>
+					</form>
+				</td>
+			</tr>
+			{{ end }}
+		</tbody>
+	</table>
+</div>
+{{ template "base_bottom" . }}
+{{ end }}
