@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
+	canStageDownload,
 	contentDispositionFor,
 	downloadURLPath,
 	safeDownloadName,
@@ -31,6 +32,31 @@ function stageWorkerDownload(listeners, data) {
 	expect(reply).toEqual({ ok: true });
 }
 
+function withDownloadGlobals(userAgent, fn) {
+	const oldWindow = globalThis.window;
+	const oldNavigator = globalThis.navigator;
+	Object.defineProperty(globalThis, "window", {
+		configurable: true,
+		value: { isSecureContext: true },
+	});
+	Object.defineProperty(globalThis, "navigator", {
+		configurable: true,
+		value: { userAgent, serviceWorker: {} },
+	});
+	try {
+		return fn();
+	} finally {
+		Object.defineProperty(globalThis, "window", {
+			configurable: true,
+			value: oldWindow,
+		});
+		Object.defineProperty(globalThis, "navigator", {
+			configurable: true,
+			value: oldNavigator,
+		});
+	}
+}
+
 async function fetchWorkerDownload(listeners, path) {
 	let responsePromise;
 	listeners.get("fetch")({
@@ -58,6 +84,18 @@ describe("download helpers", () => {
 		expect(contentDispositionFor("résumé 2026.pdf")).toBe(
 			"attachment; filename=\"r_sum_ 2026.pdf\"; filename*=UTF-8''r%C3%A9sum%C3%A9%202026.pdf",
 		);
+	});
+	test("download staging stays desktop-only", () => {
+		expect(
+			withDownloadGlobals("Mozilla/5.0 (X11; Linux x86_64) Firefox/152", () =>
+				canStageDownload(),
+			),
+		).toBe(true);
+		expect(
+			withDownloadGlobals("Mozilla/5.0 (Linux; Android 10) Chrome/149", () =>
+				canStageDownload(),
+			),
+		).toBe(false);
 	});
 	test("staged service worker downloads are reusable until forgotten", async () => {
 		const listeners = loadDownloadWorker();

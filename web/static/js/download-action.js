@@ -1,15 +1,17 @@
 // Download action: owns the secure/insecure download branching and blob URL
 // lifecycle for archive entry downloads.
 //
-// On a secure context (HTTPS/localhost): re-stages the in-browser entry
-// through the service worker on every tap so repeated downloads never depend
-// on stale worker memory. The worker serves Content-Disposition, so the
-// filename is server-forced.
+// On a secure desktop context (HTTPS/localhost): re-stages the in-browser
+// entry through the service worker on every tap so repeated downloads never
+// depend on stale worker memory. The worker serves Content-Disposition, so the
+// filename is server-forced. Android skips this path because DuckDuckGo/Chrome
+// can receive a valid service-worker attachment response then fail in the
+// system download manager.
 //
-// On an insecure context (plain-HTTP LAN): no service worker, so build a
-// fresh blob: URL synchronously within the user gesture so Android Chrome
-// honors the download attribute and saves the uploaded filename. A fresh
-// blob URL per tap avoids same-URL download dedupe.
+// On Android or insecure contexts (plain-HTTP LAN): build a fresh blob: URL
+// synchronously within the user gesture so Android browsers honor the download
+// attribute and save the uploaded filename. A fresh blob URL per tap avoids
+// same-URL download dedupe.
 
 import {
 	canStageDownload,
@@ -77,7 +79,7 @@ export function armDownloadAction(anchor, entry, shareID, options = {}) {
 				});
 			return;
 		}
-		// Insecure context: fresh blob URL per tap within the user gesture.
+		// Android/insecure context: fresh blob URL per tap within the user gesture.
 		if (blobURL) URL.revokeObjectURL(blobURL);
 		blobURL = URL.createObjectURL(typedBlob(e));
 		anchor.href = blobURL;

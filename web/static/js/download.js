@@ -53,6 +53,7 @@ export function canStageDownload() {
 		typeof window !== "undefined" &&
 		window.isSecureContext &&
 		typeof navigator !== "undefined" &&
+		!/\bAndroid\b/i.test(navigator.userAgent || "") &&
 		"serviceWorker" in navigator &&
 		typeof MessageChannel !== "undefined"
 	);
