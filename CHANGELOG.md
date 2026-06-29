@@ -8,6 +8,7 @@
 - Download diagnostics for click dispatch, service-worker staging, prepared URL, response status, headers, bytes, fallback path.
 - Debug output for silent catch paths: staged download forget, service-worker debug delivery, clipboard read.
 - Test coverage for Android skipping service-worker download staging.
+- ICO favicon generated from the ShareServer image at 64px and larger sizes.
 
 ### Update
 - Template loader parses admin templates from `web/templates/admin/`.
@@ -15,6 +16,7 @@
 - UI strings move behind keyed language files and `data-i18n` attributes.
 - Debug logs: browser identity once at page ready; later actions keep compact context.
 - Android downloads use gesture-time blob URLs instead of service-worker attachment responses.
+- Base page template advertises the generated favicon from `web/static/img/`.
 
 ### Fix
 - Download staging failures report safe error names/messages before fallback.
