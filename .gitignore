@@ -3,6 +3,7 @@ data/
 .env
 **/*.db*
 **/*.sqlite*
+CONTEXT.md
 
 # ignore binary
 /shareserver
