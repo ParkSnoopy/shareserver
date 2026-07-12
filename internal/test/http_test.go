@@ -163,25 +163,17 @@ func TestSessionLifecycleGetOrCreateReusesValidAndDropsExpired(t *testing.T) {
 	}
 }
 
-func TestProxyHTTPSHeadersRequireTrustedPeer(t *testing.T) {
+func TestSessionCookieAlwaysRequiresHTTPSWithoutHSTS(t *testing.T) {
 	_, router := newRouter(t)
 
-	untrusted := httptest.NewRequest(http.MethodGet, "/upload", nil)
-	untrusted.RemoteAddr = "203.0.113.10:5000"
-	untrusted.Header.Set("X-Forwarded-Proto", "https")
+	req := httptest.NewRequest(http.MethodGet, "/upload", nil)
 	w := httptest.NewRecorder()
-	router.ServeHTTP(w, untrusted)
-	if strings.Contains(w.Header().Get("Set-Cookie"), "; Secure") {
-		t.Fatalf("untrusted peer spoofed secure cookie: %q", w.Header().Get("Set-Cookie"))
-	}
-
-	trusted := httptest.NewRequest(http.MethodGet, "/upload", nil)
-	trusted.RemoteAddr = "127.0.0.1:5000"
-	trusted.Header.Set("X-Forwarded-Proto", "https")
-	w = httptest.NewRecorder()
-	router.ServeHTTP(w, trusted)
+	router.ServeHTTP(w, req)
 	if !strings.Contains(w.Header().Get("Set-Cookie"), "; Secure") {
-		t.Fatalf("trusted loopback proxy https header ignored: %q", w.Header().Get("Set-Cookie"))
+		t.Fatalf("session cookie missing Secure: %q", w.Header().Get("Set-Cookie"))
+	}
+	if w.Header().Get("Strict-Transport-Security") != "" {
+		t.Fatalf("application must not configure HSTS: %q", w.Header().Get("Strict-Transport-Security"))
 	}
 }
 
@@ -315,7 +307,7 @@ func TestAnonymousSessionCreatedThroughRouter(t *testing.T) {
 	}
 }
 
-func TestDevModeHomeWarnsAndServesDevTools(t *testing.T) {
+func TestDebugConfigStillRendersProductionPage(t *testing.T) {
 	a := newTestApp(t)
 	a.C.Dev = true
 	router := httpx.New(a)
@@ -326,61 +318,15 @@ func TestDevModeHomeWarnsAndServesDevTools(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected dev home 200, got %d", w.Code)
 	}
-	assertBodyContains(t, w.Body.String(),
-		"# Dev Mode",
-		"DEBUG=1 is active.",
-		"/dev/debug.js",
-	)
-	if csp := w.Header().Get("Content-Security-Policy"); strings.Contains(csp, "unsafe-inline") ||
-		strings.Contains(csp, "unsafe-eval") {
-		t.Fatalf("dev CSP should not expose unsafe relaxations, got %q", csp)
-	}
-
-	req = httptest.NewRequest(http.MethodGet, "/dev/debug.js", nil)
-	w = httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected dev debug script 200, got %d", w.Code)
-	}
-	assertBodyContains(t, w.Body.String(), "shareserverDecryptDebug")
-
-	req = httptest.NewRequest(http.MethodGet, "/dev/debug.css", nil)
-	w = httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected dev debug style 200, got %d", w.Code)
-	}
-	assertBodyContains(t, w.Body.String(), "shareserver-dev-log")
-}
-
-func TestProdModeHidesDevTools(t *testing.T) {
-	_, router := newRouter(t)
-
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	if strings.Contains(w.Body.String(), "/dev/debug.js") ||
-		strings.Contains(w.Body.String(), "/dev/debug.css") ||
-		strings.Contains(w.Body.String(), "# Dev Mode") {
-		t.Fatalf("prod home exposed dev UI:\n%s", w.Body.String())
-	}
-	if csp := w.Header().Get("Content-Security-Policy"); strings.Contains(csp, "unsafe-inline") ||
-		strings.Contains(csp, "unsafe-eval") {
-		t.Fatalf("prod CSP exposed dev relaxations: %q", csp)
+	if strings.Contains(w.Body.String(), "# Dev Mode") || strings.Contains(w.Body.String(), "/dev/") {
+		t.Fatalf("debug config changed production page:\n%s", w.Body.String())
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/dev/debug.js", nil)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected prod debug route 404, got %d", w.Code)
-	}
-
-	req = httptest.NewRequest(http.MethodGet, "/dev/debug.css", nil)
-	w = httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected prod debug style 404, got %d", w.Code)
+		t.Fatalf("expected removed debug route 404, got %d", w.Code)
 	}
 }
 
@@ -503,5 +449,64 @@ func TestAdminStorageCleanupRemovesUnregisteredFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(registered); err != nil {
 		t.Fatalf("registered file was removed: %v", err)
+	}
+}
+
+func TestAdminDeleteRemovesBlobAndShareRow(t *testing.T) {
+	a, router := newRouter(t)
+	insertAdminSession(t, a.DB, "delete-admin-sid", "delete-admin-csrf")
+	store := share.NewStore(a.DB)
+	id := "00000000-0000-0000-0000-000000000105"
+	blobPath := filepath.Join(a.C.BlobDir, id+".blob")
+	if err := os.WriteFile(blobPath, []byte("delete me"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sh := sampleShare(id, "public", futureTS(time.Hour))
+	sh.BlobPath = blobPath
+	mustInsertShare(t, store, sh)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/shares/"+id+"/delete", strings.NewReader("csrf=delete-admin-csrf"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "sid", Value: "delete-admin-sid"})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin/shares?delete=done" {
+		t.Fatalf("delete response = %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if _, err := os.Stat(blobPath); !os.IsNotExist(err) {
+		t.Fatalf("deleted blob remains: %v", err)
+	}
+	if _, ok := store.Get(id); ok {
+		t.Fatal("deleted Share row remains")
+	}
+}
+
+func TestAdminDeleteReportsBlobFailureAndKeepsShareRow(t *testing.T) {
+	a, router := newRouter(t)
+	insertAdminSession(t, a.DB, "failed-delete-admin-sid", "failed-delete-admin-csrf")
+	store := share.NewStore(a.DB)
+	id := "00000000-0000-0000-0000-000000000106"
+	sh := sampleShare(id, "public", futureTS(time.Hour))
+	sh.BlobPath = filepath.Join(a.C.BlobDir, "directory-not-blob")
+	if err := os.Mkdir(sh.BlobPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sh.BlobPath, "child"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mustInsertShare(t, store, sh)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/shares/"+id+"/delete", strings.NewReader("csrf=failed-delete-admin-csrf"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "sid", Value: "failed-delete-admin-sid"})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin/shares?delete=failed" {
+		t.Fatalf("failed delete response = %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if _, ok := store.Get(id); !ok {
+		t.Fatal("Share row removed after blob deletion failed")
 	}
 }

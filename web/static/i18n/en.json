@@ -5,11 +5,6 @@
 		"logout": "logout",
 		"language": "language"
 	},
-	"dev": {
-		"title": "# Dev Mode",
-		"active": "DEBUG=true is active.",
-		"hint": "# local-only mode: default admin password and ephemeral secrets may be allowed. Use DEBUG=0 for production."
-	},
 	"upload": {
 		"title": "# Upload",
 		"intro": "# drop files, paste clipboard, set policy, upload.",
@@ -107,7 +102,9 @@
 		"plain": "plain",
 		"purged": "purged",
 		"never": "never",
-		"delete": "delete"
+		"delete": "delete",
+		"deleteDone": "Share blob and database record deleted.",
+		"deleteFailed": "Share could not be deleted. Blob and database record kept for retry."
 	},
 	"error": {
 		"notFound": "not found.",

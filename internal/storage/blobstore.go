@@ -68,3 +68,6 @@ func UsedBytes(dir string) int64 {
 	})
 	return total
 }
+
+// RemoveBlobBestEffort removes a partially stored blob during upload rollback.
+func RemoveBlobBestEffort(path string) { _ = os.Remove(filepath.Clean(path)) }

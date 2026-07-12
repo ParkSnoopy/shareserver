@@ -2,6 +2,11 @@
 {{ template "base_top" . }}
 <div class="wide">
 	<h1 data-i18n="admin.sharesTitle"># Shares</h1>
+	{{ if eq .DeleteResult "done" }}
+	<p class="comment-text" data-i18n="admin.deleteDone">Share blob and database record deleted.</p>
+	{{ else if eq .DeleteResult "failed" }}
+	<p class="err" data-i18n="admin.deleteFailed">Share could not be deleted. Blob and database record kept for retry.</p>
+	{{ end }}
 	<div class="section-rule" aria-hidden="true"></div>
 	<table class="admin-shares">
 		<thead>

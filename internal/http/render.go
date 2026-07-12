@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"shareserver/internal/share"
 	"time"
 )
 
@@ -38,19 +39,56 @@ func setupTemplates(tz *time.Location) *template.Template {
 	return template.Must(t.ParseGlob(filepath.Join(dir, "admin", "*.html")))
 }
 
-// render writes a normal 200 HTML template response with shared template data.
-func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, data map[string]any) {
-	h.renderStatus(w, r, http.StatusOK, name, data)
+type pageContext struct {
+	Title string
+	CSRF  string
+	Admin bool
 }
 
-// renderStatus writes an HTML template with CSRF/admin context and explicit status.
-func (h *Handler) renderStatus(w http.ResponseWriter, r *http.Request, status int, name string, data map[string]any) {
-	if data == nil {
-		data = map[string]any{}
-	}
-	data["CSRF"] = CurrentSession(r).CSRF
-	data["Admin"] = CurrentSession(r).AdminID > 0
-	data["Dev"] = h.A.C.Dev
+type errorPage struct {
+	pageContext
+	StatusCode      int
+	Message         string
+	MessageKey      string
+	RedirectSeconds int
+}
+
+type uploadPageData struct {
+	pageContext
+	Max int64
+}
+
+type archivePageData struct {
+	pageContext
+	Share       share.Share
+	Selected    bool
+	Status      string
+	Expired     bool
+	Archives    []share.Share
+	PrivateMode bool
+}
+
+type adminDashboardPage struct {
+	pageContext
+	Used, Cap                              int64
+	Active, Expired, Purged                int
+	StorageCleanupDone                     bool
+	StorageMissingRows, StorageOrphanFiles string
+}
+
+type adminSharesPage struct {
+	pageContext
+	Shares       []share.Share
+	Now          time.Time
+	DeleteResult string
+}
+
+func (h *Handler) pageContext(r *http.Request, title string) pageContext {
+	session := CurrentSession(r)
+	return pageContext{Title: title, CSRF: session.CSRF, Admin: session.AdminID > 0}
+}
+
+func (h *Handler) renderTemplate(w http.ResponseWriter, status int, name string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	if status != http.StatusOK {
@@ -59,6 +97,39 @@ func (h *Handler) renderStatus(w http.ResponseWriter, r *http.Request, status in
 	if err := h.A.T.ExecuteTemplate(w, name, data); err != nil {
 		http.Error(w, err.Error(), 500)
 	}
+}
+
+func (h *Handler) renderErrorPage(w http.ResponseWriter, r *http.Request, status int, message, messageKey string, redirectSeconds int) {
+	h.renderTemplate(w, status, "error.html", errorPage{
+		pageContext: h.pageContext(r, fmt.Sprint(status)),
+		StatusCode:  status, Message: message, MessageKey: messageKey, RedirectSeconds: redirectSeconds,
+	})
+}
+
+func (h *Handler) renderUploadPage(w http.ResponseWriter, r *http.Request) {
+	h.renderTemplate(w, http.StatusOK, "upload.html", uploadPageData{
+		pageContext: h.pageContext(r, "Upload"),
+		Max:         h.A.C.MaxUploadBytes,
+	})
+}
+
+func (h *Handler) renderArchivePage(w http.ResponseWriter, r *http.Request, data archivePageData) {
+	data.pageContext = h.pageContext(r, data.Share.Title)
+	h.renderTemplate(w, http.StatusOK, "share.html", data)
+}
+
+func (h *Handler) renderAdminLoginPage(w http.ResponseWriter, r *http.Request) {
+	h.renderTemplate(w, http.StatusOK, "admin_login.html", h.pageContext(r, "Admin Login"))
+}
+
+func (h *Handler) renderAdminDashboardPage(w http.ResponseWriter, r *http.Request, data adminDashboardPage) {
+	data.pageContext = h.pageContext(r, "Admin")
+	h.renderTemplate(w, http.StatusOK, "admin_dashboard.html", data)
+}
+
+func (h *Handler) renderAdminSharesPage(w http.ResponseWriter, r *http.Request, data adminSharesPage) {
+	data.pageContext = h.pageContext(r, "Shares")
+	h.renderTemplate(w, http.StatusOK, "admin_shares.html", data)
 }
 
 // templateDir finds web/templates from repo root or package test working directories.

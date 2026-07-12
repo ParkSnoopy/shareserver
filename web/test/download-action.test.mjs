@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { armDownloadAction } from "../static/js/download-action.js";
+import { armDownloadAction } from "../static/js/download.js";
 
 // Harness: create a minimal anchor + entry pair, simulate a click, and
 // observe the outcome (href change, download attribute, preventDefault).

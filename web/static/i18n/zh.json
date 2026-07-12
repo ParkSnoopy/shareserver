@@ -5,11 +5,6 @@
 		"logout": "退出",
 		"language": "语言"
 	},
-	"dev": {
-		"title": "# 开发模式",
-		"active": "DEBUG=true 已启用。",
-		"hint": "# 仅本地模式：可能允许默认管理员密码和临时密钥。生产环境请用 DEBUG=0。"
-	},
 	"upload": {
 		"title": "# 上传",
 		"intro": "# 拖入文件，粘贴剪贴板，设置策略，上传。",
@@ -107,7 +102,9 @@
 		"plain": "明文",
 		"purged": "已清除",
 		"never": "永不",
-		"delete": "删除"
+		"delete": "删除",
+		"deleteDone": "分享文件和数据库记录已删除。",
+		"deleteFailed": "无法删除分享。文件和数据库记录已保留，可稍后重试。"
 	},
 	"error": {
 		"notFound": "未找到。",

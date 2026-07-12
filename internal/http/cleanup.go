@@ -3,10 +3,8 @@ package httpx
 import (
 	"context"
 	"log"
-	"os"
-	"path/filepath"
 	"shareserver/internal/ent/session"
-	"shareserver/internal/share"
+	"shareserver/internal/storage"
 	"time"
 )
 
@@ -36,69 +34,24 @@ func (h *Handler) nextMidnight() time.Time {
 
 // PurgeExpired deletes blob files and rows after an expired share passes its grace period.
 func (h *Handler) PurgeExpired() int {
-	now := time.Now().UTC() // background goroutine — owns its clock
-	active := share.ActiveAt(now)
-	remover := share.NewRemover(h.Store)
-	count := 0
-	for _, s := range h.Store.WithExpiry() {
-		if !active.IsPurgeable(s.ExpiresAt) {
-			continue
-		}
-		if err := remover.Remove(s); err != nil {
-			continue
-		}
-		count++
-	}
-	return count
+	return h.integrity().Purge(time.Now().UTC())
 }
 
 // ReconcileResult reports how many metadata rows or files storage repair removed.
-type ReconcileResult struct {
-	MissingFiles int
-	OrphanFiles  int
-}
+type ReconcileResult = storage.ReconcileResult
 
 // ReconcileBlobStore keeps blob storage and metadata consistent:
 // rows whose blob files were removed are deleted, and blob files with no row
 // are removed from disk.
 func (h *Handler) ReconcileBlobStore() ReconcileResult {
-	result := ReconcileResult{}
-	known := map[string]struct{}{}
-	for _, s := range h.Store.All() {
-		blobPath := filepath.Clean(s.BlobPath)
-		if _, err := os.Stat(blobPath); err != nil {
-			if os.IsNotExist(err) {
-				if err := share.NewRemover(h.Store).Remove(s); err == nil {
-					result.MissingFiles++
-				}
-			}
-			continue
-		}
-		known[absPath(blobPath)] = struct{}{}
-	}
-	_ = filepath.WalkDir(h.A.C.BlobDir, func(path string, entry os.DirEntry, err error) error {
-		if err != nil || entry == nil || entry.IsDir() {
-			return nil
-		}
-		blobPath := filepath.Clean(path)
-		if _, ok := known[absPath(blobPath)]; ok {
-			return nil
-		}
-		if err := share.RemoveBlob(blobPath); err == nil {
-			result.OrphanFiles++
-		}
-		return nil
-	})
-	return result
+	return h.integrity().Reconcile()
 }
 
-// absPath normalizes paths before comparing registered blobs with disk entries.
-func absPath(path string) string {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return filepath.Clean(path)
+func (h *Handler) integrity() *storage.Integrity {
+	if h.Integrity != nil {
+		return h.Integrity
 	}
-	return abs
+	return storage.NewIntegrity(h.A.C.BlobDir, h.Store)
 }
 
 // CleanExpiredSessions removes session rows past their expiry. Bounds the

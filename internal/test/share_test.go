@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"shareserver/internal/share"
+	"shareserver/internal/storage"
 )
 
 func TestIsExpired(t *testing.T) {
@@ -196,7 +197,7 @@ func TestStoreDeleteRemovesRow(t *testing.T) {
 	}
 }
 
-func TestRemoverDeletesBlobAndRow(t *testing.T) {
+func TestStorageIntegrityDeletesBlobAndRow(t *testing.T) {
 	s, _ := newStore(t)
 	dir := t.TempDir()
 	id := "remove"
@@ -208,7 +209,7 @@ func TestRemoverDeletesBlobAndRow(t *testing.T) {
 	sh.BlobPath = blob
 	mustInsertShare(t, s, sh)
 
-	if err := share.NewRemover(s).Remove(sh); err != nil {
+	if err := storage.NewIntegrity(dir, s).Remove(sh); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(blob); !os.IsNotExist(err) {

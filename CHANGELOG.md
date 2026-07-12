@@ -1,5 +1,18 @@
 # Change Log
 
+## 2026-07-12
+
+### Update
+- Deepen storage integrity into one module for Share removal, expiry Purge, and blob/database Reconcile.
+- Deepen Render context with typed page data instead of caller-owned template maps.
+- Render one production page in all configurations; remove Dev page content, routes, assets, and language strings.
+- Require HTTPS for every Session cookie without configuring HSTS.
+- Collapse Download action branching and lifecycle into `web/static/js/download.js`.
+
+### Fix
+- Report admin Share deletion success or failure instead of silently redirecting; preserve the database row when blob deletion fails so the operation can be retried.
+- Verify admin deletion removes both the blob and Share database record.
+
 ## 2026-06-30
 
 ### Add

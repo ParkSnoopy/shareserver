@@ -73,28 +73,16 @@ func (h *Handler) getOrCreateSession(w http.ResponseWriter, r *http.Request) Ses
 	}
 	s, created := h.sessions().GetOrCreate(r.Context(), sid)
 	if created {
-		h.setCookie(w, s.ID, h.isHTTPS(r))
+		h.setCookie(w, s.ID)
 	}
 	return s
 }
 
-// isHTTPS reports whether the client is reaching us over TLS, either
-// directly or via a trusted proxy that sets X-Forwarded-Proto.
-func (h *Handler) isHTTPS(r *http.Request) bool {
-	if r.TLS != nil {
-		return true
-	}
-	if h.trustProxyHeaders(r) && r.Header.Get("X-Forwarded-Proto") == "https" {
-		return true
-	}
-	return false
-}
-
-// setCookie issues the HTTP-only session cookie with Secure only on trusted HTTPS.
-func (h *Handler) setCookie(w http.ResponseWriter, sid string, secure bool) {
+// setCookie issues the HTTP-only session cookie for the HTTPS-only deployment.
+func (h *Handler) setCookie(w http.ResponseWriter, sid string) {
 	http.SetCookie(w, &http.Cookie{
 		Name: "sid", Value: sid, Path: "/", HttpOnly: true,
-		SameSite: http.SameSiteLaxMode, Secure: secure,
+		SameSite: http.SameSiteLaxMode, Secure: true,
 		MaxAge: int(sessionDuration.Seconds()),
 	})
 }
@@ -184,7 +172,7 @@ func (h *Handler) clientIP(r *http.Request) string {
 // discarded and a fresh id+csrf is issued bound to the admin.
 func (h *Handler) loginSession(w http.ResponseWriter, r *http.Request, oldSID string, adminID int64) {
 	s := h.sessions().Rotate(r.Context(), oldSID, adminID)
-	h.setCookie(w, s.ID, h.isHTTPS(r))
+	h.setCookie(w, s.ID)
 }
 
 // logoutSession deletes one session row so the cookie can no longer authorize requests.

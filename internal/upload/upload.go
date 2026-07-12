@@ -126,7 +126,7 @@ func (u *Uploader) Do(req Request) (Result, error) {
 		return Result{}, ErrStore
 	}
 	if used+size > u.Cfg.StorageCapBytes {
-		share.RemoveBlobBestEffort(path)
+		storage.RemoveBlobBestEffort(path)
 		audit.Log(u.DB, "public", ip, "upload_cap_reject", id, fmt.Sprintf("%d + %d > %d", used, size, u.Cfg.StorageCapBytes))
 		return Result{}, ErrCap
 	}
@@ -139,7 +139,7 @@ func (u *Uploader) Do(req Request) (Result, error) {
 		ExpiresAt: sql.NullString{String: exp, Valid: true},
 	}
 	if err := u.Store.Insert(sh); err != nil {
-		share.RemoveBlobBestEffort(path)
+		storage.RemoveBlobBestEffort(path)
 		return Result{}, ErrStore
 	}
 	audit.Log(u.DB, "public", ip, "upload", id, fmt.Sprintf("size=%d visibility=%s encrypted=%d", size, vis, enc))

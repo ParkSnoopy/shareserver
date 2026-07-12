@@ -11,24 +11,27 @@ import (
 	"shareserver/internal/app"
 	"shareserver/internal/auth"
 	"shareserver/internal/share"
+	"shareserver/internal/storage"
 	"shareserver/internal/upload"
 )
 
 // Handler groups HTTP dependencies; route methods keep policy in owned modules.
 type Handler struct {
-	A        *app.App
-	Store    *share.Store
-	Upload   *upload.Uploader
-	Sessions SessionLifecycle
+	A         *app.App
+	Store     *share.Store
+	Integrity *storage.Integrity
+	Upload    *upload.Uploader
+	Sessions  SessionLifecycle
 }
 
 // New wires middleware, routes, templates, share store, and upload policy.
 func New(a *app.App) http.Handler {
 	store := share.NewStore(a.DB)
 	h := &Handler{
-		A:        a,
-		Store:    store,
-		Sessions: NewSessions(a.DB),
+		A:         a,
+		Store:     store,
+		Integrity: storage.NewIntegrity(a.C.BlobDir, store),
+		Sessions:  NewSessions(a.DB),
 		Upload: &upload.Uploader{
 			Cfg: upload.Config{
 				BlobDir:         a.C.BlobDir,
@@ -47,10 +50,6 @@ func New(a *app.App) http.Handler {
 	r.Use(h.withSession)
 	r.Use(h.csrf)
 	r.Get("/download-sw.js", h.downloadServiceWorker)
-	if a.C.Dev {
-		r.Get("/dev/debug.js", h.devDebugScript)
-		r.Get("/dev/debug.css", h.devDebugStyle)
-	}
 	r.Handle("/static/*", noCacheStatic(http.StripPrefix("/static/", http.FileServer(http.Dir(repoFile("web", "static"))))))
 	r.Get("/", h.home)
 	r.Post("/", h.home)
@@ -75,13 +74,7 @@ func New(a *app.App) http.Handler {
 
 // notFoundPage renders the friendly 404 page with the home redirect countdown.
 func (h *Handler) notFoundPage(w http.ResponseWriter, r *http.Request) {
-	h.renderStatus(w, r, http.StatusNotFound, "error.html", map[string]any{
-		"Title":           "404",
-		"StatusCode":      http.StatusNotFound,
-		"Message":         "not found.",
-		"MessageKey":      "error.notFound",
-		"RedirectSeconds": 5,
-	})
+	h.renderErrorPage(w, r, http.StatusNotFound, "not found.", "error.notFound", 5)
 }
 
 // downloadServiceWorker serves the no-store worker used for Android-safe filenames.
@@ -89,26 +82,6 @@ func (h *Handler) downloadServiceWorker(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Service-Worker-Allowed", "/")
 	http.ServeFile(w, r, repoFile("web", "static", "js", "download-sw.js"))
-}
-
-// devDebugScript serves local development-only browser diagnostics.
-func (h *Handler) devDebugScript(w http.ResponseWriter, r *http.Request) {
-	h.serveDevFile(w, r, "web/dev/debug.js")
-}
-
-// devDebugStyle serves local development-only browser diagnostic styles.
-func (h *Handler) devDebugStyle(w http.ResponseWriter, r *http.Request) {
-	h.serveDevFile(w, r, "web/dev/debug.css")
-}
-
-// serveDevFile fails closed so development assets are unreachable in production.
-func (h *Handler) serveDevFile(w http.ResponseWriter, r *http.Request, path string) {
-	if !h.A.C.Dev {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	http.ServeFile(w, r, repoFile(path))
 }
 
 // noCacheStatic wraps the static file server so browsers always revalidate
@@ -153,7 +126,7 @@ func (h *Handler) archivePage(w http.ResponseWriter, r *http.Request) {
 
 // uploadPage renders the browser-side zip/encrypt upload form.
 func (h *Handler) uploadPage(w http.ResponseWriter, r *http.Request) {
-	h.render(w, r, "upload.html", map[string]any{"Max": h.A.C.MaxUploadBytes})
+	h.renderUploadPage(w, r)
 }
 
 // sharePage renders one share, preserving expired status and hiding purged shares.
@@ -174,14 +147,10 @@ func (h *Handler) sharePage(w http.ResponseWriter, r *http.Request) {
 // renderArchive feeds the shared archive/detail template for home, lookup, and share pages.
 func (h *Handler) renderArchive(w http.ResponseWriter, r *http.Request, selected share.Share, hasSelected bool, status, keyHash string) {
 	archives, privateMode := h.archivesForKey(r, keyHash)
-	h.render(w, r, "share.html", map[string]any{
-		"Share":       selected,
-		"Selected":    hasSelected,
-		"Status":      status,
-		"Expired":     hasSelected && status == share.StatusExpired,
-		"Archives":    archives,
-		"PrivateMode": privateMode,
-		"Dev":         h.A.C.Dev,
+	h.renderArchivePage(w, r, archivePageData{
+		Share: selected, Selected: hasSelected, Status: status,
+		Expired:  hasSelected && status == share.StatusExpired,
+		Archives: archives, PrivateMode: privateMode,
 	})
 }
 

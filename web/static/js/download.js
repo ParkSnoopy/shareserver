@@ -1,3 +1,5 @@
+import { translate } from "./i18n.js";
+
 const WORKER_URL = "/download-sw.js";
 const DOWNLOAD_MESSAGE_TIMEOUT_MS = 5000;
 
@@ -213,13 +215,13 @@ function objectDownload(file, name, publicHref = "") {
 	};
 }
 
-// prepareBlobDownload resolves the final href before the user taps the link.
-export async function prepareBlobDownload(blob, name, shareID = "", options = {}) {
+// prepareDownload resolves one transport choice without re-detecting context.
+async function prepareDownload(blob, name, shareID, options, stageAllowed) {
 	const debug = typeof options.onDebug === "function" ? options.onDebug : () => {};
 	const downloadName = safeDownloadName(name);
 	const file = namedFile(blob, downloadName);
 	const publicHref = shareID ? downloadURLPath(shareID, downloadName) : "";
-	if (shareID && canStageDownload()) {
+	if (shareID && stageAllowed) {
 		try {
 			const url = await stagedDownloadURL(file, shareID, downloadName, {
 				onDebug: debug,
@@ -247,4 +249,100 @@ export async function prepareBlobDownload(blob, name, shareID = "", options = {}
 		publicHref,
 	});
 	return objectDownload(file, downloadName, publicHref);
+}
+
+// prepareBlobDownload chooses transport for callers without an armed anchor.
+export function prepareBlobDownload(blob, name, shareID = "", options = {}) {
+	return prepareDownload(blob, name, shareID, options, canStageDownload());
+}
+
+// armDownloadAction owns the complete entry-download interaction. Secure
+// contexts stage through the worker; insecure contexts create a fresh blob URL
+// synchronously inside the user gesture.
+export function armDownloadAction(anchor, entry, shareID, options = {}) {
+	const debug = typeof options.onDebug === "function" ? options.onDebug : () => {};
+	anchor._entry = entry;
+	anchor.href = downloadURLPath(shareID, entry.name);
+	anchor.textContent = translate("action.download");
+	anchor.removeAttribute("aria-disabled");
+
+	let blobURL = "";
+	anchor.addEventListener("click", (event) => {
+		if (anchor.getAttribute("aria-disabled") === "true") {
+			event.preventDefault();
+			return;
+		}
+		const selectedEntry = anchor._entry;
+		if (!selectedEntry) {
+			event.preventDefault();
+			debug("download-click-missing-entry", { shareID });
+			return;
+		}
+		debug("download-click", downloadDebugData(selectedEntry, shareID));
+		if (canStageDownload()) {
+			event.preventDefault();
+			if (anchor.dataset.busy === "1") return;
+			anchor.dataset.busy = "1";
+			prepareDownload(typedDownloadBlob(selectedEntry), selectedEntry.name, shareID, { onDebug: debug }, true)
+				.then((prepared) => {
+					debug("download-prepared", preparedDebugData(prepared, selectedEntry, shareID));
+					clickPreparedDownload(prepared);
+					debug("download-click-dispatched", preparedDebugData(prepared, selectedEntry, shareID));
+					prepared.cleanup();
+				})
+				.catch((err) => {
+					debug("download-prepare-failed", {
+						...downloadDebugData(selectedEntry, shareID),
+						errorName: err?.name || "",
+						errorMessage: err?.message || String(err),
+					});
+				})
+				.finally(() => {
+					delete anchor.dataset.busy;
+				});
+			return;
+		}
+		if (blobURL) URL.revokeObjectURL(blobURL);
+		blobURL = URL.createObjectURL(typedDownloadBlob(selectedEntry));
+		anchor.href = blobURL;
+		anchor.download = safeDownloadName(selectedEntry.name);
+		debug("download-object-url-ready", {
+			...downloadDebugData(selectedEntry, shareID),
+			clickHrefScheme: "blob",
+		});
+	});
+
+	return () => {
+		if (blobURL) URL.revokeObjectURL(blobURL);
+		blobURL = "";
+	};
+}
+
+function typedDownloadBlob(entry) {
+	return entry.type ? new Blob([entry.blob], { type: entry.type }) : entry.blob;
+}
+
+function downloadDebugData(entry, shareID) {
+	return {
+		shareID,
+		name: safeDownloadName(entry.name),
+		contentType: entry.type || "",
+		bytes: entry.blob?.size || 0,
+		secureContext: globalThis.window?.isSecureContext,
+		serviceWorkerController: Boolean(globalThis.navigator?.serviceWorker?.controller),
+	};
+}
+
+function preparedDebugData(prepared, entry, shareID) {
+	return {
+		...downloadDebugData(entry, shareID),
+		href: prepared.href || "",
+		clickHrefScheme: urlScheme(prepared.clickHref || prepared.href || ""),
+		useDownloadAttribute: prepared.useDownloadAttribute,
+	};
+}
+
+function urlScheme(url) {
+	const match = String(url || "").match(/^([a-z][a-z0-9+.-]*):/i);
+	return match ? match[1] : "same-origin";
 }

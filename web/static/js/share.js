@@ -1,6 +1,10 @@
 import { ArchiveErrorCode, openArchive } from "./archive.js";
-import { armDownloadAction } from "./download-action.js";
-import { clickPreparedDownload, prepareBlobDownload, safeDownloadName } from "./download.js";
+import {
+	armDownloadAction,
+	clickPreparedDownload,
+	prepareBlobDownload,
+	safeDownloadName,
+} from "./download.js";
 import { fmtBytes, Progress } from "./progress.js";
 import { initI18n, onLanguageChange, translate } from "./i18n.js";
 import { normalizeText } from "./text.js";

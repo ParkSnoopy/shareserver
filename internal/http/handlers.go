@@ -77,7 +77,7 @@ func (h *Handler) uploadPost(w http.ResponseWriter, r *http.Request) {
 
 // adminLoginPage renders the admin sign-in form.
 func (h *Handler) adminLoginPage(w http.ResponseWriter, r *http.Request) {
-	h.render(w, r, "admin_login.html", nil)
+	h.renderAdminLoginPage(w, r)
 }
 
 // adminLoginPost delegates credential decisions to auth and rotates admin session state on success.
@@ -117,30 +117,36 @@ func (h *Handler) adminDashboard(w http.ResponseWriter, r *http.Request) {
 	used := storage.UsedBytes(h.A.C.BlobDir)
 	active := share.ActiveAt(requestTime(r))
 	cleanupDone := r.URL.Query().Get("storage_cleanup") == "done"
-	h.render(w, r, "admin_dashboard.html", map[string]any{
-		"Used": used, "Cap": h.A.C.StorageCapBytes,
-		"Active": h.Store.CountActive(active), "Expired": h.Store.CountExpired(active), "Purged": h.Store.CountPurged(),
-		"StorageCleanupDone": cleanupDone,
-		"StorageMissingRows": r.URL.Query().Get("missing"),
-		"StorageOrphanFiles": r.URL.Query().Get("orphan"),
+	h.renderAdminDashboardPage(w, r, adminDashboardPage{
+		Used: used, Cap: h.A.C.StorageCapBytes,
+		Active: h.Store.CountActive(active), Expired: h.Store.CountExpired(active), Purged: h.Store.CountPurged(),
+		StorageCleanupDone: cleanupDone,
+		StorageMissingRows: r.URL.Query().Get("missing"),
+		StorageOrphanFiles: r.URL.Query().Get("orphan"),
 	})
 }
 
 // adminShares lists recent shares for inspection and deletion.
 func (h *Handler) adminShares(w http.ResponseWriter, r *http.Request) {
 	list := h.Store.ListAll()
-	h.render(w, r, "admin_shares.html", map[string]any{"Shares": list, "Now": requestTime(r)})
+	h.renderAdminSharesPage(w, r, adminSharesPage{
+		Shares: list, Now: requestTime(r), DeleteResult: r.URL.Query().Get("delete"),
+	})
 }
 
 // adminDelete removes one share's blob and metadata when the admin confirms deletion.
 func (h *Handler) adminDelete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	result := "failed"
 	if s, ok := h.getShare(id); ok {
-		if err := share.NewRemover(h.Store).Remove(s); err == nil {
+		if err := h.integrity().Remove(s); err == nil {
 			audit.Log(h.A.DB, "admin", h.clientIP(r), "delete", id, "removed blob and metadata")
+			result = "done"
+		} else {
+			audit.Log(h.A.DB, "admin", h.clientIP(r), "delete_failed", id, err.Error())
 		}
 	}
-	http.Redirect(w, r, "/admin/shares", 303)
+	http.Redirect(w, r, "/admin/shares?delete="+result, http.StatusSeeOther)
 }
 
 // adminStorageCleanup runs storage reconciliation and redirects with repair counts.

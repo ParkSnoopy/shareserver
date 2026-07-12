@@ -8,9 +8,6 @@
     <title>{{.Title}}</title>
     <link rel="icon" href="/static/img/favicon.ico" sizes="any">
     <link rel="stylesheet" href="/static/css/app.css">
-    {{if .Dev}}
-      <script src="/dev/debug.js"></script>
-    {{end}}
   </head>
   <body>
     <nav class="tabs">
@@ -25,13 +22,6 @@
       {{end}}
     </nav>
     <main class="shell">
-      {{if .Dev}}
-        <section class="api-detail detail-pane" role="status">
-          <h3 data-i18n="dev.title"># Dev Mode</h3>
-          <p class="err" data-i18n="dev.active">DEBUG=1 is active.</p>
-          <p class="comment-text" data-i18n="dev.hint"># local-only mode: default admin password and ephemeral secrets may be allowed. Use DEBUG=0 for production.</p>
-        </section>
-      {{end}}
 {{end}}
 
 {{define "base_bottom"}}
