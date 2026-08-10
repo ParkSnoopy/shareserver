@@ -158,20 +158,14 @@ func TestExpiryRuleGoAgreesWithSQL(t *testing.T) {
 	}
 }
 
-func TestIsPurgeableHonoursGraceWindow(t *testing.T) {
+func TestIsPurgeableMatchesExpiry(t *testing.T) {
 	now := time.Now().UTC()
 
-	// Expired 25h ago — past the 24h grace → purgeable
-	past24 := now.Add(-25 * time.Hour).Format(time.RFC3339Nano)
+	// Any expired Share is immediately purgeable so its storage is released.
+	recent := now.Add(-time.Second).Format(time.RFC3339Nano)
 	rule := share.ActiveAt(now)
-	if !rule.IsPurgeable(sql.NullString{String: past24, Valid: true}) {
-		t.Fatal("share expired 25h ago should be purgeable")
-	}
-
-	// Expired 1h ago — within grace → not purgeable
-	recent := now.Add(-1 * time.Hour).Format(time.RFC3339Nano)
-	if rule.IsPurgeable(sql.NullString{String: recent, Valid: true}) {
-		t.Fatal("share expired 1h ago should not be purgeable (within grace)")
+	if !rule.IsPurgeable(sql.NullString{String: recent, Valid: true}) {
+		t.Fatal("expired share should be purgeable")
 	}
 
 	// Not expired → not purgeable

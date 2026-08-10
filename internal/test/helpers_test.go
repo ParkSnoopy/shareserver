@@ -15,6 +15,7 @@ import (
 	"shareserver/internal/ent/session"
 	httpx "shareserver/internal/http"
 	"shareserver/internal/share"
+	"shareserver/internal/storage"
 	"shareserver/internal/upload"
 )
 
@@ -79,10 +80,12 @@ func newUploader(t *testing.T, cap int64) (*upload.Uploader, *share.Store, strin
 	client := newClient(t)
 	dir := t.TempDir()
 	store := share.NewStore(client)
+	integrity := storage.NewIntegrity(dir, store)
 	u := &upload.Uploader{
-		Cfg:   upload.Config{BlobDir: dir, MaxUploadBytes: 10 << 20, StorageCapBytes: cap, AppSecret: []byte("test-secret")},
-		Store: store,
-		DB:    client,
+		Cfg:       upload.Config{BlobDir: dir, MaxUploadBytes: 10 << 20, StorageCapBytes: cap, AppSecret: []byte("test-secret")},
+		Store:     store,
+		Integrity: integrity,
+		DB:        client,
 	}
 	return u, store, dir
 }

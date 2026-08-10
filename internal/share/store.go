@@ -73,9 +73,9 @@ func (s *Store) All() []Share {
 }
 
 // WithExpiry returns non-purged shares that have an expiry set. The caller
-// applies the purge rule (ActiveRule.IsPurgeable) to decide which are past
-// the grace window. Renamed from Purgeable — that name implied the result
-// was already purgeable, but it includes live shares too.
+// applies the purge rule (ActiveRule.IsPurgeable) to select expired Shares.
+// The name distinguishes this query from an already-filtered purgeable list
+// because it includes active Shares too.
 func (s *Store) WithExpiry() []Share {
 	return s.query(s.Client.Share.Query().
 		Where(entshare.PurgedAtIsNil(), entshare.ExpiresAtNotNil()))

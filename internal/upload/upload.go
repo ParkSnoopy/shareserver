@@ -44,9 +44,10 @@ type Config struct {
 
 // Uploader is the deep upload module. One Do call runs the full policy.
 type Uploader struct {
-	Cfg   Config
-	Store *share.Store
-	DB    *ent.Client // for audit only
+	Cfg       Config
+	Store     *share.Store
+	Integrity *storage.Integrity
+	DB        *ent.Client // for audit only
 }
 
 // Request is the parsed multipart form plus the blob reader.
@@ -108,6 +109,10 @@ func (u *Uploader) Do(req Request) (Result, error) {
 
 	capMu.Lock()
 	defer capMu.Unlock()
+
+	// Expired Shares must release their blobs and metadata before capacity is
+	// measured, otherwise stale storage can reject an upload that fits.
+	u.Integrity.Purge(time.Now().UTC())
 
 	// Cap precheck.
 	used := storage.UsedBytes(u.Cfg.BlobDir)

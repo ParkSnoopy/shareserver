@@ -35,7 +35,7 @@ func (i *Integrity) Remove(sh share.Share) error {
 	return i.Store.Delete(sh.ID)
 }
 
-// Purge removes Shares whose expiry passed the grace window at now.
+// Purge removes Shares that are expired at now.
 func (i *Integrity) Purge(now time.Time) int {
 	rule := share.ActiveAt(now)
 	count := 0

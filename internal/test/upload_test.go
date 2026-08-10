@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"shareserver/internal/share"
 	"shareserver/internal/upload"
 )
 
@@ -52,6 +53,38 @@ func TestCapReachedWritesNoBlob(t *testing.T) {
 	}
 	if n := countBlobs(t, dir); n != 0 {
 		t.Fatalf("blob written despite cap reached: %d files", n)
+	}
+}
+
+func TestUploadPurgesExpiredShareBeforeCapCheck(t *testing.T) {
+	u, store, dir := newUploader(t, 5)
+	id := "00000000-0000-0000-0000-000000000201"
+	blob := filepath.Join(dir, id+".blob")
+	if err := os.WriteFile(blob, []byte("stale"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sh := sampleShare(id, "public", time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano))
+	sh.BlobPath = blob
+	mustInsertShare(t, store, sh)
+
+	res, err := u.Do(upload.Request{
+		Title: "replacement", Visibility: "public", ExpiryHours: "6",
+		Reader: strReader("fresh"), UploaderIP: "1.2.3.4",
+	})
+	if err != nil {
+		t.Fatalf("upload rejected by expired blob usage: %v", err)
+	}
+	if _, ok := store.Get(id); ok {
+		t.Fatal("expired share row survived upload cap cleanup")
+	}
+	if _, err := os.Stat(blob); !os.IsNotExist(err) {
+		t.Fatalf("expired blob survived upload cap cleanup: %v", err)
+	}
+	if _, ok := store.Get(res.ID); !ok {
+		t.Fatal("replacement share row missing")
+	}
+	if got := len(store.ListPublic(share.ActiveAt(time.Now().UTC()))); got != 1 {
+		t.Fatalf("active share count = %d, want 1", got)
 	}
 }
 

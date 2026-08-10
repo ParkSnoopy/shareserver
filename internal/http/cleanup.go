@@ -12,8 +12,9 @@ import (
 func (h *Handler) StartCleanup() {
 	go func() {
 		r := h.ReconcileBlobStore()
-		if r.MissingFiles > 0 || r.OrphanFiles > 0 {
-			log.Printf("storage reconcile done missing_files=%d orphan_files=%d", r.MissingFiles, r.OrphanFiles)
+		n := h.PurgeExpired()
+		if r.MissingFiles > 0 || r.OrphanFiles > 0 || n > 0 {
+			log.Printf("storage cleanup done count=%d missing_files=%d orphan_files=%d", n, r.MissingFiles, r.OrphanFiles)
 		}
 		for {
 			d := h.nextMidnight()

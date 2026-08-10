@@ -1,5 +1,11 @@
 # Change Log
 
+## 2026-08-10
+
+### Fix
+- Purge expired Share blobs and database rows before upload capacity checks so stale storage cannot cause false insufficient-space errors.
+- Purge expired Shares during startup storage cleanup instead of waiting for the daily maintenance pass.
+
 ## 2026-07-12
 
 ### Update

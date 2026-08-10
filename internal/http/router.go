@@ -27,10 +27,11 @@ type Handler struct {
 // New wires middleware, routes, templates, share store, and upload policy.
 func New(a *app.App) http.Handler {
 	store := share.NewStore(a.DB)
+	integrity := storage.NewIntegrity(a.C.BlobDir, store)
 	h := &Handler{
 		A:         a,
 		Store:     store,
-		Integrity: storage.NewIntegrity(a.C.BlobDir, store),
+		Integrity: integrity,
 		Sessions:  NewSessions(a.DB),
 		Upload: &upload.Uploader{
 			Cfg: upload.Config{
@@ -39,8 +40,9 @@ func New(a *app.App) http.Handler {
 				StorageCapBytes: a.C.StorageCapBytes,
 				AppSecret:       a.C.AppSecret,
 			},
-			Store: store,
-			DB:    a.DB,
+			Store:     store,
+			Integrity: integrity,
+			DB:        a.DB,
 		},
 	}
 	a.T = setupTemplates(a.C.TZ)

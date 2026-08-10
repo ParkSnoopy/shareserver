@@ -67,7 +67,7 @@ func TestPurgeExpiredDeletesBlobAndRow(t *testing.T) {
 	if err := os.WriteFile(blob, []byte("old"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	sh := sampleShare(id, "public", time.Now().UTC().Add(-25*time.Hour).Format(time.RFC3339Nano))
+	sh := sampleShare(id, "public", time.Now().UTC().Add(-time.Second).Format(time.RFC3339Nano))
 	sh.BlobPath = blob
 	mustInsertShare(t, h.Store, sh)
 
