@@ -88,6 +88,48 @@ func TestUploadPurgesExpiredShareBeforeCapCheck(t *testing.T) {
 	}
 }
 
+func TestStorageReconcileWaitsForUploadMetadataInsert(t *testing.T) {
+	u, store, _ := newUploader(t, 1<<30)
+	reader := &blockingReader{started: make(chan struct{}), release: make(chan struct{})}
+	uploadDone := make(chan error, 1)
+	go func() {
+		res, err := u.Do(upload.Request{
+			Title: "concurrent", Visibility: "public", ExpiryHours: "6",
+			Reader: reader, UploaderIP: "1.2.3.4",
+		})
+		if err == nil {
+			if _, ok := store.Get(res.ID); !ok {
+				err = errors.New("upload metadata row missing")
+			}
+		}
+		uploadDone <- err
+	}()
+	<-reader.started
+
+	reconcileDone := make(chan struct{})
+	go func() {
+		u.Integrity.Reconcile()
+		close(reconcileDone)
+	}()
+	select {
+	case <-reconcileDone:
+		close(reader.release)
+		<-uploadDone
+		t.Fatal("storage reconciliation ran before upload metadata was inserted")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(reader.release)
+	if err := <-uploadDone; err != nil {
+		t.Fatalf("upload failed during concurrent reconciliation: %v", err)
+	}
+	select {
+	case <-reconcileDone:
+	case <-time.After(time.Second):
+		t.Fatal("storage reconciliation did not resume after upload")
+	}
+}
+
 func TestSuccessfulUploadInsertsRowAndBlob(t *testing.T) {
 	u, store, dir := newUploader(t, 1<<30)
 	res, err := u.Do(upload.Request{
@@ -263,4 +305,20 @@ func (r *bytesReader) Read(p []byte) (int, error) {
 	n := copy(p, r.b[r.i:])
 	r.i += n
 	return n, nil
+}
+
+type blockingReader struct {
+	started chan struct{}
+	release chan struct{}
+	done    bool
+}
+
+func (r *blockingReader) Read(p []byte) (int, error) {
+	if r.done {
+		return 0, io.EOF
+	}
+	r.done = true
+	close(r.started)
+	<-r.release
+	return copy(p, []byte("concurrent upload")), nil
 }

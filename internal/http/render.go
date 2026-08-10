@@ -70,17 +70,16 @@ type archivePageData struct {
 
 type adminDashboardPage struct {
 	pageContext
-	Used, Cap                              int64
-	Active, Expired, Purged                int
-	StorageCleanupDone                     bool
-	StorageMissingRows, StorageOrphanFiles string
+	Used, Cap               int64
+	Active, Expired, Purged int
 }
 
 type adminSharesPage struct {
 	pageContext
 	Shares       []share.Share
-	Now          time.Time
 	DeleteResult string
+	Removed      string
+	Failed       string
 }
 
 func (h *Handler) pageContext(r *http.Request, title string) pageContext {

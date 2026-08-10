@@ -195,11 +195,62 @@ func TestNotFoundPageShowsCountdownRedirect(t *testing.T) {
 	)
 }
 
+func TestArchivePageReconcilesDatabaseAndBlobFilesBeforeRendering(t *testing.T) {
+	a, router := newRouter(t)
+	store := share.NewStore(a.DB)
+	orphan := filepath.Join(a.C.BlobDir, "public-page-orphan.blob")
+	if err := os.WriteFile(orphan, []byte("orphan"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	missing := sampleShare("00000000-0000-0000-0000-000000000112", "public", futureTS(time.Hour))
+	missing.BlobPath = filepath.Join(a.C.BlobDir, "missing-public.blob")
+	mustInsertShare(t, store, missing)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected home 200, got %d", w.Code)
+	}
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Fatalf("orphan blob survived archive page render: %v", err)
+	}
+	if _, ok := store.Get(missing.ID); ok {
+		t.Fatal("missing-blob database row survived archive page render")
+	}
+}
+
+func TestSharePageDropsDatabaseRowWhenBlobIsMissing(t *testing.T) {
+	a, router := newRouter(t)
+	store := share.NewStore(a.DB)
+	id := "00000000-0000-0000-0000-000000000113"
+	sh := sampleShare(id, "public", futureTS(time.Hour))
+	sh.BlobPath = filepath.Join(a.C.BlobDir, "missing-detail.blob")
+	mustInsertShare(t, store, sh)
+
+	req := httptest.NewRequest(http.MethodGet, "/s/"+id, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("missing-blob Share page status = %d, want 404", w.Code)
+	}
+	if _, ok := store.Get(id); ok {
+		t.Fatal("missing-blob Share database row survived detail request")
+	}
+}
+
 func TestExpiredSharePageShowsCountdownRedirect(t *testing.T) {
 	a, router := newRouter(t)
 	store := share.NewStore(a.DB)
 	id := "00000000-0000-0000-0000-000000000001"
-	mustInsertShare(t, store, sampleShare(id, "public", time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano)))
+	sh := sampleShare(id, "public", time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano))
+	sh.BlobPath = filepath.Join(a.C.BlobDir, id+".blob")
+	if err := os.WriteFile(sh.BlobPath, []byte("expired"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mustInsertShare(t, store, sh)
 
 	req := httptest.NewRequest(http.MethodGet, "/s/"+id, nil)
 	w := httptest.NewRecorder()
@@ -221,7 +272,12 @@ func TestBlobExpiredReturns410(t *testing.T) {
 	a, router := newRouter(t)
 	store := share.NewStore(a.DB)
 	id := "00000000-0000-0000-0000-000000000001"
-	mustInsertShare(t, store, sampleShare(id, "public", time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano)))
+	sh := sampleShare(id, "public", time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano))
+	sh.BlobPath = filepath.Join(a.C.BlobDir, id+".blob")
+	if err := os.WriteFile(sh.BlobPath, []byte("expired"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mustInsertShare(t, store, sh)
 
 	req := httptest.NewRequest(http.MethodGet, "/blob/"+id, nil)
 	w := httptest.NewRecorder()
@@ -396,7 +452,7 @@ func TestBaseTemplateIncludesFavicon(t *testing.T) {
 	assertBodyContains(t, w.Body.String(), `<link rel="icon" href="/static/img/favicon.ico" sizes="any">`)
 }
 
-func TestAdminDashboardShowsStorageCleanupAction(t *testing.T) {
+func TestAdminDashboardOmitsManualStorageCleanupAction(t *testing.T) {
 	a, router := newRouter(t)
 	insertAdminSession(t, a.DB, "admin-sid", "admin-csrf")
 
@@ -408,13 +464,12 @@ func TestAdminDashboardShowsStorageCleanupAction(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected admin dashboard 200, got %d", w.Code)
 	}
-	assertBodyContains(t, w.Body.String(),
-		"clean up stored files now",
-		"action=\"/admin/storage/cleanup\"",
-	)
+	if strings.Contains(w.Body.String(), "admin.cleanStorage") || strings.Contains(w.Body.String(), "/admin/storage/cleanup") {
+		t.Fatalf("admin dashboard still exposes manual storage cleanup:\n%s", w.Body.String())
+	}
 }
 
-func TestAdminStorageCleanupRemovesUnregisteredFiles(t *testing.T) {
+func TestAdminSharesReconcilesDatabaseAndBlobFilesBeforeRendering(t *testing.T) {
 	a, router := newRouter(t)
 	insertAdminSession(t, a.DB, "cleanup-admin-sid", "cleanup-csrf")
 	if err := os.MkdirAll(a.C.BlobDir, 0755); err != nil {
@@ -431,58 +486,110 @@ func TestAdminStorageCleanupRemovesUnregisteredFiles(t *testing.T) {
 	sh := sampleShare("00000000-0000-0000-0000-000000000104", "public", futureTS(time.Hour))
 	sh.BlobPath = registered
 	mustInsertShare(t, store, sh)
+	missing := sampleShare("00000000-0000-0000-0000-000000000107", "public", futureTS(time.Hour))
+	missing.BlobPath = filepath.Join(a.C.BlobDir, "missing.blob")
+	mustInsertShare(t, store, missing)
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/storage/cleanup", strings.NewReader("csrf=cleanup-csrf"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req := httptest.NewRequest(http.MethodGet, "/admin/shares", nil)
 	req.AddCookie(&http.Cookie{Name: "sid", Value: "cleanup-admin-sid"})
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusSeeOther {
-		t.Fatalf("expected cleanup redirect, got %d", w.Code)
-	}
-	if got := w.Header().Get("Location"); got != "/admin?storage_cleanup=done&missing=0&orphan=1" {
-		t.Fatalf("unexpected cleanup redirect: %q", got)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected admin shares 200, got %d", w.Code)
 	}
 	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
-		t.Fatalf("unregistered file still exists: %v", err)
+		t.Fatalf("orphan file survived admin shares render: %v", err)
 	}
 	if _, err := os.Stat(registered); err != nil {
 		t.Fatalf("registered file was removed: %v", err)
 	}
+	if _, ok := store.Get(missing.ID); ok {
+		t.Fatal("database row with missing blob survived admin shares render")
+	}
+	if _, ok := store.Get(sh.ID); !ok {
+		t.Fatal("synchronized Share row was removed")
+	}
 }
 
-func TestAdminDeleteRemovesBlobAndShareRow(t *testing.T) {
+func TestAdminSharesOffersBulkSelection(t *testing.T) {
 	a, router := newRouter(t)
-	insertAdminSession(t, a.DB, "delete-admin-sid", "delete-admin-csrf")
+	insertAdminSession(t, a.DB, "bulk-ui-admin-sid", "bulk-ui-csrf")
 	store := share.NewStore(a.DB)
-	id := "00000000-0000-0000-0000-000000000105"
-	blobPath := filepath.Join(a.C.BlobDir, id+".blob")
-	if err := os.WriteFile(blobPath, []byte("delete me"), 0644); err != nil {
+	id := "00000000-0000-0000-0000-000000000108"
+	blob := filepath.Join(a.C.BlobDir, id+".blob")
+	if err := os.WriteFile(blob, []byte("select me"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	sh := sampleShare(id, "public", futureTS(time.Hour))
-	sh.BlobPath = blobPath
+	sh.BlobPath = blob
 	mustInsertShare(t, store, sh)
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/shares/"+id+"/delete", strings.NewReader("csrf=delete-admin-csrf"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "sid", Value: "delete-admin-sid"})
+	req := httptest.NewRequest(http.MethodGet, "/admin/shares", nil)
+	req.AddCookie(&http.Cookie{Name: "sid", Value: "bulk-ui-admin-sid"})
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin/shares?delete=done" {
-		t.Fatalf("delete response = %d %q", w.Code, w.Header().Get("Location"))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected admin shares 200, got %d", w.Code)
 	}
-	if _, err := os.Stat(blobPath); !os.IsNotExist(err) {
-		t.Fatalf("deleted blob remains: %v", err)
+	assertBodyContains(t, w.Body.String(),
+		`action="/admin/shares/delete"`,
+		`id="selectAllShares"`,
+		`name="ids" value="`+id+`"`,
+		`data-i18n="admin.deleteSelected"`,
+		`/static/js/admin-shares.js`,
+	)
+}
+
+func TestAdminBulkDeleteRemovesSelectedBlobAndDatabasePairs(t *testing.T) {
+	a, router := newRouter(t)
+	insertAdminSession(t, a.DB, "bulk-delete-admin-sid", "bulk-delete-csrf")
+	store := share.NewStore(a.DB)
+	selected := []string{
+		"00000000-0000-0000-0000-000000000109",
+		"00000000-0000-0000-0000-000000000110",
 	}
-	if _, ok := store.Get(id); ok {
-		t.Fatal("deleted Share row remains")
+	unselected := "00000000-0000-0000-0000-000000000111"
+	paths := map[string]string{}
+	for _, id := range append(selected, unselected) {
+		blob := filepath.Join(a.C.BlobDir, id+".blob")
+		if err := os.WriteFile(blob, []byte(id), 0644); err != nil {
+			t.Fatal(err)
+		}
+		sh := sampleShare(id, "public", futureTS(time.Hour))
+		sh.BlobPath = blob
+		mustInsertShare(t, store, sh)
+		paths[id] = blob
+	}
+
+	body := "csrf=bulk-delete-csrf&ids=" + selected[0] + "&ids=" + selected[1]
+	req := httptest.NewRequest(http.MethodPost, "/admin/shares/delete", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "sid", Value: "bulk-delete-admin-sid"})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin/shares?delete=done&removed=2&failed=0" {
+		t.Fatalf("bulk delete response = %d %q", w.Code, w.Header().Get("Location"))
+	}
+	for _, id := range selected {
+		if _, ok := store.Get(id); ok {
+			t.Fatalf("selected database row %s remains", id)
+		}
+		if _, err := os.Stat(paths[id]); !os.IsNotExist(err) {
+			t.Fatalf("selected blob %s remains: %v", id, err)
+		}
+	}
+	if _, ok := store.Get(unselected); !ok {
+		t.Fatal("unselected database row was removed")
+	}
+	if _, err := os.Stat(paths[unselected]); err != nil {
+		t.Fatalf("unselected blob was removed: %v", err)
 	}
 }
 
-func TestAdminDeleteReportsBlobFailureAndKeepsShareRow(t *testing.T) {
+func TestAdminBulkDeleteDropsMetadataWhenRegisteredPathIsNotAFile(t *testing.T) {
 	a, router := newRouter(t)
 	insertAdminSession(t, a.DB, "failed-delete-admin-sid", "failed-delete-admin-csrf")
 	store := share.NewStore(a.DB)
@@ -497,16 +604,19 @@ func TestAdminDeleteReportsBlobFailureAndKeepsShareRow(t *testing.T) {
 	}
 	mustInsertShare(t, store, sh)
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/shares/"+id+"/delete", strings.NewReader("csrf=failed-delete-admin-csrf"))
+	req := httptest.NewRequest(http.MethodPost, "/admin/shares/delete", strings.NewReader("csrf=failed-delete-admin-csrf&ids="+id))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "sid", Value: "failed-delete-admin-sid"})
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin/shares?delete=failed" {
-		t.Fatalf("failed delete response = %d %q", w.Code, w.Header().Get("Location"))
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin/shares?delete=done&removed=1&failed=0" {
+		t.Fatalf("bulk delete response = %d %q", w.Code, w.Header().Get("Location"))
 	}
-	if _, ok := store.Get(id); !ok {
-		t.Fatal("Share row removed after blob deletion failed")
+	if _, ok := store.Get(id); ok {
+		t.Fatal("database row survived after registered blob path was not a file")
+	}
+	if _, err := os.Stat(filepath.Join(sh.BlobPath, "child")); !os.IsNotExist(err) {
+		t.Fatalf("orphan child file survived: %v", err)
 	}
 }

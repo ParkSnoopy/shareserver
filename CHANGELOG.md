@@ -5,6 +5,10 @@
 ### Fix
 - Purge expired Share blobs and database rows before upload capacity checks so stale storage cannot cause false insufficient-space errors.
 - Purge expired Shares during startup storage cleanup instead of waiting for the daily maintenance pass.
+- Reconcile database rows and blob files automatically before archive and admin pages render, replacing the manual storage-cleanup control.
+
+### Add
+- Select individual or all Shares on `/admin/shares` and remove the selected blob/database pairs in one bulk action.
 
 ## 2026-07-12
 

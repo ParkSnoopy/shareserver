@@ -3,26 +3,42 @@
 <div class="wide">
 	<h1 data-i18n="admin.sharesTitle"># Shares</h1>
 	{{ if eq .DeleteResult "done" }}
-	<p class="comment-text" data-i18n="admin.deleteDone">Share blob and database record deleted.</p>
+	<p class="comment-text" data-i18n="admin.deleteDone" data-i18n-vars='{"removed":"{{.Removed}}"}'>Removed {{.Removed}} selected Shares, including blobs and database records.</p>
 	{{ else if eq .DeleteResult "failed" }}
-	<p class="err" data-i18n="admin.deleteFailed">Share could not be deleted. Blob and database record kept for retry.</p>
+	<p class="err" data-i18n="admin.deleteFailed" data-i18n-vars='{"removed":"{{.Removed}}","failed":"{{.Failed}}"}'>Removed {{.Removed}} selected Shares; {{.Failed}} could not be removed and remain synchronized for retry.</p>
+	{{ else if eq .DeleteResult "none" }}
+	<p class="comment-text" data-i18n="admin.deleteNone">Select at least one Share.</p>
 	{{ end }}
 	<div class="section-rule" aria-hidden="true"></div>
+	<form id="bulkDeleteShares" method="post" action="/admin/shares/delete">
+		<input type="hidden" name="csrf" value="{{.CSRF}}">
+		<div class="admin-bulk-actions">
+			<label>
+				<input id="selectAllShares" type="checkbox">
+				<span data-i18n="admin.selectAll">select all</span>
+			</label>
+			<button id="deleteSelectedShares" type="submit" class="field-md" disabled>
+				<span data-i18n="admin.deleteSelected">delete selected</span>
+			</button>
+		</div>
 	<table class="admin-shares">
 		<thead>
 			<tr>
+				<th data-i18n="admin.select">select</th>
 				<th data-i18n="admin.id">id</th>
 				<th data-i18n="admin.shareTitle">title</th>
 				<th data-i18n="admin.state">state</th>
 				<th data-i18n="admin.size">size</th>
 				<th data-i18n="admin.uploadBy">upload by</th>
 				<th data-i18n="admin.expires">expires</th>
-				<th data-i18n="admin.actions">actions</th>
 			</tr>
 		</thead>
 		<tbody>
 			{{ range .Shares }}
 			<tr>
+				<td>
+					<input class="share-selector" type="checkbox" name="ids" value="{{.ID}}" aria-label="Select {{.Title}}">
+				</td>
 				<td><a href="/s/{{.ID}}">{{ short .ID }}</a></td>
 				<td class="admin-title">{{ .Title }}</td>
 				<td>
@@ -40,16 +56,12 @@
 					{{ if .ExpiresAt.Valid }}{{ fmtTime .ExpiresAt.String }}
 					{{ else }}<span data-i18n="admin.never">never</span>{{ end }}
 				</td>
-				<td>
-					<form method="post" action="/admin/shares/{{.ID}}/delete">
-						<input type="hidden" name="csrf" value="{{$.CSRF}}">
-						<button class="field-sm" data-i18n="admin.delete">delete</button>
-					</form>
-				</td>
 			</tr>
 			{{ end }}
 		</tbody>
 	</table>
+	</form>
 </div>
+<script type="module" src="/static/js/admin-shares.js"></script>
 {{ template "base_bottom" . }}
 {{ end }}

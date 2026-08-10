@@ -26,8 +26,12 @@ type Handler struct {
 
 // New wires middleware, routes, templates, share store, and upload policy.
 func New(a *app.App) http.Handler {
-	store := share.NewStore(a.DB)
-	integrity := storage.NewIntegrity(a.C.BlobDir, store)
+	integrity := a.Integrity
+	if integrity == nil {
+		integrity = storage.NewIntegrity(a.C.BlobDir, share.NewStore(a.DB))
+		a.Integrity = integrity
+	}
+	store := integrity.Store
 	h := &Handler{
 		A:         a,
 		Store:     store,
@@ -67,8 +71,7 @@ func New(a *app.App) http.Handler {
 		r.Use(h.requireAdmin)
 		r.Get("/admin", h.adminDashboard)
 		r.Get("/admin/shares", h.adminShares)
-		r.Post("/admin/storage/cleanup", h.adminStorageCleanup)
-		r.Post("/admin/shares/{id}/delete", h.adminDelete)
+		r.Post("/admin/shares/delete", h.adminBulkDelete)
 	})
 	r.NotFound(h.notFoundPage)
 	return r
@@ -114,6 +117,7 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request) {
 
 // archivesForKey selects the public list or private-key matches for the archive sidebar.
 func (h *Handler) archivesForKey(r *http.Request, keyHash string) ([]share.Share, bool) {
+	h.ReconcileBlobStore()
 	active := share.ActiveAt(requestTime(r))
 	if keyHash != "" {
 		return h.Store.ListByKey(active, keyHash), true
@@ -177,7 +181,18 @@ func (h *Handler) getShare(id string) (share.Share, bool) {
 	if !validUUID(id) {
 		return share.Share{}, false
 	}
-	return h.Store.Get(id)
+	sh, ok := h.Store.Get(id)
+	if !ok {
+		return share.Share{}, false
+	}
+	info, err := os.Lstat(filepath.Clean(sh.BlobPath))
+	if err == nil && info.Mode().IsRegular() {
+		return sh, true
+	}
+	if err == nil || os.IsNotExist(err) {
+		_ = h.integrity().Remove(sh)
+	}
+	return share.Share{}, false
 }
 
 var uuidRE = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)

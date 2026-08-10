@@ -26,47 +26,23 @@
 		</p>
 	</div>
 
-	{{ if .StorageCleanupDone }}
 	<div class="row">
 		<span>04</span>
-		<p
-			data-i18n="admin.storageDone"
-			data-i18n-vars='{"files":"{{ .StorageOrphanFiles }}","rows":"{{ .StorageMissingRows }}"}'
-		>
-			Storage check finished: removed {{ .StorageOrphanFiles }} files not in the
-			database and cleared {{ .StorageMissingRows }} database records whose
-			files were missing.
-		</p>
-	</div>
-	{{ end }}
-
-	<div class="row">
-		<span>05</span>
 		<div class="section-rule"></div>
 	</div>
 
 	<div class="row">
-		<span>06</span>
+		<span>05</span>
 		<h1 data-i18n="admin.actionsTitle"># Actions</h1>
 	</div>
 
 	<div class="row">
-		<span>07</span>
+		<span>06</span>
 		<p>
 			<a href="/admin/shares" data-i18n="admin.inspectShares"
 				>inspect shares →</a
 			>
 		</p>
-	</div>
-
-	<div class="row">
-		<span>08</span>
-		<form method="post" action="/admin/storage/cleanup">
-			<input type="hidden" name="csrf" value="{{.CSRF}}">
-			<button type="submit" class="primary-action-button field-md">
-				<span data-i18n="admin.cleanStorage">clean up stored files now</span>
-			</button>
-		</form>
 	</div>
 </div>
 {{ template "base_bottom" . }}

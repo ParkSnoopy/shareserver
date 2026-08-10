@@ -24,6 +24,26 @@ func TestReconcileDeletesRowsForMissingBlobFiles(t *testing.T) {
 	}
 }
 
+func TestReconcileDeletesRowsForNonFileBlobPaths(t *testing.T) {
+	h, _ := newTestHandler(t)
+	id := "00000000-0000-0000-0000-000000000114"
+	directory := filepath.Join(h.A.C.BlobDir, "not-a-blob")
+	if err := os.MkdirAll(directory, 0755); err != nil {
+		t.Fatal(err)
+	}
+	sh := sampleShare(id, "public", futureTS(time.Hour))
+	sh.BlobPath = directory
+	mustInsertShare(t, h.Store, sh)
+
+	result := h.ReconcileBlobStore()
+	if result.MissingFiles != 1 {
+		t.Fatalf("non-file blob path cleanup count = %d, want 1", result.MissingFiles)
+	}
+	if _, ok := h.Store.Get(id); ok {
+		t.Fatal("database row survived non-file blob path reconciliation")
+	}
+}
+
 func TestReconcileRemovesUnregisteredFilesWithoutRows(t *testing.T) {
 	h, _ := newTestHandler(t)
 	if err := os.MkdirAll(h.A.C.BlobDir, 0755); err != nil {

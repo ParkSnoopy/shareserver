@@ -113,6 +113,8 @@ func (u *Uploader) Do(req Request) (Result, error) {
 	// Expired Shares must release their blobs and metadata before capacity is
 	// measured, otherwise stale storage can reject an upload that fits.
 	u.Integrity.Purge(time.Now().UTC())
+	unlockStorage := u.Integrity.Lock()
+	defer unlockStorage()
 
 	// Cap precheck.
 	used := storage.UsedBytes(u.Cfg.BlobDir)

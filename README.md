@@ -89,9 +89,10 @@ This runs:
    text normalization, encryption metadata bounds, and Android-safe download
    filenames.
 
-Storage cleanup keeps the blob directory and database in sync: a missing blob
-file removes its database row, and a `.blob` file with no database row is
-deleted from disk.
+Storage integrity keeps the blob directory and database in sync: archive and
+admin pages reconcile both sides before rendering, a missing blob removes its
+database row, and a stored file with no database row is deleted from disk.
+Admins can select multiple Shares and remove each selected pair in one action.
 
 ---
 

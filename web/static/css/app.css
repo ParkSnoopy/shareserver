@@ -513,6 +513,23 @@ td form {
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
+.admin-bulk-actions {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	margin: 12px 0;
+}
+.admin-bulk-actions label {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+.admin-shares input[type="checkbox"],
+.admin-bulk-actions input[type="checkbox"] {
+	width: 16px;
+	height: 16px;
+	margin: 0;
+}
 #preview {
 	max-width: 900px;
 	margin-top: 16px;

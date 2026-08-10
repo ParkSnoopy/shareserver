@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/go-chi/chi/v5"
 	"net/http"
 	"shareserver/internal/audit"
 	"shareserver/internal/auth"
@@ -112,45 +111,64 @@ func (h *Handler) adminLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// adminDashboard shows storage/share counters and the manual repair action.
+// adminDashboard reconciles storage before showing synchronized counters.
 func (h *Handler) adminDashboard(w http.ResponseWriter, r *http.Request) {
+	h.ReconcileBlobStore()
 	used := storage.UsedBytes(h.A.C.BlobDir)
 	active := share.ActiveAt(requestTime(r))
-	cleanupDone := r.URL.Query().Get("storage_cleanup") == "done"
 	h.renderAdminDashboardPage(w, r, adminDashboardPage{
 		Used: used, Cap: h.A.C.StorageCapBytes,
 		Active: h.Store.CountActive(active), Expired: h.Store.CountExpired(active), Purged: h.Store.CountPurged(),
-		StorageCleanupDone: cleanupDone,
-		StorageMissingRows: r.URL.Query().Get("missing"),
-		StorageOrphanFiles: r.URL.Query().Get("orphan"),
 	})
 }
 
-// adminShares lists recent shares for inspection and deletion.
+// adminShares reconciles storage before listing Shares for inspection and deletion.
 func (h *Handler) adminShares(w http.ResponseWriter, r *http.Request) {
+	h.ReconcileBlobStore()
 	list := h.Store.ListAll()
 	h.renderAdminSharesPage(w, r, adminSharesPage{
-		Shares: list, Now: requestTime(r), DeleteResult: r.URL.Query().Get("delete"),
+		Shares: list, DeleteResult: r.URL.Query().Get("delete"),
+		Removed: r.URL.Query().Get("removed"), Failed: r.URL.Query().Get("failed"),
 	})
 }
 
-// adminDelete removes one share's blob and metadata when the admin confirms deletion.
-func (h *Handler) adminDelete(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	result := "failed"
-	if s, ok := h.getShare(id); ok {
-		if err := h.integrity().Remove(s); err == nil {
-			audit.Log(h.A.DB, "admin", h.clientIP(r), "delete", id, "removed blob and metadata")
-			result = "done"
-		} else {
-			audit.Log(h.A.DB, "admin", h.clientIP(r), "delete_failed", id, err.Error())
-		}
+// adminBulkDelete removes each selected Share as one blob/database pair.
+func (h *Handler) adminBulkDelete(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad selection", http.StatusBadRequest)
+		return
 	}
-	http.Redirect(w, r, "/admin/shares?delete="+result, http.StatusSeeOther)
-}
+	removed, failed := 0, 0
+	seen := map[string]struct{}{}
+	for _, id := range r.Form["ids"] {
+		if _, duplicate := seen[id]; duplicate {
+			continue
+		}
+		seen[id] = struct{}{}
+		if len(seen) > 300 || !validUUID(id) {
+			failed++
+			continue
+		}
+		sh, ok := h.Store.Get(id)
+		if !ok {
+			failed++
+			continue
+		}
+		if err := h.integrity().Remove(sh); err != nil {
+			audit.Log(h.A.DB, "admin", h.clientIP(r), "delete_failed", id, err.Error())
+			failed++
+			continue
+		}
+		audit.Log(h.A.DB, "admin", h.clientIP(r), "delete", id, "removed blob and metadata")
+		removed++
+	}
 
-// adminStorageCleanup runs storage reconciliation and redirects with repair counts.
-func (h *Handler) adminStorageCleanup(w http.ResponseWriter, r *http.Request) {
-	result := h.ReconcileBlobStore()
-	http.Redirect(w, r, fmt.Sprintf("/admin?storage_cleanup=done&missing=%d&orphan=%d", result.MissingFiles, result.OrphanFiles), http.StatusSeeOther)
+	result := "done"
+	if removed == 0 && failed == 0 {
+		result = "none"
+	} else if failed > 0 {
+		result = "failed"
+	}
+	h.ReconcileBlobStore()
+	http.Redirect(w, r, fmt.Sprintf("/admin/shares?delete=%s&removed=%d&failed=%d", result, removed, failed), http.StatusSeeOther)
 }
