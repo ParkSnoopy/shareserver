@@ -51,10 +51,18 @@ export function downloadURLPath(shareID, name) {
 }
 
 export function canStageDownload() {
+	// WebKit on iPhone/iPad can append .html to service-worker-generated
+	// downloads. Use the gesture-time blob URL path there, including iPadOS
+	// desktop mode, so the anchor download name remains authoritative.
+	const ios =
+		typeof navigator !== "undefined" &&
+		(/\b(iPad|iPhone|iPod)\b/i.test(navigator.userAgent || "") ||
+			(navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
 	return (
 		typeof window !== "undefined" &&
 		window.isSecureContext &&
 		typeof navigator !== "undefined" &&
+		!ios &&
 		"serviceWorker" in navigator &&
 		typeof MessageChannel !== "undefined"
 	);
@@ -257,8 +265,8 @@ export function prepareBlobDownload(blob, name, shareID = "", options = {}) {
 }
 
 // armDownloadAction owns the complete entry-download interaction. Secure
-// contexts stage through the worker; insecure contexts create a fresh blob URL
-// synchronously inside the user gesture.
+// contexts stage through the worker; iOS/iPadOS and insecure contexts create a
+// fresh blob URL synchronously inside the user gesture.
 export function armDownloadAction(anchor, entry, shareID, options = {}) {
 	const debug = typeof options.onDebug === "function" ? options.onDebug : () => {};
 	anchor._entry = entry;

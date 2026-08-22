@@ -5,6 +5,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function progressHarness() {
 	let text = "";
+	let reveals = 0;
 	const el = {
 		set textContent(v) {
 			text = v;
@@ -12,12 +13,24 @@ function progressHarness() {
 		get textContent() {
 			return text;
 		},
+		scrollIntoView() {
+			reveals++;
+		},
 	};
 	globalThis.performance = { now: () => Date.now() };
-	return { el, progress: new Progress(el), text: () => text };
+	return { el, progress: new Progress(el), text: () => text, reveals: () => reveals };
 }
 
 describe("Progress", () => {
+	test("first phase update renders immediately", () => {
+		const { progress, text, reveals } = progressHarness();
+
+		progress.set("upload", 0, 1024, "sending");
+
+		expect(text()).toMatch(/upload.*0%.*sending/);
+		expect(reveals()).toBe(1);
+	});
+
 	test("reset clears failed phase before retry success", async () => {
 		const { progress, text } = progressHarness();
 		progress.pulse("decrypt", 100, "working");

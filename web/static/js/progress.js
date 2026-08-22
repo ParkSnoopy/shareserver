@@ -70,12 +70,17 @@ export class Progress {
 		}
 	}
 
-	// set queues a throttled phase update so fast operations do not flicker.
+	// set renders a phase's first update immediately, then throttles later updates.
 	set(phase, done, total, state = "") {
 		if (this.failed.has(phase)) return;
-		if (!this.seen.has(phase)) {
+		const firstUpdate = !this.seen.has(phase);
+		if (firstUpdate) {
 			this.seen.add(phase);
 			this.order.push(phase);
+			this.lines.set(phase, this.line(phase, done, total, state));
+			this.render();
+			this.el.scrollIntoView?.({ block: "nearest" });
+			return;
 		}
 		this.pending = { phase, done, total, state };
 		if (this.timer) return;

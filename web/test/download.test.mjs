@@ -32,7 +32,7 @@ function stageWorkerDownload(listeners, data) {
 	expect(reply).toEqual({ ok: true });
 }
 
-function withDownloadGlobals(userAgent, fn) {
+function withDownloadGlobals(userAgent, fn, details = {}) {
 	const oldWindow = globalThis.window;
 	const oldNavigator = globalThis.navigator;
 	Object.defineProperty(globalThis, "window", {
@@ -41,7 +41,7 @@ function withDownloadGlobals(userAgent, fn) {
 	});
 	Object.defineProperty(globalThis, "navigator", {
 		configurable: true,
-		value: { userAgent, serviceWorker: {} },
+		value: { userAgent, serviceWorker: {}, ...details },
 	});
 	try {
 		return fn();
@@ -96,6 +96,23 @@ describe("download helpers", () => {
 				canStageDownload(),
 			),
 		).toBe(true);
+	});
+	test("iPhone and iPad downloads avoid service-worker staging", () => {
+		const iphone =
+			"Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 Version/18.6 Mobile/15E148 Safari/604.1";
+		const ipad =
+			"Mozilla/5.0 (iPad; CPU OS 18_6 like Mac OS X) AppleWebKit/605.1.15 Version/18.6 Mobile/15E148 Safari/604.1";
+		const ipadDesktop =
+			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/18.6 Safari/605.1.15";
+
+		expect(withDownloadGlobals(iphone, () => canStageDownload())).toBe(false);
+		expect(withDownloadGlobals(ipad, () => canStageDownload())).toBe(false);
+		expect(
+			withDownloadGlobals(ipadDesktop, () => canStageDownload(), {
+				platform: "MacIntel",
+				maxTouchPoints: 5,
+			}),
+		).toBe(false);
 	});
 	test("staged service worker downloads are reusable until forgotten", async () => {
 		const listeners = loadDownloadWorker();

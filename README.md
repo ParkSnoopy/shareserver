@@ -86,7 +86,7 @@ This runs:
    Ent-backed metadata, uploads, sessions, expiry/404 pages, blob serving, and
    storage reconciliation.
 2. **`bun test`** — client-side tests under `web/test/` for Progress state,
-   text normalization, encryption metadata bounds, and Android-safe download
+   text normalization, encryption metadata bounds, and mobile-safe download
    filenames.
 
 Storage integrity keeps the blob directory and database in sync: archive and
