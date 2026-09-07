@@ -74,6 +74,20 @@ func (i *Integrity) Purge(now time.Time) int {
 	return count
 }
 
+// PurgeUnprotected removes legacy Shares that cannot pass password-gated
+// download policy, freeing their otherwise permanently unreachable blobs.
+func (i *Integrity) PurgeUnprotected() int {
+	unlock := i.Lock()
+	defer unlock()
+	count := 0
+	for _, sh := range i.Store.WithoutDownloadProtection() {
+		if err := i.remove(sh); err == nil {
+			count++
+		}
+	}
+	return count
+}
+
 // Reconcile removes metadata for missing blobs and unregistered files from the
 // configured blob directory.
 func (i *Integrity) Reconcile() ReconcileResult {

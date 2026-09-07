@@ -68,6 +68,20 @@ func (_u *SessionUpdate) SetNillableCsrf(v *string) *SessionUpdate {
 	return _u
 }
 
+// SetLanguage sets the "language" field.
+func (_u *SessionUpdate) SetLanguage(v string) *SessionUpdate {
+	_u.mutation.SetLanguage(v)
+	return _u
+}
+
+// SetNillableLanguage sets the "language" field if the given value is not nil.
+func (_u *SessionUpdate) SetNillableLanguage(v *string) *SessionUpdate {
+	if v != nil {
+		_u.SetLanguage(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *SessionUpdate) SetCreatedAt(v string) *SessionUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -149,6 +163,9 @@ func (_u *SessionUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Csrf(); ok {
 		_spec.SetField(session.FieldCsrf, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.Language(); ok {
+		_spec.SetField(session.FieldLanguage, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(session.FieldCreatedAt, field.TypeString, value)
 	}
@@ -212,6 +229,20 @@ func (_u *SessionUpdateOne) SetCsrf(v string) *SessionUpdateOne {
 func (_u *SessionUpdateOne) SetNillableCsrf(v *string) *SessionUpdateOne {
 	if v != nil {
 		_u.SetCsrf(*v)
+	}
+	return _u
+}
+
+// SetLanguage sets the "language" field.
+func (_u *SessionUpdateOne) SetLanguage(v string) *SessionUpdateOne {
+	_u.mutation.SetLanguage(v)
+	return _u
+}
+
+// SetNillableLanguage sets the "language" field if the given value is not nil.
+func (_u *SessionUpdateOne) SetNillableLanguage(v *string) *SessionUpdateOne {
+	if v != nil {
+		_u.SetLanguage(*v)
 	}
 	return _u
 }
@@ -326,6 +357,9 @@ func (_u *SessionUpdateOne) sqlSave(ctx context.Context) (_node *Session, err er
 	}
 	if value, ok := _u.mutation.Csrf(); ok {
 		_spec.SetField(session.FieldCsrf, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Language(); ok {
+		_spec.SetField(session.FieldLanguage, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(session.FieldCreatedAt, field.TypeString, value)

@@ -5,6 +5,8 @@ package upload
 
 import (
 	"database/sql"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -22,6 +24,7 @@ const (
 	maxTitleBytes    = 512
 	maxCipherBytes   = 4096
 	maxManifestBytes = 64 << 10
+	maxPasswordBytes = 4 << 10
 )
 
 var capMu sync.Mutex
@@ -31,6 +34,8 @@ var (
 	ErrCap                = errors.New("storage cap reached")
 	ErrStore              = errors.New("store failed")
 	ErrPrivateKeyRequired = errors.New("private key required")
+	ErrPasswordRequired   = errors.New("download password required")
+	ErrEncryptionRequired = errors.New("encrypted payload required")
 	ErrMetadataTooLarge   = errors.New("metadata too large")
 )
 
@@ -52,16 +57,17 @@ type Uploader struct {
 
 // Request is the parsed multipart form plus the blob reader.
 type Request struct {
-	Title, Visibility, PrivateKey, CipherMeta, ZipManifest string
-	EncryptedFlag, ExpiryHours                             string
-	Reader                                                 io.Reader
-	UploaderIP                                             string
-	Admin                                                  bool
+	Title, Visibility, PrivateKey, DownloadPassword, CipherMeta, ZipManifest string
+	EncryptedFlag, ExpiryHours                                               string
+	Reader                                                                   io.Reader
+	UploaderIP                                                               string
+	Admin                                                                    bool
 }
 
 // Result is what a successful upload yields to the handler.
 type Result struct {
-	ID, URL string
+	ID, URL, DownloadURL, ExpiresAt string
+	Size                            int64
 }
 
 // Do runs the upload policy. On any error no share row is left behind; a blob
@@ -75,10 +81,18 @@ func (u *Uploader) Do(req Request) (Result, error) {
 	if title == "" {
 		title = "untitled share"
 	}
-	if len(title) > maxTitleBytes || len(req.CipherMeta) > maxCipherBytes || len(req.ZipManifest) > maxManifestBytes {
+	if len(title) > maxTitleBytes || len(req.DownloadPassword) > maxPasswordBytes || len(req.CipherMeta) > maxCipherBytes || len(req.ZipManifest) > maxManifestBytes {
 		return Result{}, ErrMetadataTooLarge
 	}
-
+	if req.DownloadPassword == "" {
+		return Result{}, ErrPasswordRequired
+	}
+	if req.EncryptedFlag != "1" && req.EncryptedFlag != "true" {
+		return Result{}, ErrEncryptionRequired
+	}
+	if !validCipherMeta(req.CipherMeta) {
+		return Result{}, ErrEncryptionRequired
+	}
 	vis := req.Visibility
 	if vis != "private" {
 		vis = "public"
@@ -90,10 +104,7 @@ func (u *Uploader) Do(req Request) (Result, error) {
 		}
 		keyHash = auth.HMACKey(u.Cfg.AppSecret, req.PrivateKey)
 	}
-	enc := 0
-	if req.EncryptedFlag == "1" || req.EncryptedFlag == "true" {
-		enc = 1
-	}
+	enc := 1
 	expHours, _ := strconv.Atoi(req.ExpiryHours)
 	if expHours <= 0 {
 		expHours = 6
@@ -110,8 +121,9 @@ func (u *Uploader) Do(req Request) (Result, error) {
 	capMu.Lock()
 	defer capMu.Unlock()
 
-	// Expired Shares must release their blobs and metadata before capacity is
-	// measured, otherwise stale storage can reject an upload that fits.
+	// Unprotected legacy and expired Shares must release their blobs and metadata
+	// before capacity is measured, otherwise unreachable storage can reject an upload that fits.
+	u.Integrity.PurgeUnprotected()
 	u.Integrity.Purge(time.Now().UTC())
 	unlockStorage := u.Integrity.Lock()
 	defer unlockStorage()
@@ -123,6 +135,13 @@ func (u *Uploader) Do(req Request) (Result, error) {
 		return Result{}, ErrCap
 	}
 
+	// Serialize expensive verifier hashing behind capacity checks so anonymous
+	// uploads cannot run unbounded bcrypt work in parallel or while storage is full.
+	downloadPasswordHash, err := auth.HashDownloadPassword(req.DownloadPassword)
+	if err != nil {
+		return Result{}, ErrStore
+	}
+
 	// Store blob.
 	id := storage.UUID()
 	path, sum, size, err := storage.Store(u.Cfg.BlobDir, id, req.Reader, u.Cfg.MaxUploadBytes)
@@ -132,6 +151,10 @@ func (u *Uploader) Do(req Request) (Result, error) {
 		}
 		return Result{}, ErrStore
 	}
+	if size < 16 {
+		storage.RemoveBlobBestEffort(path)
+		return Result{}, ErrEncryptionRequired
+	}
 	if used+size > u.Cfg.StorageCapBytes {
 		storage.RemoveBlobBestEffort(path)
 		audit.Log(u.DB, "public", ip, "upload_cap_reject", id, fmt.Sprintf("%d + %d > %d", used, size, u.Cfg.StorageCapBytes))
@@ -140,7 +163,7 @@ func (u *Uploader) Do(req Request) (Result, error) {
 
 	// Insert metadata; roll back blob on failure.
 	sh := share.Share{
-		ID: id, Title: title, Visibility: vis, PrivateKeyHash: keyHash,
+		ID: id, Title: title, Visibility: vis, PrivateKeyHash: keyHash, DownloadPasswordHash: downloadPasswordHash,
 		Encrypted: enc == 1, CipherMeta: req.CipherMeta, ZipManifest: manifestForInsert(enc, req.ZipManifest),
 		Size: size, BlobPath: path, BlobSHA256: sum, UploaderIP: ip,
 		ExpiresAt: sql.NullString{String: exp, Valid: true},
@@ -150,7 +173,30 @@ func (u *Uploader) Do(req Request) (Result, error) {
 		return Result{}, ErrStore
 	}
 	audit.Log(u.DB, "public", ip, "upload", id, fmt.Sprintf("size=%d visibility=%s encrypted=%d", size, vis, enc))
-	return Result{ID: id, URL: "/s/" + id}, nil
+	return Result{
+		ID: id, URL: "/s/" + id, DownloadURL: "/api/v0/download/" + id,
+		Size: size, ExpiresAt: exp,
+	}, nil
+}
+
+type cipherMetadata struct {
+	KDF        string `json:"kdf"`
+	Iterations int    `json:"iterations"`
+	Salt       string `json:"salt"`
+	Cipher     string `json:"cipher"`
+	Nonce      string `json:"nonce"`
+}
+
+// validCipherMeta rejects uploads that do not describe the browser's required
+// encrypted wire format. Payload bytes remain opaque and are never decrypted.
+func validCipherMeta(raw string) bool {
+	var meta cipherMetadata
+	if json.Unmarshal([]byte(raw), &meta) != nil || meta.KDF != "PBKDF2-SHA-384" || meta.Cipher != "AES-256-GCM" || meta.Iterations < 100000 || meta.Iterations > 1200000 {
+		return false
+	}
+	salt, saltErr := base64.StdEncoding.DecodeString(meta.Salt)
+	nonce, nonceErr := base64.StdEncoding.DecodeString(meta.Nonce)
+	return saltErr == nil && nonceErr == nil && len(salt) == 16 && len(nonce) == 12
 }
 
 // manifestForInsert drops the plaintext ZIP manifest for encrypted shares so

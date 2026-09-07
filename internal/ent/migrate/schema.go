@@ -77,6 +77,7 @@ var (
 		{Name: "id", Type: field.TypeString},
 		{Name: "admin_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "csrf", Type: field.TypeString},
+		{Name: "language", Type: field.TypeString, Default: "en"},
 		{Name: "created_at", Type: field.TypeString},
 		{Name: "expires_at", Type: field.TypeString},
 	}
@@ -89,7 +90,7 @@ var (
 			{
 				Name:    "session_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{SessionsColumns[4]},
+				Columns: []*schema.Column{SessionsColumns[5]},
 			},
 		},
 	}
@@ -99,6 +100,7 @@ var (
 		{Name: "title", Type: field.TypeString},
 		{Name: "visibility", Type: field.TypeString},
 		{Name: "private_key_hash", Type: field.TypeString, Nullable: true},
+		{Name: "download_password_hash", Type: field.TypeString, Nullable: true},
 		{Name: "encrypted", Type: field.TypeBool},
 		{Name: "cipher_meta", Type: field.TypeString, Nullable: true},
 		{Name: "zip_manifest", Type: field.TypeString, Nullable: true},
@@ -129,7 +131,7 @@ var (
 			{
 				Name:    "share_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{SharesColumns[11]},
+				Columns: []*schema.Column{SharesColumns[12]},
 			},
 		},
 	}

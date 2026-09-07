@@ -1,6 +1,6 @@
 {{define "base_top"}}
 <!doctype html>
-<html lang="en">
+<html lang="{{.Language}}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -12,12 +12,12 @@
   <body>
     <nav class="tabs">
       <a class="logo" href="/">share://</a>
-      <a href="/upload" data-i18n="nav.upload">upload</a>
-      <a href="/admin" data-i18n="nav.admin">admin</a>
+      <a href="/upload" data-i18n="nav.upload">{{.T "nav.upload"}}</a>
+      <a href="/admin" data-i18n="nav.admin">{{.T "nav.admin"}}</a>
       {{if .Admin}}
         <form method="post" action="/admin/logout">
           <input type="hidden" name="csrf" value="{{.CSRF}}">
-          <button data-i18n="nav.logout">logout</button>
+          <button data-i18n="nav.logout">{{.T "nav.logout"}}</button>
         </form>
       {{end}}
     </nav>

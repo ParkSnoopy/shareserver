@@ -7,13 +7,15 @@
 			{{ .Message }}
 		</p>
 		<p class="comment-text">
-			<span data-i18n="error.redirectHome"># redirect home in</span>
+			<span data-i18n="error.redirectHome">{{ .T "error.redirectHome" }}</span>
 			<span
 				data-redirect-countdown
 				data-seconds="{{.RedirectSeconds}}"
 				data-redirect-to="/"
-				>{{ .RedirectSeconds }}</span
-			>s.
+				>{{
+					.RedirectSeconds
+				}}</span
+			>{{ .T "time.secondsSuffix" }}
 		</p>
 	</div>
 </div>

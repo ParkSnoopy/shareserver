@@ -3,7 +3,7 @@
 <div class="grid">
 	<div class="row">
 		<span>01</span>
-		<h1 data-i18n="admin.title"># Admin</h1>
+		<h1 data-i18n="admin.title">{{ .T "admin.title" }}</h1>
 	</div>
 
 	<div class="row">
@@ -12,7 +12,7 @@
 			data-i18n="admin.stored"
 			data-i18n-vars='{"used":"{{ mb .Used }}","cap":"{{ mb .Cap }}"}'
 		>
-			stored {{ mb .Used }} / {{ mb .Cap }}
+			{{ .T "admin.stored" "used" (mb .Used) "cap" (mb .Cap) }}
 		</p>
 	</div>
 
@@ -22,7 +22,9 @@
 			data-i18n="admin.counts"
 			data-i18n-vars='{"active":"{{ .Active }}","expired":"{{ .Expired }}","purged":"{{ .Purged }}"}'
 		>
-			active {{ .Active }} · expired {{ .Expired }} · purged {{ .Purged }}
+			{{
+				.T "admin.counts" "active" .Active "expired" .Expired "purged" .Purged
+			}}
 		</p>
 	</div>
 
@@ -33,15 +35,15 @@
 
 	<div class="row">
 		<span>05</span>
-		<h1 data-i18n="admin.actionsTitle"># Actions</h1>
+		<h1 data-i18n="admin.actionsTitle">{{ .T "admin.actionsTitle" }}</h1>
 	</div>
 
 	<div class="row">
 		<span>06</span>
 		<p>
-			<a href="/admin/shares" data-i18n="admin.inspectShares"
-				>inspect shares →</a
-			>
+			<a href="/admin/shares" data-i18n="admin.inspectShares">{{
+				.T "admin.inspectShares"
+			}}</a>
 		</p>
 	</div>
 </div>

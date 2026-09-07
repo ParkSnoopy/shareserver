@@ -6,8 +6,10 @@ let messages = {};
 let ready = null;
 let listeners = new Set();
 
-function browserLang() {
-	const code = (navigator.language || "").toLowerCase().split("-")[0];
+function sessionLang() {
+	const code = (document.documentElement.lang || "")
+		.toLowerCase()
+		.split("-")[0];
 	return LANGS.includes(code) ? code : DEFAULT_LANG;
 }
 
@@ -69,7 +71,7 @@ export function onLanguageChange(listener) {
 
 export async function initI18n() {
 	if (!ready) {
-		ready = loadMessages(browserLang())
+		ready = loadMessages(sessionLang())
 			.catch(() => loadMessages(DEFAULT_LANG))
 			.then(() => {
 				applyI18n();

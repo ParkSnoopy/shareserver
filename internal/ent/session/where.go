@@ -73,6 +73,11 @@ func Csrf(v string) predicate.Session {
 	return predicate.Session(sql.FieldEQ(FieldCsrf, v))
 }
 
+// Language applies equality check predicate on the "language" field. It's identical to LanguageEQ.
+func Language(v string) predicate.Session {
+	return predicate.Session(sql.FieldEQ(FieldLanguage, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v string) predicate.Session {
 	return predicate.Session(sql.FieldEQ(FieldCreatedAt, v))
@@ -196,6 +201,71 @@ func CsrfEqualFold(v string) predicate.Session {
 // CsrfContainsFold applies the ContainsFold predicate on the "csrf" field.
 func CsrfContainsFold(v string) predicate.Session {
 	return predicate.Session(sql.FieldContainsFold(FieldCsrf, v))
+}
+
+// LanguageEQ applies the EQ predicate on the "language" field.
+func LanguageEQ(v string) predicate.Session {
+	return predicate.Session(sql.FieldEQ(FieldLanguage, v))
+}
+
+// LanguageNEQ applies the NEQ predicate on the "language" field.
+func LanguageNEQ(v string) predicate.Session {
+	return predicate.Session(sql.FieldNEQ(FieldLanguage, v))
+}
+
+// LanguageIn applies the In predicate on the "language" field.
+func LanguageIn(vs ...string) predicate.Session {
+	return predicate.Session(sql.FieldIn(FieldLanguage, vs...))
+}
+
+// LanguageNotIn applies the NotIn predicate on the "language" field.
+func LanguageNotIn(vs ...string) predicate.Session {
+	return predicate.Session(sql.FieldNotIn(FieldLanguage, vs...))
+}
+
+// LanguageGT applies the GT predicate on the "language" field.
+func LanguageGT(v string) predicate.Session {
+	return predicate.Session(sql.FieldGT(FieldLanguage, v))
+}
+
+// LanguageGTE applies the GTE predicate on the "language" field.
+func LanguageGTE(v string) predicate.Session {
+	return predicate.Session(sql.FieldGTE(FieldLanguage, v))
+}
+
+// LanguageLT applies the LT predicate on the "language" field.
+func LanguageLT(v string) predicate.Session {
+	return predicate.Session(sql.FieldLT(FieldLanguage, v))
+}
+
+// LanguageLTE applies the LTE predicate on the "language" field.
+func LanguageLTE(v string) predicate.Session {
+	return predicate.Session(sql.FieldLTE(FieldLanguage, v))
+}
+
+// LanguageContains applies the Contains predicate on the "language" field.
+func LanguageContains(v string) predicate.Session {
+	return predicate.Session(sql.FieldContains(FieldLanguage, v))
+}
+
+// LanguageHasPrefix applies the HasPrefix predicate on the "language" field.
+func LanguageHasPrefix(v string) predicate.Session {
+	return predicate.Session(sql.FieldHasPrefix(FieldLanguage, v))
+}
+
+// LanguageHasSuffix applies the HasSuffix predicate on the "language" field.
+func LanguageHasSuffix(v string) predicate.Session {
+	return predicate.Session(sql.FieldHasSuffix(FieldLanguage, v))
+}
+
+// LanguageEqualFold applies the EqualFold predicate on the "language" field.
+func LanguageEqualFold(v string) predicate.Session {
+	return predicate.Session(sql.FieldEqualFold(FieldLanguage, v))
+}
+
+// LanguageContainsFold applies the ContainsFold predicate on the "language" field.
+func LanguageContainsFold(v string) predicate.Session {
+	return predicate.Session(sql.FieldContainsFold(FieldLanguage, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

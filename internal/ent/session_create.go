@@ -39,6 +39,20 @@ func (_c *SessionCreate) SetCsrf(v string) *SessionCreate {
 	return _c
 }
 
+// SetLanguage sets the "language" field.
+func (_c *SessionCreate) SetLanguage(v string) *SessionCreate {
+	_c.mutation.SetLanguage(v)
+	return _c
+}
+
+// SetNillableLanguage sets the "language" field if the given value is not nil.
+func (_c *SessionCreate) SetNillableLanguage(v *string) *SessionCreate {
+	if v != nil {
+		_c.SetLanguage(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *SessionCreate) SetCreatedAt(v string) *SessionCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -64,6 +78,7 @@ func (_c *SessionCreate) Mutation() *SessionMutation {
 
 // Save creates the Session in the database.
 func (_c *SessionCreate) Save(ctx context.Context) (*Session, error) {
+	_c.defaults()
 	return withHooks(ctx, _c.sqlSave, _c.mutation, _c.hooks)
 }
 
@@ -89,10 +104,21 @@ func (_c *SessionCreate) ExecX(ctx context.Context) {
 	}
 }
 
+// defaults sets the default values of the builder before save.
+func (_c *SessionCreate) defaults() {
+	if _, ok := _c.mutation.Language(); !ok {
+		v := session.DefaultLanguage
+		_c.mutation.SetLanguage(v)
+	}
+}
+
 // check runs all checks and user-defined validators on the builder.
 func (_c *SessionCreate) check() error {
 	if _, ok := _c.mutation.Csrf(); !ok {
 		return &ValidationError{Name: "csrf", err: errors.New(`ent: missing required field "Session.csrf"`)}
+	}
+	if _, ok := _c.mutation.Language(); !ok {
+		return &ValidationError{Name: "language", err: errors.New(`ent: missing required field "Session.language"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Session.created_at"`)}
@@ -143,6 +169,10 @@ func (_c *SessionCreate) createSpec() (*Session, *sqlgraph.CreateSpec) {
 		_spec.SetField(session.FieldCsrf, field.TypeString, value)
 		_node.Csrf = value
 	}
+	if value, ok := _c.mutation.Language(); ok {
+		_spec.SetField(session.FieldLanguage, field.TypeString, value)
+		_node.Language = value
+	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(session.FieldCreatedAt, field.TypeString, value)
 		_node.CreatedAt = value
@@ -172,6 +202,7 @@ func (_c *SessionCreateBulk) Save(ctx context.Context) ([]*Session, error) {
 	for i := range _c.builders {
 		func(i int, root context.Context) {
 			builder := _c.builders[i]
+			builder.defaults()
 			var mut Mutator = MutateFunc(func(ctx context.Context, m Mutation) (Value, error) {
 				mutation, ok := m.(*SessionMutation)
 				if !ok {

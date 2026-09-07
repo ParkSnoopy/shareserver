@@ -22,6 +22,14 @@ func TestHMACKeyStableAndSecretScoped(t *testing.T) {
 	}
 }
 
+func TestCleanIPCanonicalizesEquivalentIPv6Addresses(t *testing.T) {
+	compressed := auth.CleanIP("[2001:db8::1]:443")
+	expanded := auth.CleanIP("2001:0db8:0000:0000:0000:0000:0000:0001")
+	if compressed != "2001:db8::1" || expanded != compressed {
+		t.Fatalf("IPv6 forms not canonicalized: compressed=%q expanded=%q", compressed, expanded)
+	}
+}
+
 func TestPasswordHash(t *testing.T) {
 	h, err := auth.HashPassword("pw")
 	if err != nil {

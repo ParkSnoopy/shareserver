@@ -7,14 +7,14 @@ import (
 
 // Share is the storage-facing view of upload metadata and blob location.
 type Share struct {
-	ID, Title, Visibility, PrivateKeyHash string
-	Encrypted                             bool
-	CipherMeta, ZipManifest               string
-	Size                                  int64
-	BlobPath, BlobSHA256, UploaderIP      string
-	ExpiresAt                             sql.NullString
-	CreatedAt                             string
-	PurgedAt                              sql.NullString
+	ID, Title, Visibility, PrivateKeyHash, DownloadPasswordHash string
+	Encrypted                                                   bool
+	CipherMeta, ZipManifest                                     string
+	Size                                                        int64
+	BlobPath, BlobSHA256, UploaderIP                            string
+	ExpiresAt                                                   sql.NullString
+	CreatedAt                                                   string
+	PurgedAt                                                    sql.NullString
 }
 
 const (

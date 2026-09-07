@@ -17,6 +17,8 @@ const (
 	FieldVisibility = "visibility"
 	// FieldPrivateKeyHash holds the string denoting the private_key_hash field in the database.
 	FieldPrivateKeyHash = "private_key_hash"
+	// FieldDownloadPasswordHash holds the string denoting the download_password_hash field in the database.
+	FieldDownloadPasswordHash = "download_password_hash"
 	// FieldEncrypted holds the string denoting the encrypted field in the database.
 	FieldEncrypted = "encrypted"
 	// FieldCipherMeta holds the string denoting the cipher_meta field in the database.
@@ -47,6 +49,7 @@ var Columns = []string{
 	FieldTitle,
 	FieldVisibility,
 	FieldPrivateKeyHash,
+	FieldDownloadPasswordHash,
 	FieldEncrypted,
 	FieldCipherMeta,
 	FieldZipManifest,
@@ -90,6 +93,11 @@ func ByVisibility(opts ...sql.OrderTermOption) OrderOption {
 // ByPrivateKeyHash orders the results by the private_key_hash field.
 func ByPrivateKeyHash(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPrivateKeyHash, opts...).ToFunc()
+}
+
+// ByDownloadPasswordHash orders the results by the download_password_hash field.
+func ByDownloadPasswordHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDownloadPasswordHash, opts...).ToFunc()
 }
 
 // ByEncrypted orders the results by the encrypted field.

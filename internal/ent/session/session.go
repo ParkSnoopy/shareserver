@@ -15,6 +15,8 @@ const (
 	FieldAdminID = "admin_id"
 	// FieldCsrf holds the string denoting the csrf field in the database.
 	FieldCsrf = "csrf"
+	// FieldLanguage holds the string denoting the language field in the database.
+	FieldLanguage = "language"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldExpiresAt holds the string denoting the expires_at field in the database.
@@ -28,6 +30,7 @@ var Columns = []string{
 	FieldID,
 	FieldAdminID,
 	FieldCsrf,
+	FieldLanguage,
 	FieldCreatedAt,
 	FieldExpiresAt,
 }
@@ -41,6 +44,11 @@ func ValidColumn(column string) bool {
 	}
 	return false
 }
+
+var (
+	// DefaultLanguage holds the default value on creation for the "language" field.
+	DefaultLanguage string
+)
 
 // OrderOption defines the ordering options for the Session queries.
 type OrderOption func(*sql.Selector)
@@ -58,6 +66,11 @@ func ByAdminID(opts ...sql.OrderTermOption) OrderOption {
 // ByCsrf orders the results by the csrf field.
 func ByCsrf(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCsrf, opts...).ToFunc()
+}
+
+// ByLanguage orders the results by the language field.
+func ByLanguage(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLanguage, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

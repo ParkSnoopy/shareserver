@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/text/language"
 	"shareserver/internal/auth"
 )
 
@@ -18,7 +19,7 @@ const clockKey ctxKey = "clock"
 
 // withClock stamps one canonical UTC timestamp into the request context so
 // every handler in a single request classifies shares with the same "now".
-// Without this, sharePage and blob each call time.Now() independently and a
+// Without this, page and download handlers can call time.Now() independently and a
 // share whose expiry falls between the two readings is classified two ways.
 // Background goroutines (PurgeExpired, CleanExpiredSessions) keep their own
 // local now since they have no request context.
@@ -49,12 +50,26 @@ func (h *Handler) security(next http.Handler) http.Handler {
 	})
 }
 
-// withSession attaches a valid session to the request, creating one when needed.
+// withSession attaches browser session state while keeping sessionless API calls stateless.
 func (h *Handler) withSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isAPIPath(r.URL.Path) {
+			session := Session{}
+			if cookie, err := r.Cookie("sid"); err == nil {
+				if existing, ok := h.sessions().Get(r.Context(), cookie.Value); ok {
+					session = existing
+				}
+			}
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey, session)))
+			return
+		}
 		s := h.getOrCreateSession(w, r)
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey, s)))
 	})
+}
+
+func isAPIPath(path string) bool {
+	return path == "/api/v0/upload" || strings.HasPrefix(path, "/api/v0/download/")
 }
 
 // CurrentSession returns the session stored in context or an empty fail-closed value.
@@ -71,11 +86,25 @@ func (h *Handler) getOrCreateSession(w http.ResponseWriter, r *http.Request) Ses
 	if c, err := r.Cookie("sid"); err == nil {
 		sid = c.Value
 	}
-	s, created := h.sessions().GetOrCreate(r.Context(), sid)
+	s, created := h.sessions().GetOrCreate(r.Context(), sid, preferredLanguage(r.Header.Get("Accept-Language")))
 	if created {
 		h.setCookie(w, s.ID)
 	}
 	return s
+}
+
+var languageMatcher = language.NewMatcher([]language.Tag{
+	language.English,
+	language.Korean,
+	language.Chinese,
+})
+
+var languageCodes = []string{"en", "ko", "zh"}
+
+// preferredLanguage chooses one supported language for a new browser session.
+func preferredLanguage(acceptLanguage string) string {
+	_, index := language.MatchStrings(languageMatcher, acceptLanguage)
+	return languageCodes[index]
 }
 
 // setCookie issues the HTTP-only session cookie for the HTTPS-only deployment.
@@ -89,7 +118,7 @@ func (h *Handler) setCookie(w http.ResponseWriter, sid string) {
 
 // requestBodyLimit caps all request bodies while allowing configured upload payloads.
 func (h *Handler) requestBodyLimit(r *http.Request) int64 {
-	if r.URL.Path == "/upload" {
+	if r.URL.Path == "/api/v0/upload" {
 		n := h.A.C.MaxUploadBytes
 		if n < 0 {
 			n = 0
@@ -106,11 +135,11 @@ func sameToken(a, b string) bool {
 
 // forwardedIP extracts the first valid IP from a proxy forwarding header.
 func forwardedIP(v string) string {
-	ip := strings.TrimSpace(strings.Split(v, ",")[0])
-	if net.ParseIP(ip) == nil {
+	parsed := net.ParseIP(strings.TrimSpace(strings.Split(v, ",")[0]))
+	if parsed == nil {
 		return ""
 	}
-	return ip
+	return parsed.String()
 }
 
 // trustProxyHeaders accepts proxy headers only from configured loopback peers.
@@ -122,9 +151,22 @@ func (h *Handler) trustProxyHeaders(r *http.Request) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// secureRequest accepts direct TLS or HTTPS asserted by a trusted loopback proxy.
+func (h *Handler) secureRequest(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return h.trustProxyHeaders(r) && strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https")
+}
+
 // csrf rejects unsafe requests unless they present the current session token.
 func (h *Handler) csrf(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isAPIPath(r.URL.Path) {
+			r.Body = http.MaxBytesReader(w, r.Body, h.requestBodyLimit(r))
+			next.ServeHTTP(w, r)
+			return
+		}
 		if r.Method == "GET" || r.Method == "HEAD" || r.Method == "OPTIONS" {
 			next.ServeHTTP(w, r)
 			return

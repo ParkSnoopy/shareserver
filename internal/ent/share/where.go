@@ -78,6 +78,11 @@ func PrivateKeyHash(v string) predicate.Share {
 	return predicate.Share(sql.FieldEQ(FieldPrivateKeyHash, v))
 }
 
+// DownloadPasswordHash applies equality check predicate on the "download_password_hash" field. It's identical to DownloadPasswordHashEQ.
+func DownloadPasswordHash(v string) predicate.Share {
+	return predicate.Share(sql.FieldEQ(FieldDownloadPasswordHash, v))
+}
+
 // Encrypted applies equality check predicate on the "encrypted" field. It's identical to EncryptedEQ.
 func Encrypted(v bool) predicate.Share {
 	return predicate.Share(sql.FieldEQ(FieldEncrypted, v))
@@ -331,6 +336,81 @@ func PrivateKeyHashEqualFold(v string) predicate.Share {
 // PrivateKeyHashContainsFold applies the ContainsFold predicate on the "private_key_hash" field.
 func PrivateKeyHashContainsFold(v string) predicate.Share {
 	return predicate.Share(sql.FieldContainsFold(FieldPrivateKeyHash, v))
+}
+
+// DownloadPasswordHashEQ applies the EQ predicate on the "download_password_hash" field.
+func DownloadPasswordHashEQ(v string) predicate.Share {
+	return predicate.Share(sql.FieldEQ(FieldDownloadPasswordHash, v))
+}
+
+// DownloadPasswordHashNEQ applies the NEQ predicate on the "download_password_hash" field.
+func DownloadPasswordHashNEQ(v string) predicate.Share {
+	return predicate.Share(sql.FieldNEQ(FieldDownloadPasswordHash, v))
+}
+
+// DownloadPasswordHashIn applies the In predicate on the "download_password_hash" field.
+func DownloadPasswordHashIn(vs ...string) predicate.Share {
+	return predicate.Share(sql.FieldIn(FieldDownloadPasswordHash, vs...))
+}
+
+// DownloadPasswordHashNotIn applies the NotIn predicate on the "download_password_hash" field.
+func DownloadPasswordHashNotIn(vs ...string) predicate.Share {
+	return predicate.Share(sql.FieldNotIn(FieldDownloadPasswordHash, vs...))
+}
+
+// DownloadPasswordHashGT applies the GT predicate on the "download_password_hash" field.
+func DownloadPasswordHashGT(v string) predicate.Share {
+	return predicate.Share(sql.FieldGT(FieldDownloadPasswordHash, v))
+}
+
+// DownloadPasswordHashGTE applies the GTE predicate on the "download_password_hash" field.
+func DownloadPasswordHashGTE(v string) predicate.Share {
+	return predicate.Share(sql.FieldGTE(FieldDownloadPasswordHash, v))
+}
+
+// DownloadPasswordHashLT applies the LT predicate on the "download_password_hash" field.
+func DownloadPasswordHashLT(v string) predicate.Share {
+	return predicate.Share(sql.FieldLT(FieldDownloadPasswordHash, v))
+}
+
+// DownloadPasswordHashLTE applies the LTE predicate on the "download_password_hash" field.
+func DownloadPasswordHashLTE(v string) predicate.Share {
+	return predicate.Share(sql.FieldLTE(FieldDownloadPasswordHash, v))
+}
+
+// DownloadPasswordHashContains applies the Contains predicate on the "download_password_hash" field.
+func DownloadPasswordHashContains(v string) predicate.Share {
+	return predicate.Share(sql.FieldContains(FieldDownloadPasswordHash, v))
+}
+
+// DownloadPasswordHashHasPrefix applies the HasPrefix predicate on the "download_password_hash" field.
+func DownloadPasswordHashHasPrefix(v string) predicate.Share {
+	return predicate.Share(sql.FieldHasPrefix(FieldDownloadPasswordHash, v))
+}
+
+// DownloadPasswordHashHasSuffix applies the HasSuffix predicate on the "download_password_hash" field.
+func DownloadPasswordHashHasSuffix(v string) predicate.Share {
+	return predicate.Share(sql.FieldHasSuffix(FieldDownloadPasswordHash, v))
+}
+
+// DownloadPasswordHashIsNil applies the IsNil predicate on the "download_password_hash" field.
+func DownloadPasswordHashIsNil() predicate.Share {
+	return predicate.Share(sql.FieldIsNull(FieldDownloadPasswordHash))
+}
+
+// DownloadPasswordHashNotNil applies the NotNil predicate on the "download_password_hash" field.
+func DownloadPasswordHashNotNil() predicate.Share {
+	return predicate.Share(sql.FieldNotNull(FieldDownloadPasswordHash))
+}
+
+// DownloadPasswordHashEqualFold applies the EqualFold predicate on the "download_password_hash" field.
+func DownloadPasswordHashEqualFold(v string) predicate.Share {
+	return predicate.Share(sql.FieldEqualFold(FieldDownloadPasswordHash, v))
+}
+
+// DownloadPasswordHashContainsFold applies the ContainsFold predicate on the "download_password_hash" field.
+func DownloadPasswordHashContainsFold(v string) predicate.Share {
+	return predicate.Share(sql.FieldContainsFold(FieldDownloadPasswordHash, v))
 }
 
 // EncryptedEQ applies the EQ predicate on the "encrypted" field.

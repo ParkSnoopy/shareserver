@@ -18,6 +18,7 @@ func (Share) Fields() []ent.Field {
 		field.String("title"),
 		field.String("visibility"),
 		field.String("private_key_hash").Optional().Nillable(),
+		field.String("download_password_hash").Optional().Nillable(),
 		field.Bool("encrypted"),
 		field.String("cipher_meta").Optional(),
 		field.String("zip_manifest").Optional(),

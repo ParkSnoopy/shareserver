@@ -10,43 +10,43 @@
 			aria-expanded="false"
 			data-i18n="share.showSearch"
 		>
-			&gt; show Search
+			{{.T "share.showSearch"}}
 		</button>
 		<aside
 			id="archiveSidebar"
 			class="api-sidebar {{ if .Selected }}is-collapsed{{ end }}"
-			aria-label="Search"
+			aria-label='{{.T "share.searchLabel"}}'
 			data-i18n-aria-label="share.searchLabel"
 		>
-			<h3 data-i18n="share.searchTitle"># Search</h3>
+			<h3 data-i18n="share.searchTitle">{{.T "share.searchTitle"}}</h3>
 			<form class="lookup-form" method="post" action="/">
 				<input type="hidden" name="csrf" value="{{.CSRF}}">
 				<label
 					class="field-label"
 					for="lookupKey"
 					data-i18n="share.privateKeyLabel"
-					>--private-key</label
+					>{{.T "share.privateKeyLabel"}}</label
 				>
 				<input
 					class="text-input field-md"
 					id="lookupKey"
 					name="key"
 					autocomplete="off"
-					placeholder="private key"
+					placeholder='{{.T "share.privateKeyPlaceholder"}}'
 					data-i18n-placeholder="share.privateKeyPlaceholder"
 					data-lookup-key
 				>
 				<button type="submit" class="primary-action-button field-md">
-					<span data-i18n="share.lookup">&gt; lookup</span>
+					<span data-i18n="share.lookup">{{.T "share.lookup"}}</span>
 				</button>
 			</form>
 			{{ if .PrivateMode }}
 			<p class="comment-text" data-i18n="share.showingPublic">
-				# showing public archives.
+				{{.T "share.showingPublic"}}
 			</p>
 			{{ else }}
 			<p class="comment-text" data-i18n="share.showingPublic">
-				# showing public archives.
+				{{.T "share.showingPublic"}}
 			</p>
 			{{ end }}
 
@@ -54,10 +54,10 @@
 
 			<nav
 				class="api-index"
-				aria-label="search results"
+				aria-label='{{.T "share.resultsLabel"}}'
 				data-i18n-aria-label="share.resultsLabel"
 			>
-				<h3 data-i18n="share.listTitle"># List</h3>
+				<h3 data-i18n="share.listTitle">{{.T "share.listTitle"}}</h3>
 				<div
 					class="api-index-list"
 					data-archive-list
@@ -72,7 +72,7 @@
 						>
 					</a>
 					{{ else }}
-					<p class="muted" data-i18n="share.noArchives">no archives here.</p>
+					<p class="muted" data-i18n="share.noArchives">{{$.T "share.noArchives"}}</p>
 					{{ end }}
 				</div>
 			</nav>
@@ -82,32 +82,31 @@
 			{{ if .Selected }}
 			<h1># {{ .Share.Title }}</h1>
 			{{ if .Expired }}
-			<p class="err" data-i18n="share.expired">expired.</p>
+			<p class="err" data-i18n="share.expired">{{.T "share.expired"}}</p>
 			<p class="comment-text">
-				<span data-i18n="share.redirectHome"># redirect home in</span>
+				<span data-i18n="share.redirectHome">{{.T "share.redirectHome"}}</span>
 				<span data-redirect-countdown data-seconds="5" data-redirect-to="/"
 					>5</span
-				>s.
+				>{{.T "time.secondsSuffix"}}
 			</p>
 			{{ else }}
 			<p class="comment-text">
 				<span
 					data-i18n="{{ if .Share.Encrypted }}share.encryptedHint{{ else }}share.plainHint{{ end }}"
-					># {{ if .Share.Encrypted }}encrypted. password decrypts in browser.{{ else }}plain
-					share. list files, open preview, download.{{ end }}</span
+					>{{ if .Share.Encrypted }}{{.T "share.encryptedHint"}}{{ else }}{{.T "share.plainHint"}}{{ end }}</span
 				>
 			</p>
 
 			<nav
 				id="listing"
 				class="api-index"
-				aria-label="files"
+				aria-label='{{.T "share.filesLabel"}}'
 				data-i18n-aria-label="share.filesLabel"
 				hidden
 			>
-				<h3 data-i18n="share.filesTitle"># Files</h3>
+				<h3 data-i18n="share.filesTitle">{{.T "share.filesTitle"}}</h3>
 				<p class="muted" data-i18n="share.runArchive">
-					run archive command first.
+					{{.T "share.runArchive"}}
 				</p>
 			</nav>
 
@@ -127,7 +126,7 @@
 					class="field-label"
 					for="sharePassword"
 					data-i18n="share.passwordLabel"
-					>--password</label
+					>{{.T "share.passwordLabel"}}</label
 				>
 				<input
 					class="text-input field-md"
@@ -137,7 +136,7 @@
 					autocapitalize="none"
 					autocorrect="off"
 					spellcheck="false"
-					placeholder="password"
+					placeholder='{{.T "share.passwordPlaceholder"}}'
 					data-i18n-placeholder="share.passwordPlaceholder"
 				>
 				<button
@@ -145,7 +144,7 @@
 					type="button"
 					class="primary-action-button field-md"
 				>
-					<span data-i18n="share.decryptFiles">&gt; decrypt files</span>
+					<span data-i18n="share.decryptFiles">{{.T "share.decryptFiles"}}</span>
 				</button>
 				{{ else }}
 				<button
@@ -153,7 +152,7 @@
 					type="button"
 					class="primary-action-button field-md"
 				>
-					<span data-i18n="share.listFiles">&gt; list files</span>
+					<span data-i18n="share.listFiles">{{.T "share.listFiles"}}</span>
 				</button>
 				{{ end }}
 			</div>
@@ -161,24 +160,24 @@
 			<pre id="progress" class="progress-output"></pre>
 
 			<section id="previewPane" class="api-detail detail-pane" hidden>
-				<h3 data-i18n="share.archiveTitle"># Archive</h3>
+				<h3 data-i18n="share.archiveTitle">{{.T "share.archiveTitle"}}</h3>
 				<p class="comment-text" data-i18n="share.selectAfterLoad">
-					# select a file after archive loads.
+					{{.T "share.selectAfterLoad"}}
 				</p>
 			</section>
 			{{ end }}
 			{{ else }}
-			<h1 data-i18n="share.sharesTitle"># Shares</h1>
+			<h1 data-i18n="share.sharesTitle">{{.T "share.sharesTitle"}}</h1>
 			<p class="comment-text">
 				<span data-i18n="share.chooseArchive"
-					># choose an archive from left, or enter a private key.</span
+					>{{.T "share.chooseArchive"}}</span
 				>
 			</p>
 			<div class="section-rule" aria-hidden="true"></div>
 			<section class="api-detail detail-pane">
-				<h3 data-i18n="share.archiveTitle"># Archive</h3>
+				<h3 data-i18n="share.archiveTitle">{{.T "share.archiveTitle"}}</h3>
 				<p class="comment-text" data-i18n="share.noArchive">
-					# no archive selected.
+					{{.T "share.noArchive"}}
 				</p>
 			</section>
 			{{ end }}

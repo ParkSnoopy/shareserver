@@ -1787,6 +1787,7 @@ type SessionMutation struct {
 	admin_id      *int64
 	addadmin_id   *int64
 	csrf          *string
+	language      *string
 	created_at    *string
 	expires_at    *string
 	clearedFields map[string]struct{}
@@ -2005,6 +2006,42 @@ func (m *SessionMutation) ResetCsrf() {
 	m.csrf = nil
 }
 
+// SetLanguage sets the "language" field.
+func (m *SessionMutation) SetLanguage(s string) {
+	m.language = &s
+}
+
+// Language returns the value of the "language" field in the mutation.
+func (m *SessionMutation) Language() (r string, exists bool) {
+	v := m.language
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLanguage returns the old "language" field's value of the Session entity.
+// If the Session object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionMutation) OldLanguage(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLanguage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLanguage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLanguage: %w", err)
+	}
+	return oldValue.Language, nil
+}
+
+// ResetLanguage resets all changes to the "language" field.
+func (m *SessionMutation) ResetLanguage() {
+	m.language = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *SessionMutation) SetCreatedAt(s string) {
 	m.created_at = &s
@@ -2111,12 +2148,15 @@ func (m *SessionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SessionMutation) Fields() []string {
-	fields := make([]string, 0, 4)
+	fields := make([]string, 0, 5)
 	if m.admin_id != nil {
 		fields = append(fields, session.FieldAdminID)
 	}
 	if m.csrf != nil {
 		fields = append(fields, session.FieldCsrf)
+	}
+	if m.language != nil {
+		fields = append(fields, session.FieldLanguage)
 	}
 	if m.created_at != nil {
 		fields = append(fields, session.FieldCreatedAt)
@@ -2136,6 +2176,8 @@ func (m *SessionMutation) Field(name string) (ent.Value, bool) {
 		return m.AdminID()
 	case session.FieldCsrf:
 		return m.Csrf()
+	case session.FieldLanguage:
+		return m.Language()
 	case session.FieldCreatedAt:
 		return m.CreatedAt()
 	case session.FieldExpiresAt:
@@ -2153,6 +2195,8 @@ func (m *SessionMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldAdminID(ctx)
 	case session.FieldCsrf:
 		return m.OldCsrf(ctx)
+	case session.FieldLanguage:
+		return m.OldLanguage(ctx)
 	case session.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case session.FieldExpiresAt:
@@ -2179,6 +2223,13 @@ func (m *SessionMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCsrf(v)
+		return nil
+	case session.FieldLanguage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLanguage(v)
 		return nil
 	case session.FieldCreatedAt:
 		v, ok := value.(string)
@@ -2273,6 +2324,9 @@ func (m *SessionMutation) ResetField(name string) error {
 	case session.FieldCsrf:
 		m.ResetCsrf()
 		return nil
+	case session.FieldLanguage:
+		m.ResetLanguage()
+		return nil
 	case session.FieldCreatedAt:
 		m.ResetCreatedAt()
 		return nil
@@ -2334,27 +2388,28 @@ func (m *SessionMutation) ResetEdge(name string) error {
 // ShareMutation represents an operation that mutates the Share nodes in the graph.
 type ShareMutation struct {
 	config
-	op               Op
-	typ              string
-	id               *string
-	title            *string
-	visibility       *string
-	private_key_hash *string
-	encrypted        *bool
-	cipher_meta      *string
-	zip_manifest     *string
-	size             *int64
-	addsize          *int64
-	blob_path        *string
-	blob_sha256      *string
-	uploader_ip      *string
-	expires_at       *string
-	created_at       *string
-	purged_at        *string
-	clearedFields    map[string]struct{}
-	done             bool
-	oldValue         func(context.Context) (*Share, error)
-	predicates       []predicate.Share
+	op                     Op
+	typ                    string
+	id                     *string
+	title                  *string
+	visibility             *string
+	private_key_hash       *string
+	download_password_hash *string
+	encrypted              *bool
+	cipher_meta            *string
+	zip_manifest           *string
+	size                   *int64
+	addsize                *int64
+	blob_path              *string
+	blob_sha256            *string
+	uploader_ip            *string
+	expires_at             *string
+	created_at             *string
+	purged_at              *string
+	clearedFields          map[string]struct{}
+	done                   bool
+	oldValue               func(context.Context) (*Share, error)
+	predicates             []predicate.Share
 }
 
 var _ ent.Mutation = (*ShareMutation)(nil)
@@ -2580,6 +2635,55 @@ func (m *ShareMutation) PrivateKeyHashCleared() bool {
 func (m *ShareMutation) ResetPrivateKeyHash() {
 	m.private_key_hash = nil
 	delete(m.clearedFields, share.FieldPrivateKeyHash)
+}
+
+// SetDownloadPasswordHash sets the "download_password_hash" field.
+func (m *ShareMutation) SetDownloadPasswordHash(s string) {
+	m.download_password_hash = &s
+}
+
+// DownloadPasswordHash returns the value of the "download_password_hash" field in the mutation.
+func (m *ShareMutation) DownloadPasswordHash() (r string, exists bool) {
+	v := m.download_password_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDownloadPasswordHash returns the old "download_password_hash" field's value of the Share entity.
+// If the Share object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ShareMutation) OldDownloadPasswordHash(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDownloadPasswordHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDownloadPasswordHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDownloadPasswordHash: %w", err)
+	}
+	return oldValue.DownloadPasswordHash, nil
+}
+
+// ClearDownloadPasswordHash clears the value of the "download_password_hash" field.
+func (m *ShareMutation) ClearDownloadPasswordHash() {
+	m.download_password_hash = nil
+	m.clearedFields[share.FieldDownloadPasswordHash] = struct{}{}
+}
+
+// DownloadPasswordHashCleared returns if the "download_password_hash" field was cleared in this mutation.
+func (m *ShareMutation) DownloadPasswordHashCleared() bool {
+	_, ok := m.clearedFields[share.FieldDownloadPasswordHash]
+	return ok
+}
+
+// ResetDownloadPasswordHash resets all changes to the "download_password_hash" field.
+func (m *ShareMutation) ResetDownloadPasswordHash() {
+	m.download_password_hash = nil
+	delete(m.clearedFields, share.FieldDownloadPasswordHash)
 }
 
 // SetEncrypted sets the "encrypted" field.
@@ -3048,7 +3152,7 @@ func (m *ShareMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ShareMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 14)
 	if m.title != nil {
 		fields = append(fields, share.FieldTitle)
 	}
@@ -3057,6 +3161,9 @@ func (m *ShareMutation) Fields() []string {
 	}
 	if m.private_key_hash != nil {
 		fields = append(fields, share.FieldPrivateKeyHash)
+	}
+	if m.download_password_hash != nil {
+		fields = append(fields, share.FieldDownloadPasswordHash)
 	}
 	if m.encrypted != nil {
 		fields = append(fields, share.FieldEncrypted)
@@ -3102,6 +3209,8 @@ func (m *ShareMutation) Field(name string) (ent.Value, bool) {
 		return m.Visibility()
 	case share.FieldPrivateKeyHash:
 		return m.PrivateKeyHash()
+	case share.FieldDownloadPasswordHash:
+		return m.DownloadPasswordHash()
 	case share.FieldEncrypted:
 		return m.Encrypted()
 	case share.FieldCipherMeta:
@@ -3137,6 +3246,8 @@ func (m *ShareMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldVisibility(ctx)
 	case share.FieldPrivateKeyHash:
 		return m.OldPrivateKeyHash(ctx)
+	case share.FieldDownloadPasswordHash:
+		return m.OldDownloadPasswordHash(ctx)
 	case share.FieldEncrypted:
 		return m.OldEncrypted(ctx)
 	case share.FieldCipherMeta:
@@ -3186,6 +3297,13 @@ func (m *ShareMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPrivateKeyHash(v)
+		return nil
+	case share.FieldDownloadPasswordHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDownloadPasswordHash(v)
 		return nil
 	case share.FieldEncrypted:
 		v, ok := value.(bool)
@@ -3305,6 +3423,9 @@ func (m *ShareMutation) ClearedFields() []string {
 	if m.FieldCleared(share.FieldPrivateKeyHash) {
 		fields = append(fields, share.FieldPrivateKeyHash)
 	}
+	if m.FieldCleared(share.FieldDownloadPasswordHash) {
+		fields = append(fields, share.FieldDownloadPasswordHash)
+	}
 	if m.FieldCleared(share.FieldCipherMeta) {
 		fields = append(fields, share.FieldCipherMeta)
 	}
@@ -3334,6 +3455,9 @@ func (m *ShareMutation) ClearField(name string) error {
 	case share.FieldPrivateKeyHash:
 		m.ClearPrivateKeyHash()
 		return nil
+	case share.FieldDownloadPasswordHash:
+		m.ClearDownloadPasswordHash()
+		return nil
 	case share.FieldCipherMeta:
 		m.ClearCipherMeta()
 		return nil
@@ -3362,6 +3486,9 @@ func (m *ShareMutation) ResetField(name string) error {
 		return nil
 	case share.FieldPrivateKeyHash:
 		m.ResetPrivateKeyHash()
+		return nil
+	case share.FieldDownloadPasswordHash:
+		m.ResetDownloadPasswordHash()
 		return nil
 	case share.FieldEncrypted:
 		m.ResetEncrypted()

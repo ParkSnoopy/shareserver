@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -22,6 +23,7 @@ type Handler struct {
 	Integrity *storage.Integrity
 	Upload    *upload.Uploader
 	Sessions  SessionLifecycle
+	Downloads *downloadRateLimiter
 }
 
 // New wires middleware, routes, templates, share store, and upload policy.
@@ -37,6 +39,7 @@ func New(a *app.App) http.Handler {
 		Store:     store,
 		Integrity: integrity,
 		Sessions:  NewSessions(a.DB),
+		Downloads: newDownloadRateLimiter(a.C.DownloadAttemptsPerMinute, time.Minute),
 		Upload: &upload.Uploader{
 			Cfg: upload.Config{
 				BlobDir:         a.C.BlobDir,
@@ -61,9 +64,9 @@ func New(a *app.App) http.Handler {
 	r.Post("/", h.home)
 	r.Get("/s/", h.archivePage)
 	r.Get("/upload", h.uploadPage)
-	r.Post("/upload", h.uploadPost)
 	r.Get("/s/{id}", h.sharePage)
-	r.Get("/blob/{id}", h.blob)
+	r.Post("/api/v0/upload", h.apiUploadPost)
+	r.Post("/api/v0/download/{id}", h.apiDownloadPost)
 	r.Get("/admin/login", h.adminLoginPage)
 	r.Post("/admin/login", h.adminLoginPost)
 	r.Post("/admin/logout", h.adminLogout)
@@ -138,7 +141,7 @@ func (h *Handler) uploadPage(w http.ResponseWriter, r *http.Request) {
 // sharePage renders one share, preserving expired status and hiding purged shares.
 func (h *Handler) sharePage(w http.ResponseWriter, r *http.Request) {
 	s, ok := h.getShare(chi.URLParam(r, "id"))
-	if !ok {
+	if !ok || !s.Encrypted || s.DownloadPasswordHash == "" {
 		h.notFoundPage(w, r)
 		return
 	}
@@ -158,22 +161,6 @@ func (h *Handler) renderArchive(w http.ResponseWriter, r *http.Request, selected
 		Expired:  hasSelected && status == share.StatusExpired,
 		Archives: archives, PrivateMode: privateMode,
 	})
-}
-
-// blob streams the opaque stored archive only while the share is active.
-func (h *Handler) blob(w http.ResponseWriter, r *http.Request) {
-	s, ok := h.getShare(chi.URLParam(r, "id"))
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	if !share.ActiveAt(requestTime(r)).IsActive(s) {
-		http.Error(w, "expired", 410)
-		return
-	}
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+s.ID+`.blob"`)
-	http.ServeFile(w, r, s.BlobPath)
 }
 
 // getShare validates UUID input before touching share storage.

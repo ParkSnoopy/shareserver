@@ -17,6 +17,7 @@ func (Session) Fields() []ent.Field {
 		field.String("id").Immutable(),
 		field.Int64("admin_id").Optional().Nillable(),
 		field.String("csrf"),
+		field.String("language").Default("en"),
 		field.String("created_at"),
 		field.String("expires_at"),
 	}

@@ -7,6 +7,7 @@ require (
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/mattn/go-sqlite3 v1.14.46
 	golang.org/x/crypto v0.53.0
+	golang.org/x/text v0.38.0
 )
 
 require (
@@ -23,6 +24,5 @@ require (
 	github.com/zclconf/go-cty v1.14.4 // indirect
 	github.com/zclconf/go-cty-yaml v1.1.0 // indirect
 	golang.org/x/mod v0.36.0 // indirect
-	golang.org/x/text v0.38.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

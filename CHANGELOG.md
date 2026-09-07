@@ -1,5 +1,22 @@
 # Change Log
 
+## 2026-09-07
+
+### Add
+- Add stateless encrypted-payload upload and password-gated download endpoints under `/api/v0`.
+- Return Share URL, download URL, stored size, and expiry from API uploads.
+
+### Update
+- Require every new Share payload to be client-encrypted and protected by a separately hashed download-password verifier.
+- Render initial HTML in the language selected for the browser session, while reusing the same catalogs for dynamic browser content.
+
+### Fix
+- Remove anonymous payload GET access; wrong passwords return no payload bytes.
+- Delay every download attempt by at least 1 second and enforce a configurable rolling per-IP attempt limit.
+
+### Breaking Changes
+- Remove legacy Share blobs and metadata at startup when no download-password verifier exists; retaining them would consume storage while no safe authorization path exists.
+
 ## 2026-08-10
 
 ### Fix

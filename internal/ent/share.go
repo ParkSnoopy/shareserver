@@ -22,6 +22,8 @@ type Share struct {
 	Visibility string `json:"visibility,omitempty"`
 	// PrivateKeyHash holds the value of the "private_key_hash" field.
 	PrivateKeyHash *string `json:"private_key_hash,omitempty"`
+	// DownloadPasswordHash holds the value of the "download_password_hash" field.
+	DownloadPasswordHash *string `json:"download_password_hash,omitempty"`
 	// Encrypted holds the value of the "encrypted" field.
 	Encrypted bool `json:"encrypted,omitempty"`
 	// CipherMeta holds the value of the "cipher_meta" field.
@@ -54,7 +56,7 @@ func (*Share) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case share.FieldSize:
 			values[i] = new(sql.NullInt64)
-		case share.FieldID, share.FieldTitle, share.FieldVisibility, share.FieldPrivateKeyHash, share.FieldCipherMeta, share.FieldZipManifest, share.FieldBlobPath, share.FieldBlobSha256, share.FieldUploaderIP, share.FieldExpiresAt, share.FieldCreatedAt, share.FieldPurgedAt:
+		case share.FieldID, share.FieldTitle, share.FieldVisibility, share.FieldPrivateKeyHash, share.FieldDownloadPasswordHash, share.FieldCipherMeta, share.FieldZipManifest, share.FieldBlobPath, share.FieldBlobSha256, share.FieldUploaderIP, share.FieldExpiresAt, share.FieldCreatedAt, share.FieldPurgedAt:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -95,6 +97,13 @@ func (_m *Share) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.PrivateKeyHash = new(string)
 				*_m.PrivateKeyHash = value.String
+			}
+		case share.FieldDownloadPasswordHash:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field download_password_hash", values[i])
+			} else if value.Valid {
+				_m.DownloadPasswordHash = new(string)
+				*_m.DownloadPasswordHash = value.String
 			}
 		case share.FieldEncrypted:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -202,6 +211,11 @@ func (_m *Share) String() string {
 	builder.WriteString(", ")
 	if v := _m.PrivateKeyHash; v != nil {
 		builder.WriteString("private_key_hash=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.DownloadPasswordHash; v != nil {
+		builder.WriteString("download_password_hash=")
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")

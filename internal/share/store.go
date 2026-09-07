@@ -45,7 +45,7 @@ func (s *Store) Get(id string) (Share, bool) {
 // ListPublic returns up to 100 active public shares.
 func (s *Store) ListPublic(active ActiveRule) []Share {
 	return s.query(s.Client.Share.Query().
-		Where(active.Predicate(), entshare.VisibilityEQ("public")).
+		Where(active.Predicate(), entshare.VisibilityEQ("public"), entshare.EncryptedEQ(true), entshare.DownloadPasswordHashNotNil()).
 		Order(ent.Desc(entshare.FieldCreatedAt)).
 		Limit(100))
 }
@@ -54,7 +54,7 @@ func (s *Store) ListPublic(active ActiveRule) []Share {
 // Used by the private-key lookup flow.
 func (s *Store) ListByKey(active ActiveRule, keyHash string) []Share {
 	return s.query(s.Client.Share.Query().
-		Where(active.Predicate(), entshare.PrivateKeyHashEQ(keyHash)).
+		Where(active.Predicate(), entshare.PrivateKeyHashEQ(keyHash), entshare.EncryptedEQ(true), entshare.DownloadPasswordHashNotNil()).
 		Order(ent.Desc(entshare.FieldCreatedAt)).
 		Limit(100))
 }
@@ -81,6 +81,13 @@ func (s *Store) WithExpiry() []Share {
 		Where(entshare.PurgedAtIsNil(), entshare.ExpiresAtNotNil()))
 }
 
+// WithoutDownloadProtection returns Shares that cannot satisfy current payload policy.
+func (s *Store) WithoutDownloadProtection() []Share {
+	return s.query(s.Client.Share.Query().Where(
+		entshare.Or(entshare.EncryptedEQ(false), entshare.DownloadPasswordHashIsNil()),
+	))
+}
+
 // CountActive counts active shares.
 func (s *Store) CountActive(active ActiveRule) int {
 	return s.count(s.Client.Share.Query().Where(active.Predicate()))
@@ -103,6 +110,7 @@ func (s *Store) Insert(sh Share) error {
 		SetTitle(sh.Title).
 		SetVisibility(sh.Visibility).
 		SetNillablePrivateKeyHash(nonEmptyString(sh.PrivateKeyHash)).
+		SetNillableDownloadPasswordHash(nonEmptyString(sh.DownloadPasswordHash)).
 		SetEncrypted(sh.Encrypted).
 		SetCipherMeta(sh.CipherMeta).
 		SetZipManifest(sh.ZipManifest).
@@ -148,20 +156,21 @@ func (s *Store) count(q *ent.ShareQuery) int {
 // fromEnt converts generated Ent rows into the hand-written Share model.
 func fromEnt(row *ent.Share) Share {
 	return Share{
-		ID:             row.ID,
-		Title:          row.Title,
-		Visibility:     row.Visibility,
-		PrivateKeyHash: stringValue(row.PrivateKeyHash),
-		Encrypted:      row.Encrypted,
-		CipherMeta:     row.CipherMeta,
-		ZipManifest:    row.ZipManifest,
-		Size:           row.Size,
-		BlobPath:       row.BlobPath,
-		BlobSHA256:     row.BlobSha256,
-		UploaderIP:     row.UploaderIP,
-		ExpiresAt:      nullString(row.ExpiresAt),
-		CreatedAt:      row.CreatedAt,
-		PurgedAt:       nullString(row.PurgedAt),
+		ID:                   row.ID,
+		Title:                row.Title,
+		Visibility:           row.Visibility,
+		PrivateKeyHash:       stringValue(row.PrivateKeyHash),
+		DownloadPasswordHash: stringValue(row.DownloadPasswordHash),
+		Encrypted:            row.Encrypted,
+		CipherMeta:           row.CipherMeta,
+		ZipManifest:          row.ZipManifest,
+		Size:                 row.Size,
+		BlobPath:             row.BlobPath,
+		BlobSHA256:           row.BlobSha256,
+		UploaderIP:           row.UploaderIP,
+		ExpiresAt:            nullString(row.ExpiresAt),
+		CreatedAt:            row.CreatedAt,
+		PurgedAt:             nullString(row.PurgedAt),
 	}
 }
 

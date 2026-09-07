@@ -13,6 +13,8 @@ import (
 	"shareserver/internal/upload"
 )
 
+const testCipherMeta = "{\"kdf\":\"PBKDF2-SHA-384\",\"iterations\":600000,\"salt\":\"AAAAAAAAAAAAAAAAAAAAAA==\",\"cipher\":\"AES-256-GCM\",\"nonce\":\"AAAAAAAAAAAAAAAA\"}"
+
 func countBlobs(t *testing.T, dir string) int {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -32,7 +34,8 @@ func TestPrivateKeyRequiredWritesNoBlob(t *testing.T) {
 	u, _, dir := newUploader(t, 1<<30)
 	_, err := u.Do(upload.Request{
 		Title: "x", Visibility: "private", PrivateKey: "",
-		ExpiryHours: "6", Reader: strReader("hello"), UploaderIP: "1.2.3.4",
+		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		ExpiryHours: "6", Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if !errors.Is(err, upload.ErrPrivateKeyRequired) {
 		t.Fatalf("expected ErrPrivateKeyRequired, got %v", err)
@@ -46,7 +49,8 @@ func TestCapReachedWritesNoBlob(t *testing.T) {
 	u, _, dir := newUploader(t, 0)
 	_, err := u.Do(upload.Request{
 		Title: "x", Visibility: "public", ExpiryHours: "6",
-		Reader: strReader("hello"), UploaderIP: "1.2.3.4",
+		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if !errors.Is(err, upload.ErrCap) {
 		t.Fatalf("expected ErrCap, got %v", err)
@@ -57,7 +61,7 @@ func TestCapReachedWritesNoBlob(t *testing.T) {
 }
 
 func TestUploadPurgesExpiredShareBeforeCapCheck(t *testing.T) {
-	u, store, dir := newUploader(t, 5)
+	u, store, dir := newUploader(t, int64(len("encrypted payload")))
 	id := "00000000-0000-0000-0000-000000000201"
 	blob := filepath.Join(dir, id+".blob")
 	if err := os.WriteFile(blob, []byte("stale"), 0644); err != nil {
@@ -69,7 +73,8 @@ func TestUploadPurgesExpiredShareBeforeCapCheck(t *testing.T) {
 
 	res, err := u.Do(upload.Request{
 		Title: "replacement", Visibility: "public", ExpiryHours: "6",
-		Reader: strReader("fresh"), UploaderIP: "1.2.3.4",
+		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if err != nil {
 		t.Fatalf("upload rejected by expired blob usage: %v", err)
@@ -95,6 +100,7 @@ func TestStorageReconcileWaitsForUploadMetadataInsert(t *testing.T) {
 	go func() {
 		res, err := u.Do(upload.Request{
 			Title: "concurrent", Visibility: "public", ExpiryHours: "6",
+			DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
 			Reader: reader, UploaderIP: "1.2.3.4",
 		})
 		if err == nil {
@@ -134,7 +140,7 @@ func TestSuccessfulUploadInsertsRowAndBlob(t *testing.T) {
 	u, store, dir := newUploader(t, 1<<30)
 	res, err := u.Do(upload.Request{
 		Title: "ok", Visibility: "public", ExpiryHours: "6",
-		CipherMeta: "{}", ZipManifest: "[]",
+		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta, ZipManifest: "[]",
 		Reader: strReader("hello shareserver"), UploaderIP: "1.2.3.4",
 	})
 	if err != nil {
@@ -162,7 +168,8 @@ func TestExpiryClampedTo24h(t *testing.T) {
 	u, store, _ := newUploader(t, 1<<30)
 	res, err := u.Do(upload.Request{
 		Title: "x", Visibility: "public", ExpiryHours: "9999",
-		Reader: strReader("hello"), UploaderIP: "1.2.3.4",
+		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if err != nil {
 		t.Fatalf("upload failed: %v", err)
@@ -185,7 +192,8 @@ func TestNonAdminSevenDayExpiryClampedTo24h(t *testing.T) {
 	u, store, _ := newUploader(t, 1<<30)
 	res, err := u.Do(upload.Request{
 		Title: "x", Visibility: "public", ExpiryHours: "168",
-		Reader: strReader("hello"), UploaderIP: "1.2.3.4",
+		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if err != nil {
 		t.Fatalf("upload failed: %v", err)
@@ -205,7 +213,8 @@ func TestAdminExpiryAllowsThreeMonths(t *testing.T) {
 	u, store, _ := newUploader(t, 1<<30)
 	res, err := u.Do(upload.Request{
 		Title: "x", Visibility: "public", ExpiryHours: "2160", Admin: true,
-		Reader: strReader("hello"), UploaderIP: "1.2.3.4",
+		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if err != nil {
 		t.Fatalf("upload failed: %v", err)
@@ -225,7 +234,8 @@ func TestExpiryDefault6h(t *testing.T) {
 	u, store, _ := newUploader(t, 1<<30)
 	res, err := u.Do(upload.Request{
 		Title: "x", Visibility: "public", ExpiryHours: "0",
-		Reader: strReader("hello"), UploaderIP: "1.2.3.4",
+		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if err != nil {
 		t.Fatalf("upload failed: %v", err)
@@ -243,8 +253,9 @@ func TestMetadataTooLargeRejected(t *testing.T) {
 	big := strings.Repeat("x", (64<<10)+1)
 	_, err := u.Do(upload.Request{
 		Title: "x", Visibility: "public", ExpiryHours: "6",
+		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
 		ZipManifest: big,
-		Reader:      strReader("hello"), UploaderIP: "1.2.3.4",
+		Reader:      strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if !errors.Is(err, upload.ErrMetadataTooLarge) {
 		t.Fatalf("expected ErrMetadataTooLarge, got %v", err)
@@ -259,8 +270,8 @@ func TestEncryptedUploadStripsManifest(t *testing.T) {
 	manifest := `[{"name":"secret.txt","size":10,"type":"text/plain"}]`
 	res, err := u.Do(upload.Request{
 		Title: "enc", Visibility: "public", ExpiryHours: "6",
-		EncryptedFlag: "1", CipherMeta: `{}`, ZipManifest: manifest,
-		Reader: strReader("encrypted-bytes"), UploaderIP: "1.2.3.4",
+		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta, ZipManifest: manifest,
+		Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if err != nil {
 		t.Fatalf("upload failed: %v", err)
@@ -274,20 +285,34 @@ func TestEncryptedUploadStripsManifest(t *testing.T) {
 	}
 }
 
-func TestPlainUploadKeepsManifest(t *testing.T) {
-	u, store, _ := newUploader(t, 1<<30)
+func TestPlainUploadRejected(t *testing.T) {
+	u, _, dir := newUploader(t, 1<<30)
 	manifest := `[{"name":"note.txt","size":5,"type":"text/plain"}]`
-	res, err := u.Do(upload.Request{
+	_, err := u.Do(upload.Request{
 		Title: "plain", Visibility: "public", ExpiryHours: "6",
-		ZipManifest: manifest,
-		Reader:      strReader("hello"), UploaderIP: "1.2.3.4",
+		DownloadPassword: "password", ZipManifest: manifest,
+		Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
-	if err != nil {
-		t.Fatalf("upload failed: %v", err)
+	if !errors.Is(err, upload.ErrEncryptionRequired) {
+		t.Fatalf("expected ErrEncryptionRequired, got %v", err)
 	}
-	sh, _ := store.Get(res.ID)
-	if sh.ZipManifest != manifest {
-		t.Fatalf("plain share manifest not preserved: got %q", sh.ZipManifest)
+	if n := countBlobs(t, dir); n != 0 {
+		t.Fatalf("plain payload written: %d blobs", n)
+	}
+}
+
+func TestTooShortCiphertextRejectedAndRemoved(t *testing.T) {
+	u, _, dir := newUploader(t, 1<<30)
+	_, err := u.Do(upload.Request{
+		Title: "short", Visibility: "public", ExpiryHours: "6",
+		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		Reader: strReader("short"), UploaderIP: "1.2.3.4",
+	})
+	if !errors.Is(err, upload.ErrEncryptionRequired) {
+		t.Fatalf("expected ErrEncryptionRequired, got %v", err)
+	}
+	if n := countBlobs(t, dir); n != 0 {
+		t.Fatalf("short ciphertext survived rejection: %d blobs", n)
 	}
 }
 

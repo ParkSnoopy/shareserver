@@ -1,4 +1,4 @@
-import { ArchiveErrorCode, openArchive } from "./archive.js";
+import { ArchiveError, ArchiveErrorCode, openArchive } from "./archive.js";
 import {
 	armDownloadAction,
 	clickPreparedDownload,
@@ -62,8 +62,12 @@ let downloadCleanup = () => {};
 // fetchBlobWithProgress downloads the stored archive while updating byte
 // progress. Returns a Uint8Array read directly into a single pre-sized buffer
 // to avoid the memory spike of accumulating chunk arrays and copying them.
-async function fetchBlobWithProgress(id, fallbackTotal) {
-	const res = await fetch(`/blob/${id}`);
+async function fetchBlobWithProgress(id, password, fallbackTotal) {
+	const res = await fetch(`/api/v0/download/${id}`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ password }),
+	});
 	debugLog("blob-response", {
 		status: res.status,
 		ok: res.ok,
@@ -71,9 +75,14 @@ async function fetchBlobWithProgress(id, fallbackTotal) {
 		contentType: res.headers.get("content-type") || "",
 		fallbackTotal,
 	});
+	if (res.status === 401) {
+		throw new ArchiveError(
+			ArchiveErrorCode.WrongPassword,
+			translate("archiveError.wrongPassword"),
+		);
+	}
 	if (!res.ok) throw Error(`download failed ${res.status}`);
-	const total =
-		Number(res.headers.get("content-length") || fallbackTotal) || 0;
+	const total = Number(res.headers.get("content-length") || fallbackTotal) || 0;
 	progress.set("download", 0, total, translate("state.fetching"));
 	const reader = res.body.getReader();
 	// Pre-allocate one buffer at the known size so the stream is read
@@ -101,6 +110,13 @@ async function load() {
 	}
 	const id = root.dataset.id;
 	const fallbackTotal = manifest.find(Boolean)?.size || 0;
+	const passwordValue = pass?.value || "";
+	if (encrypted && !passwordValue) {
+		throw new ArchiveError(
+			ArchiveErrorCode.PasswordRequired,
+			translate("archiveError.passwordRequired"),
+		);
+	}
 	debugLog("load-start", {
 		shareID: id,
 		encrypted,
@@ -109,7 +125,11 @@ async function load() {
 		previewHidden: previewPane.hidden,
 	});
 	if (!downloadedBlob) {
-		downloadedBlob = await fetchBlobWithProgress(id, fallbackTotal);
+		downloadedBlob = await fetchBlobWithProgress(
+			id,
+			passwordValue,
+			fallbackTotal,
+		);
 	}
 	progress.done("download", downloadedBlob.byteLength);
 
@@ -117,7 +137,6 @@ async function load() {
 	if (encrypted) {
 		cipher = JSON.parse(root.dataset.cipher || "{}");
 	}
-	const passwordValue = pass?.value || "";
 	debugLog("open-archive", {
 		encrypted,
 		downloadedBlobSize: downloadedBlob.byteLength,
@@ -238,10 +257,17 @@ function downloadAllButton() {
 		debugLog("download-all-start", { entries: entries?.length || 0 });
 		try {
 			const zipBlob = await entriesToZip(entries);
-			const zipName = safeDownloadName(`${root.dataset.title || "archive"}.zip`);
-			const prepared = await prepareBlobDownload(zipBlob, zipName, root.dataset.id, {
-				onDebug: debugLog,
-			});
+			const zipName = safeDownloadName(
+				`${root.dataset.title || "archive"}.zip`,
+			);
+			const prepared = await prepareBlobDownload(
+				zipBlob,
+				zipName,
+				root.dataset.id,
+				{
+					onDebug: debugLog,
+				},
+			);
 			clickPreparedDownload(prepared);
 			prepared.cleanup();
 			debugLog("download-all-done", { zipName, bytes: zipBlob.size });
@@ -264,8 +290,8 @@ function typedBlob(entry) {
 
 // entryPreviewURL builds a same-origin blob: URL from the in-browser entry
 // blob. Blob URLs bypass X-Frame-Options / CSP frame-ancestors, so previews
-// work for plain shares too (the server only exposes /blob/{id} for download;
-// per-entry HTTP serving was removed to avoid stored same-origin XSS).
+// work without server-side entry routes. Per-entry HTTP serving remains absent
+// to avoid stored same-origin XSS.
 function entryPreviewURL(entry, forcedType = "") {
 	const blob = forcedType
 		? new Blob([entry.blob], { type: forcedType })

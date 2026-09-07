@@ -75,6 +75,26 @@ func (_u *ShareUpdate) ClearPrivateKeyHash() *ShareUpdate {
 	return _u
 }
 
+// SetDownloadPasswordHash sets the "download_password_hash" field.
+func (_u *ShareUpdate) SetDownloadPasswordHash(v string) *ShareUpdate {
+	_u.mutation.SetDownloadPasswordHash(v)
+	return _u
+}
+
+// SetNillableDownloadPasswordHash sets the "download_password_hash" field if the given value is not nil.
+func (_u *ShareUpdate) SetNillableDownloadPasswordHash(v *string) *ShareUpdate {
+	if v != nil {
+		_u.SetDownloadPasswordHash(*v)
+	}
+	return _u
+}
+
+// ClearDownloadPasswordHash clears the value of the "download_password_hash" field.
+func (_u *ShareUpdate) ClearDownloadPasswordHash() *ShareUpdate {
+	_u.mutation.ClearDownloadPasswordHash()
+	return _u
+}
+
 // SetEncrypted sets the "encrypted" field.
 func (_u *ShareUpdate) SetEncrypted(v bool) *ShareUpdate {
 	_u.mutation.SetEncrypted(v)
@@ -299,6 +319,12 @@ func (_u *ShareUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.PrivateKeyHashCleared() {
 		_spec.ClearField(share.FieldPrivateKeyHash, field.TypeString)
 	}
+	if value, ok := _u.mutation.DownloadPasswordHash(); ok {
+		_spec.SetField(share.FieldDownloadPasswordHash, field.TypeString, value)
+	}
+	if _u.mutation.DownloadPasswordHashCleared() {
+		_spec.ClearField(share.FieldDownloadPasswordHash, field.TypeString)
+	}
 	if value, ok := _u.mutation.Encrypted(); ok {
 		_spec.SetField(share.FieldEncrypted, field.TypeBool, value)
 	}
@@ -409,6 +435,26 @@ func (_u *ShareUpdateOne) SetNillablePrivateKeyHash(v *string) *ShareUpdateOne {
 // ClearPrivateKeyHash clears the value of the "private_key_hash" field.
 func (_u *ShareUpdateOne) ClearPrivateKeyHash() *ShareUpdateOne {
 	_u.mutation.ClearPrivateKeyHash()
+	return _u
+}
+
+// SetDownloadPasswordHash sets the "download_password_hash" field.
+func (_u *ShareUpdateOne) SetDownloadPasswordHash(v string) *ShareUpdateOne {
+	_u.mutation.SetDownloadPasswordHash(v)
+	return _u
+}
+
+// SetNillableDownloadPasswordHash sets the "download_password_hash" field if the given value is not nil.
+func (_u *ShareUpdateOne) SetNillableDownloadPasswordHash(v *string) *ShareUpdateOne {
+	if v != nil {
+		_u.SetDownloadPasswordHash(*v)
+	}
+	return _u
+}
+
+// ClearDownloadPasswordHash clears the value of the "download_password_hash" field.
+func (_u *ShareUpdateOne) ClearDownloadPasswordHash() *ShareUpdateOne {
+	_u.mutation.ClearDownloadPasswordHash()
 	return _u
 }
 
@@ -665,6 +711,12 @@ func (_u *ShareUpdateOne) sqlSave(ctx context.Context) (_node *Share, err error)
 	}
 	if _u.mutation.PrivateKeyHashCleared() {
 		_spec.ClearField(share.FieldPrivateKeyHash, field.TypeString)
+	}
+	if value, ok := _u.mutation.DownloadPasswordHash(); ok {
+		_spec.SetField(share.FieldDownloadPasswordHash, field.TypeString, value)
+	}
+	if _u.mutation.DownloadPasswordHashCleared() {
+		_spec.ClearField(share.FieldDownloadPasswordHash, field.TypeString)
 	}
 	if value, ok := _u.mutation.Encrypted(); ok {
 		_spec.SetField(share.FieldEncrypted, field.TypeBool, value)

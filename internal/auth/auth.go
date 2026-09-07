@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/text/unicode/norm"
 	"shareserver/internal/db"
 	"shareserver/internal/ent"
 	entadmin "shareserver/internal/ent/admin"
@@ -25,6 +26,25 @@ func HashPassword(p string) (string, error) {
 // CheckPassword compares a plaintext password with a stored bcrypt hash.
 func CheckPassword(hash, p string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(p)) == nil
+}
+
+// HashDownloadPassword stores a slow, salted verifier for payload access.
+// SHA-256 domain separation removes bcrypt's 72-byte password limit and keeps
+// this verifier independent from both admin hashes and browser PBKDF2 keys.
+func HashDownloadPassword(password string) (string, error) {
+	digest := downloadPasswordDigest(password)
+	b, err := bcrypt.GenerateFromPassword(digest[:], bcrypt.DefaultCost)
+	return string(b), err
+}
+
+// CheckDownloadPassword compares a payload password with its stored verifier.
+func CheckDownloadPassword(hash, password string) bool {
+	digest := downloadPasswordDigest(password)
+	return bcrypt.CompareHashAndPassword([]byte(hash), digest[:]) == nil
+}
+
+func downloadPasswordDigest(password string) [sha256.Size]byte {
+	return sha256.Sum256([]byte("shareserver-download-password\x00" + norm.NFC.String(password)))
 }
 
 // HMACKey turns a private share key into a stable, secret-scoped lookup hash.
@@ -145,7 +165,10 @@ func resetFailures(ctx context.Context, client *ent.Client, ip string) {
 func CleanIP(hostport string) string {
 	host, _, err := net.SplitHostPort(hostport)
 	if err != nil {
-		return hostport
+		host = hostport
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.String()
 	}
 	return host
 }

@@ -4,25 +4,41 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/go-chi/chi/v5"
+	"io"
 	"net/http"
 	"shareserver/internal/audit"
 	"shareserver/internal/auth"
 	"shareserver/internal/share"
 	"shareserver/internal/storage"
 	"shareserver/internal/upload"
+	"strings"
 	"time"
 )
 
-// uploadPost accepts a browser-built archive and delegates validation/storage to upload.
-func (h *Handler) uploadPost(w http.ResponseWriter, r *http.Request) {
+const maxDownloadPasswordBytes = 4 << 10
+
+// apiUploadPost accepts a client-encrypted archive and delegates storage policy to upload.
+func (h *Handler) apiUploadPost(w http.ResponseWriter, r *http.Request) {
+	if !h.secureRequest(r) {
+		http.Error(w, "HTTPS required", http.StatusUpgradeRequired)
+		return
+	}
 	ip := h.clientIP(r)
-	// Multipart bodies are consumed by ParseMultipartForm, so the CSRF
-	// token must come from the header (not r.FormValue, which would read
-	// the body). The general CSRF middleware can't know this — it's upload
-	// policy, checked here before the body is parsed.
+	// API clients need no browser session. A browser admin may opt into its
+	// longer expiry allowance only by presenting its session-bound CSRF token.
 	tok := r.Header.Get("X-CSRF-Token")
-	if tok == "" || !sameToken(tok, CurrentSession(r).CSRF) {
-		http.Error(w, "csrf header required", http.StatusForbidden)
+	session := CurrentSession(r)
+	admin := false
+	if tok != "" {
+		if session.CSRF == "" || !sameToken(tok, session.CSRF) {
+			http.Error(w, "csrf rejected", http.StatusForbidden)
+			return
+		}
+		admin = session.AdminID > 0
+	}
+	if !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data") {
+		http.Error(w, "multipart upload required", http.StatusUnsupportedMediaType)
 		return
 	}
 	if err := r.ParseMultipartForm(2 << 20); err != nil {
@@ -44,16 +60,17 @@ func (h *Handler) uploadPost(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 	res, err := h.Upload.Do(upload.Request{
-		Title:         r.FormValue("title"),
-		Visibility:    r.FormValue("visibility"),
-		PrivateKey:    r.FormValue("private_key"),
-		CipherMeta:    r.FormValue("cipher_meta"),
-		ZipManifest:   r.FormValue("zip_manifest"),
-		EncryptedFlag: r.FormValue("encrypted"),
-		ExpiryHours:   r.FormValue("expiry_hours"),
-		Reader:        file,
-		UploaderIP:    ip,
-		Admin:         CurrentSession(r).AdminID > 0,
+		Title:            r.FormValue("title"),
+		Visibility:       r.FormValue("visibility"),
+		PrivateKey:       r.FormValue("private_key"),
+		DownloadPassword: r.FormValue("password"),
+		CipherMeta:       r.FormValue("cipher_meta"),
+		ZipManifest:      r.FormValue("zip_manifest"),
+		EncryptedFlag:    r.FormValue("encrypted"),
+		ExpiryHours:      r.FormValue("expiry_hours"),
+		Reader:           file,
+		UploaderIP:       ip,
+		Admin:            admin,
 	})
 	if err != nil {
 		switch {
@@ -61,6 +78,10 @@ func (h *Handler) uploadPost(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "upload too large after zip/encrypt", http.StatusRequestEntityTooLarge)
 		case errors.Is(err, upload.ErrPrivateKeyRequired):
 			http.Error(w, "private key required", 400)
+		case errors.Is(err, upload.ErrPasswordRequired):
+			http.Error(w, "download password required", 400)
+		case errors.Is(err, upload.ErrEncryptionRequired):
+			http.Error(w, "encrypted payload required", 400)
 		case errors.Is(err, upload.ErrMetadataTooLarge):
 			http.Error(w, "metadata too large", http.StatusRequestEntityTooLarge)
 		case errors.Is(err, upload.ErrCap):
@@ -71,7 +92,82 @@ func (h *Handler) uploadPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": res.ID, "url": res.URL})
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"id": res.ID, "url": res.URL, "download_url": res.DownloadURL,
+		"size": res.Size, "expires_at": res.ExpiresAt,
+	})
+}
+
+// apiDownloadPost verifies the separately stored password hash before exposing
+// any encrypted payload bytes. It never decrypts the client ciphertext.
+func (h *Handler) apiDownloadPost(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
+	wait := func() {
+		if remaining := time.Second - time.Since(started); remaining > 0 {
+			time.Sleep(remaining)
+		}
+	}
+	if !h.secureRequest(r) {
+		wait()
+		http.Error(w, "HTTPS required", http.StatusUpgradeRequired)
+		return
+	}
+	ip := h.clientIP(r)
+	if h.Downloads == nil {
+		h.Downloads = newDownloadRateLimiter(5, time.Minute)
+	}
+	if !h.Downloads.Allow(ip, started) {
+		wait()
+		w.Header().Set("Retry-After", "60")
+		http.Error(w, "too many download attempts", http.StatusTooManyRequests)
+		return
+	}
+	password, err := downloadPassword(r)
+	if err != nil {
+		wait()
+		http.Error(w, "download denied", http.StatusUnauthorized)
+		return
+	}
+	s, ok := h.getShare(chi.URLParam(r, "id"))
+	if !ok || !s.Encrypted || s.DownloadPasswordHash == "" || !auth.CheckDownloadPassword(s.DownloadPasswordHash, password) {
+		wait()
+		http.Error(w, "download denied", http.StatusUnauthorized)
+		return
+	}
+	if !share.ActiveAt(requestTime(r)).IsActive(s) {
+		wait()
+		http.Error(w, "expired", http.StatusGone)
+		return
+	}
+	wait()
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+s.ID+`.payload"`)
+	w.Header().Set("Cache-Control", "no-store")
+	http.ServeFile(w, r, s.BlobPath)
+}
+
+func downloadPassword(r *http.Request) (string, error) {
+	contentType := strings.ToLower(r.Header.Get("Content-Type"))
+	if strings.HasPrefix(contentType, "application/json") {
+		var body struct {
+			Password string `json:"password"`
+		}
+		dec := json.NewDecoder(io.LimitReader(r.Body, maxDownloadPasswordBytes+256))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&body); err != nil || body.Password == "" || len(body.Password) > maxDownloadPasswordBytes {
+			return "", errors.New("invalid password request")
+		}
+		if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+			return "", errors.New("invalid password request")
+		}
+		return body.Password, nil
+	}
+	if err := r.ParseForm(); err != nil || r.FormValue("password") == "" || len(r.FormValue("password")) > maxDownloadPasswordBytes {
+		return "", errors.New("invalid password request")
+	}
+	return r.FormValue("password"), nil
 }
 
 // adminLoginPage renders the admin sign-in form.

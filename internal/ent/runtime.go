@@ -2,8 +2,19 @@
 
 package ent
 
+import (
+	"shareserver/internal/ent/schema"
+	"shareserver/internal/ent/session"
+)
+
 // The init function reads all schema descriptors with runtime code
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	sessionFields := schema.Session{}.Fields()
+	_ = sessionFields
+	// sessionDescLanguage is the schema descriptor for language field.
+	sessionDescLanguage := sessionFields[3].Descriptor()
+	// session.DefaultLanguage holds the default value on creation for the language field.
+	session.DefaultLanguage = sessionDescLanguage.Default.(string)
 }

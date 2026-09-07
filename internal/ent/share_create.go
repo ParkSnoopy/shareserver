@@ -45,6 +45,20 @@ func (_c *ShareCreate) SetNillablePrivateKeyHash(v *string) *ShareCreate {
 	return _c
 }
 
+// SetDownloadPasswordHash sets the "download_password_hash" field.
+func (_c *ShareCreate) SetDownloadPasswordHash(v string) *ShareCreate {
+	_c.mutation.SetDownloadPasswordHash(v)
+	return _c
+}
+
+// SetNillableDownloadPasswordHash sets the "download_password_hash" field if the given value is not nil.
+func (_c *ShareCreate) SetNillableDownloadPasswordHash(v *string) *ShareCreate {
+	if v != nil {
+		_c.SetDownloadPasswordHash(*v)
+	}
+	return _c
+}
+
 // SetEncrypted sets the "encrypted" field.
 func (_c *ShareCreate) SetEncrypted(v bool) *ShareCreate {
 	_c.mutation.SetEncrypted(v)
@@ -247,6 +261,10 @@ func (_c *ShareCreate) createSpec() (*Share, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.PrivateKeyHash(); ok {
 		_spec.SetField(share.FieldPrivateKeyHash, field.TypeString, value)
 		_node.PrivateKeyHash = &value
+	}
+	if value, ok := _c.mutation.DownloadPasswordHash(); ok {
+		_spec.SetField(share.FieldDownloadPasswordHash, field.TypeString, value)
+		_node.DownloadPasswordHash = &value
 	}
 	if value, ok := _c.mutation.Encrypted(); ok {
 		_spec.SetField(share.FieldEncrypted, field.TypeBool, value)

@@ -15,17 +15,18 @@ import (
 
 // Config is the validated runtime configuration for the single server process.
 type Config struct {
-	Addr              string
-	DBPath            string
-	BlobDir           string
-	AppSecret         []byte
-	AdminUser         string
-	AdminPassword     string
-	MaxUploadBytes    int64
-	StorageCapBytes   int64
-	TrustProxyHeaders bool
-	TZ                *time.Location
-	Dev               bool
+	Addr                      string
+	DBPath                    string
+	BlobDir                   string
+	AppSecret                 []byte
+	AdminUser                 string
+	AdminPassword             string
+	MaxUploadBytes            int64
+	StorageCapBytes           int64
+	DownloadAttemptsPerMinute int
+	TrustProxyHeaders         bool
+	TZ                        *time.Location
+	Dev                       bool
 }
 
 // Load reads environment settings, applies safe defaults, and fails closed in prod.
@@ -59,7 +60,8 @@ func Load() Config {
 		Addr: env("ADDR", ":8080"), DBPath: env("DB_PATH", "data/shareserver.db"), BlobDir: env("BLOB_DIR", "data/blobs"),
 		AppSecret: []byte(secret), AdminUser: env("ADMIN_USER", "admin"), AdminPassword: adminPassword,
 		MaxUploadBytes: int64(envInt("MAX_UPLOAD_BYTES", 200*1024*1024)), StorageCapBytes: int64(envInt("STORAGE_CAP_BYTES", 400*1024*1024)),
-		TrustProxyHeaders: envBool("TRUST_PROXY_HEADERS", false), TZ: loc, Dev: dev,
+		DownloadAttemptsPerMinute: envInt("DOWNLOAD_ATTEMPTS_PER_MINUTE", 5),
+		TrustProxyHeaders:         envBool("TRUST_PROXY_HEADERS", false), TZ: loc, Dev: dev,
 	}
 }
 

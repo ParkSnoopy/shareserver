@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	stdhttp "net/http"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"shareserver/internal/app"
+	"shareserver/internal/auth"
 	"shareserver/internal/config"
 	"shareserver/internal/db"
 	"shareserver/internal/ent"
@@ -41,12 +43,13 @@ func newStore(t *testing.T) (*share.Store, *ent.Client) {
 func testConfig(t *testing.T) config.Config {
 	t.Helper()
 	return config.Config{
-		TZ:                time.UTC,
-		BlobDir:           t.TempDir(),
-		MaxUploadBytes:    10 << 20,
-		StorageCapBytes:   1 << 30,
-		AppSecret:         []byte("test-secret"),
-		TrustProxyHeaders: true,
+		TZ:                        time.UTC,
+		BlobDir:                   t.TempDir(),
+		MaxUploadBytes:            10 << 20,
+		StorageCapBytes:           1 << 30,
+		AppSecret:                 []byte("test-secret"),
+		DownloadAttemptsPerMinute: 5,
+		TrustProxyHeaders:         true,
 	}
 }
 
@@ -98,7 +101,7 @@ func sampleShare(id, vis string, exp string) share.Share {
 	}
 	return share.Share{
 		ID: id, Title: "t-" + id, Visibility: vis,
-		Encrypted: false, Size: 100, BlobPath: "/tmp/" + id + ".blob",
+		Encrypted: true, DownloadPasswordHash: "download-hash", Size: 100, BlobPath: "/tmp/" + id + ".blob",
 		BlobSHA256: "sum-" + id, UploaderIP: "1.2.3.4",
 		ExpiresAt: expN,
 	}
@@ -120,6 +123,26 @@ func insertRouteShare(t *testing.T, h *httpx.Handler, id, blobPath, expiry strin
 	if err := h.Store.Insert(sh); err != nil {
 		t.Fatalf("insert: %v", err)
 	}
+}
+
+// insertProtectedShare seeds encrypted payload bytes with a separate download verifier.
+func insertProtectedShare(t *testing.T, a *app.App, id, payload, expiry, password string) {
+	t.Helper()
+	if err := os.MkdirAll(a.C.BlobDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(a.C.BlobDir, id+".blob")
+	if err := os.WriteFile(path, []byte(payload), 0644); err != nil {
+		t.Fatal(err)
+	}
+	hash, err := auth.HashDownloadPassword(password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sh := sampleShare(id, "public", expiry)
+	sh.BlobPath = path
+	sh.DownloadPasswordHash = hash
+	mustInsertShare(t, share.NewStore(a.DB), sh)
 }
 
 // existsSession checks whether a session row survived a request path.

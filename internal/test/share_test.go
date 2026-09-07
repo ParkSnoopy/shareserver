@@ -214,6 +214,29 @@ func TestStorageIntegrityDeletesBlobAndRow(t *testing.T) {
 	}
 }
 
+func TestStorageIntegrityPurgesLegacyUnprotectedShare(t *testing.T) {
+	s, _ := newStore(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "legacy.blob")
+	if err := os.WriteFile(path, []byte("legacy payload"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sh := sampleShare("legacy", "public", futureTS(time.Hour))
+	sh.BlobPath = path
+	sh.DownloadPasswordHash = ""
+	mustInsertShare(t, s, sh)
+
+	if count := storage.NewIntegrity(dir, s).PurgeUnprotected(); count != 1 {
+		t.Fatalf("purged unprotected count = %d, want 1", count)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("legacy blob survived purge: %v", err)
+	}
+	if _, ok := s.Get(sh.ID); ok {
+		t.Fatal("legacy metadata survived purge")
+	}
+}
+
 func futureTS(d time.Duration) string {
 	return time.Now().UTC().Add(d).Format(time.RFC3339Nano)
 }

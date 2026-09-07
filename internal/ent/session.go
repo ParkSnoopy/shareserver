@@ -20,6 +20,8 @@ type Session struct {
 	AdminID *int64 `json:"admin_id,omitempty"`
 	// Csrf holds the value of the "csrf" field.
 	Csrf string `json:"csrf,omitempty"`
+	// Language holds the value of the "language" field.
+	Language string `json:"language,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt string `json:"created_at,omitempty"`
 	// ExpiresAt holds the value of the "expires_at" field.
@@ -34,7 +36,7 @@ func (*Session) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case session.FieldAdminID:
 			values[i] = new(sql.NullInt64)
-		case session.FieldID, session.FieldCsrf, session.FieldCreatedAt, session.FieldExpiresAt:
+		case session.FieldID, session.FieldCsrf, session.FieldLanguage, session.FieldCreatedAt, session.FieldExpiresAt:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -69,6 +71,12 @@ func (_m *Session) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field csrf", values[i])
 			} else if value.Valid {
 				_m.Csrf = value.String
+			}
+		case session.FieldLanguage:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field language", values[i])
+			} else if value.Valid {
+				_m.Language = value.String
 			}
 		case session.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -125,6 +133,9 @@ func (_m *Session) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("csrf=")
 	builder.WriteString(_m.Csrf)
+	builder.WriteString(", ")
+	builder.WriteString("language=")
+	builder.WriteString(_m.Language)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt)

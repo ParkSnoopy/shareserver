@@ -17,12 +17,14 @@ type Session struct {
 	ID        string
 	AdminID   int64
 	CSRF      string
+	Language  string
 	ExpiresAt time.Time
 }
 
 // SessionLifecycle owns session row lifecycle policy; HTTP code owns cookies.
 type SessionLifecycle interface {
-	GetOrCreate(ctx context.Context, sid string) (Session, bool)
+	Get(ctx context.Context, sid string) (Session, bool)
+	GetOrCreate(ctx context.Context, sid, language string) (Session, bool)
 	Rotate(ctx context.Context, oldSID string, adminID int64) Session
 	Delete(ctx context.Context, sid string)
 }
@@ -38,26 +40,41 @@ func NewSessions(client *ent.Client) *DBSessions {
 	return &DBSessions{DB: client, Now: func() time.Time { return time.Now().UTC() }}
 }
 
+// Get returns one unexpired session without creating or mutating state.
+func (s *DBSessions) Get(ctx context.Context, sid string) (Session, bool) {
+	if sid == "" {
+		return Session{}, false
+	}
+	row, err := s.DB.Session.Get(ctx, sid)
+	if err != nil {
+		return Session{}, false
+	}
+	sess := sessionFromRow(row)
+	return sess, sess.ExpiresAt.After(s.now())
+}
+
 // GetOrCreate reuses a valid session, drops an expired row, or creates a new anonymous session.
-func (s *DBSessions) GetOrCreate(ctx context.Context, sid string) (Session, bool) {
+func (s *DBSessions) GetOrCreate(ctx context.Context, sid, language string) (Session, bool) {
 	now := s.now()
 	if sid != "" {
-		row, err := s.DB.Session.Get(ctx, sid)
-		if err == nil {
-			sess := sessionFromRow(row)
-			if sess.ExpiresAt.After(now) {
-				return sess, false
-			}
+		if sess, ok := s.Get(ctx, sid); ok {
+			return sess, false
+		}
+		if _, err := s.DB.Session.Get(ctx, sid); err == nil {
 			_ = s.DB.Session.DeleteOneID(sid).Exec(ctx)
 		}
 	}
-	return s.create(ctx, now, 0, false), true
+	return s.create(ctx, now, 0, false, language), true
 }
 
 // Rotate deletes the previous session and creates a fresh admin session.
 func (s *DBSessions) Rotate(ctx context.Context, oldSID string, adminID int64) Session {
+	language := "en"
+	if row, err := s.DB.Session.Get(ctx, oldSID); err == nil {
+		language = row.Language
+	}
 	_ = s.DB.Session.DeleteOneID(oldSID).Exec(ctx)
-	return s.create(ctx, s.now(), adminID, true)
+	return s.create(ctx, s.now(), adminID, true, language)
 }
 
 // Delete removes a session row so the cookie can no longer authorize requests.
@@ -72,11 +89,15 @@ func (s *DBSessions) now() time.Time {
 	return time.Now().UTC()
 }
 
-func (s *DBSessions) create(ctx context.Context, now time.Time, adminID int64, admin bool) Session {
-	sess := Session{ID: randHex(32), AdminID: adminID, CSRF: randHex(32), ExpiresAt: now.Add(sessionDuration).UTC()}
+func (s *DBSessions) create(ctx context.Context, now time.Time, adminID int64, admin bool, language string) Session {
+	if language == "" {
+		language = "en"
+	}
+	sess := Session{ID: randHex(32), AdminID: adminID, CSRF: randHex(32), Language: language, ExpiresAt: now.Add(sessionDuration).UTC()}
 	create := s.DB.Session.Create().
 		SetID(sess.ID).
 		SetCsrf(sess.CSRF).
+		SetLanguage(sess.Language).
 		SetCreatedAt(db.Now()).
 		SetExpiresAt(sess.ExpiresAt.Format(time.RFC3339Nano))
 	if admin {
@@ -87,7 +108,7 @@ func (s *DBSessions) create(ctx context.Context, now time.Time, adminID int64, a
 }
 
 func sessionFromRow(row *ent.Session) Session {
-	sess := Session{ID: row.ID, CSRF: row.Csrf}
+	sess := Session{ID: row.ID, CSRF: row.Csrf, Language: row.Language}
 	if row.AdminID != nil {
 		sess.AdminID = *row.AdminID
 	}

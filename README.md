@@ -1,16 +1,18 @@
 # shareserver
 
 A small, terminal-style file share web app in Go. Server-rendered pages, no
-SPA, no CDN. Files are zipped (and optionally encrypted) in the browser; the
-server stores opaque blobs plus metadata through Ent on SQLite.
+SPA, no CDN. Files are zipped and encrypted in the browser; the server stores
+opaque payloads plus metadata through Ent on SQLite.
 
 ## What it does
 
 - Upload one or more files → get a short link (`/s/{uuid}`).
 - Shares are **public** (listed on the home page) or **private** (unlisted;
   findable only with a private key, though the direct UUID link always works).
-- Shares can be **encrypted**: the password stays in the browser, the server
-  cannot decrypt the content.
+- Every Share is **encrypted**. The password encrypts and decrypts in the
+  browser. The server receives it over HTTPS only to authorize payload access,
+  storing a separate salted bcrypt verifier rather than the password or
+  browser encryption key.
 - Shares expire (default 6h, max 24h for anonymous uploads).
 - Admin panel at `/admin` for inspecting/deleting shares and seeing storage
   usage + uploader IP.
@@ -21,10 +23,15 @@ These are baked in and not negotiable without changing what this is:
 
 - **Local resources only.** All JS/CSS/fonts are served from `/static`. No
   CDN, no external URLs in rendered output.
-- **Server never decrypts.** Encrypted shares are opaque bytes server-side;
-  decryption happens in the browser with a password the server never sees.
+- **Server never decrypts.** Shares stay opaque and encrypted at rest;
+  decryption happens only in the browser.
+- **Payload access requires the password.** The server compares each download
+  password against its separate verifier before returning any encrypted bytes.
+- **Every download is a POST.** Payload requests wait at least 1 second and are
+  rate-limited per client IP to slow brute-force attempts.
 - **Every upload is zip-backed**, even a single file.
-- **CSRF on every mutation.** POSTs require a session-bound token.
+- **CSRF on browser-session mutations.** Stateless API calls cannot gain admin
+  policy without a matching session-bound token.
 - **Private ≠ encrypted.** Private means unlisted; the private key only
   discovers/lists private shares, it is not the encryption password.
 - **Anonymous errors are generic.** Cap/disk failures never leak internal
@@ -68,8 +75,39 @@ present; real env vars win over the file). `README.md` below matches
 | `ADMIN_PASSWORD` | commented out | initial admin password |
 | `MAX_UPLOAD_BYTES` | `314572800` | per-blob upload limit |
 | `STORAGE_CAP_BYTES` | `419430400` | global stored-blob cap |
+| `DOWNLOAD_ATTEMPTS_PER_MINUTE` | `5` | maximum payload download attempts per client IP each rolling minute |
 | `TRUST_PROXY_HEADERS` | `false` | trust `X-Forwarded-For`/`X-Real-IP`/`X-Forwarded-Proto` |
 | `TZ` | `Asia/Shanghai` | timezone for purge scheduling and display |
+
+## API
+
+API calls need no browser session and require HTTPS. API upload accepts a
+client-built, encrypted payload as `multipart/form-data` at
+`POST /api/v0/upload`:
+
+The server accepts direct TLS or `X-Forwarded-Proto: https` only from a trusted
+loopback proxy when `TRUST_PROXY_HEADERS=true`.
+
+- `blob`: encrypted payload bytes;
+- `password`: password used for download authorization and client decryption;
+- `encrypted`: `1`;
+- `cipher_meta`: JSON describing `PBKDF2-SHA-384` and `AES-256-GCM` parameters;
+- `title`, `visibility`, `private_key`, `expiry_hours`, and `zip_manifest`:
+  same metadata used by the web upload form.
+
+Successful upload returns HTTP `201` with `id`, Share `url`, `download_url`,
+stored `size`, and `expires_at`.
+
+`POST /api/v0/download/{uuid}` accepts either JSON
+`{"password":"..."}` or form field `password`. A correct password returns the
+raw encrypted payload as `application/octet-stream`; clients own decryption.
+Wrong passwords return `401` without payload bytes. The endpoint returns `429`
+with `Retry-After` after the per-IP limit is reached.
+
+On first startup after upgrading from versions without password-gated payload
+downloads, legacy Shares lacking a download-password verifier are removed with
+their blobs. They cannot be migrated safely because the server never stored
+their passwords.
 
 ## How to reproduce (tests)
 
@@ -83,8 +121,8 @@ bun test
 This runs:
 
 1. **`go test ./...`** — unit and route-level tests under `internal/test/` for
-   Ent-backed metadata, uploads, sessions, expiry/404 pages, blob serving, and
-   storage reconciliation.
+   Ent-backed metadata, uploads, sessions, expiry/404 pages, password-gated
+   payload downloads, API rate limits, localization, and storage reconciliation.
 2. **`bun test`** — client-side tests under `web/test/` for Progress state,
    text normalization, encryption metadata bounds, and mobile-safe download
    filenames.
@@ -103,7 +141,7 @@ Admins can select multiple Shares and remove each selected pair in one action.
 - Files must stay secure on the network and at rest: preserve HTTPS/proxy trust boundaries, safe cookies, CSP, opaque encrypted blobs, sanitized filenames, and no internal UUID/blob names as user-facing download names.
 - Keep the app small, boring, and easy to operate: one Go server, server-rendered pages, SQLite metadata, filesystem blobs, no SPA, no CDN, no unnecessary framework layer.
 - Treat each share as one logical object made from two durable parts: metadata in SQLite and opaque bytes in the blob directory; every create, delete, purge, and repair path must keep both sides consistent.
-- Keep browser and server responsibilities sharply separated: the browser zips files, encrypts when requested, decrypts previews/downloads, and preserves user-facing filenames; the server stores bytes, metadata, policy, sessions, and audit records.
+- Keep browser and server responsibilities sharply separated: the browser zips files, always encrypts, decrypts previews/downloads, and preserves user-facing filenames; the server stores bytes, metadata, password verifiers, download authorization policy, sessions, and audit records.
 - Never make the server depend on plaintext encrypted-share contents; encrypted uploads must remain opaque server-side, and any metadata stored for them must be intentionally safe to reveal.
 - Favor deep, cohesive modules over shallow plumbing: upload policy lives in upload code, share querying lives in the share store, auth rules live in auth/session code, and storage repair lives with cleanup.
 - Keep HTTP handlers thin and boring: parse request, call the owning module, choose response status or redirect, and avoid embedding storage, auth, or database policy in route code.

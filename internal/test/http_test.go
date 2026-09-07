@@ -2,6 +2,7 @@ package internaltest
 
 import (
 	"context"
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -76,6 +77,7 @@ func TestSessionLifecycleRotateDeletesOldAndCreatesAdmin(t *testing.T) {
 	_, err := client.Session.Create().
 		SetID("pre-login-sid").
 		SetCsrf("pre-login-csrf").
+		SetLanguage("ko").
 		SetCreatedAt(now.Add(-time.Minute).Format(time.RFC3339Nano)).
 		SetExpiresAt(now.Add(time.Hour).Format(time.RFC3339Nano)).
 		Save(ctx)
@@ -94,6 +96,9 @@ func TestSessionLifecycleRotateDeletesOldAndCreatesAdmin(t *testing.T) {
 	}
 	if rotated.CSRF == "" {
 		t.Fatalf("expected rotated session csrf")
+	}
+	if rotated.Language != "ko" {
+		t.Fatalf("rotated session language = %q, want ko", rotated.Language)
 	}
 	if existsSession(t, client, "pre-login-sid") {
 		t.Fatalf("old session survived rotation")
@@ -137,7 +142,7 @@ func TestSessionLifecycleGetOrCreateReusesValidAndDropsExpired(t *testing.T) {
 	sessions := httpx.NewSessions(client)
 	sessions.Now = func() time.Time { return now }
 
-	got, created := sessions.GetOrCreate(ctx, "valid-sid")
+	got, created := sessions.GetOrCreate(ctx, "valid-sid", "ko")
 	if created {
 		t.Fatalf("valid session was recreated")
 	}
@@ -148,7 +153,7 @@ func TestSessionLifecycleGetOrCreateReusesValidAndDropsExpired(t *testing.T) {
 		t.Fatalf("valid session row was removed")
 	}
 
-	got, created = sessions.GetOrCreate(ctx, "expired-browser-sid")
+	got, created = sessions.GetOrCreate(ctx, "expired-browser-sid", "ko")
 	if !created {
 		t.Fatalf("expired session was not replaced")
 	}
@@ -241,6 +246,34 @@ func TestSharePageDropsDatabaseRowWhenBlobIsMissing(t *testing.T) {
 	}
 }
 
+func TestLegacyShareWithoutDownloadVerifierIsHidden(t *testing.T) {
+	a, router := newRouter(t)
+	store := share.NewStore(a.DB)
+	id := "00000000-0000-0000-0000-000000000114"
+	path := filepath.Join(a.C.BlobDir, id+".blob")
+	if err := os.WriteFile(path, []byte("legacy-payload"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sh := sampleShare(id, "public", futureTS(time.Hour))
+	sh.BlobPath = path
+	sh.DownloadPasswordHash = ""
+	mustInsertShare(t, store, sh)
+
+	home := httptest.NewRequest(http.MethodGet, "/", nil)
+	homeResponse := httptest.NewRecorder()
+	router.ServeHTTP(homeResponse, home)
+	if strings.Contains(homeResponse.Body.String(), id) {
+		t.Fatal("legacy Share without download verifier appeared in public list")
+	}
+
+	detail := httptest.NewRequest(http.MethodGet, "/s/"+id, nil)
+	detailResponse := httptest.NewRecorder()
+	router.ServeHTTP(detailResponse, detail)
+	if detailResponse.Code != http.StatusNotFound {
+		t.Fatalf("legacy Share detail status = %d, want 404", detailResponse.Code)
+	}
+}
+
 func TestExpiredSharePageShowsCountdownRedirect(t *testing.T) {
 	a, router := newRouter(t)
 	store := share.NewStore(a.DB)
@@ -268,18 +301,14 @@ func TestExpiredSharePageShowsCountdownRedirect(t *testing.T) {
 	)
 }
 
-func TestBlobExpiredReturns410(t *testing.T) {
+func TestAPIDownloadExpiredReturns410AfterPasswordCheck(t *testing.T) {
 	a, router := newRouter(t)
-	store := share.NewStore(a.DB)
 	id := "00000000-0000-0000-0000-000000000001"
-	sh := sampleShare(id, "public", time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano))
-	sh.BlobPath = filepath.Join(a.C.BlobDir, id+".blob")
-	if err := os.WriteFile(sh.BlobPath, []byte("expired"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	mustInsertShare(t, store, sh)
+	insertProtectedShare(t, a, id, "expired", time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano), "correct")
 
-	req := httptest.NewRequest(http.MethodGet, "/blob/"+id, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/download/"+id, strings.NewReader("{\"password\":\"correct\"}"))
+	req.TLS = &tls.ConnectionState{}
+	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -291,57 +320,59 @@ func TestBlobExpiredReturns410(t *testing.T) {
 	}
 }
 
-func TestBlobActiveReturns200(t *testing.T) {
+func TestAPIDownloadCorrectPasswordReturnsEncryptedPayloadAfterDelay(t *testing.T) {
 	a, router := newRouter(t)
-	store := share.NewStore(a.DB)
 	id := "00000000-0000-0000-0000-000000000002"
-	bp := filepath.Join(t.TempDir(), "act1.blob")
-	if err := os.WriteFile(bp, []byte("hi"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	sh := sampleShare(id, "public", time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano))
-	sh.BlobPath = bp
-	mustInsertShare(t, store, sh)
+	insertProtectedShare(t, a, id, "encrypted-payload", time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano), "correct")
 
-	req := httptest.NewRequest(http.MethodGet, "/blob/"+id, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/download/"+id, strings.NewReader("{\"password\":\"correct\"}"))
+	req.TLS = &tls.ConnectionState{}
+	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
+	started := time.Now()
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 for active blob, got %d (body=%q)", w.Code, w.Body.String())
+		t.Fatalf("expected 200 for authorized payload, got %d (body=%q)", w.Code, w.Body.String())
 	}
-	if w.Body.String() != "hi" {
-		t.Fatalf("expected blob contents 'hi', got %q", w.Body.String())
+	if w.Body.String() != "encrypted-payload" {
+		t.Fatalf("expected encrypted payload, got %q", w.Body.String())
+	}
+	if elapsed := time.Since(started); elapsed < time.Second {
+		t.Fatalf("download delay = %v, want at least 1s", elapsed)
 	}
 }
 
-func TestBlobNoExpiryReturns200(t *testing.T) {
+func TestAPIDownloadWrongPasswordLeaksNoPayload(t *testing.T) {
 	a, router := newRouter(t)
-	store := share.NewStore(a.DB)
 	id := "00000000-0000-0000-0000-000000000003"
-	bp := filepath.Join(t.TempDir(), "noexp.blob")
-	if err := os.WriteFile(bp, []byte("x"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	sh := sampleShare(id, "public", "")
-	sh.BlobPath = bp
-	mustInsertShare(t, store, sh)
+	insertProtectedShare(t, a, id, "must-not-leak", "", "correct")
 
-	req := httptest.NewRequest(http.MethodGet, "/blob/"+id, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/download/"+id, strings.NewReader("{\"password\":\"wrong\"}"))
+	req.TLS = &tls.ConnectionState{}
+	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 for no-expiry blob, got %d", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong-password status = %d, want 401", w.Code)
+	}
+	if strings.Contains(w.Body.String(), "must-not-leak") {
+		t.Fatalf("wrong-password response leaked payload: %q", w.Body.String())
 	}
 }
 
-func TestBlobMissingReturns404(t *testing.T) {
-	_, router := newRouter(t)
-	req := httptest.NewRequest(http.MethodGet, "/blob/nope", nil)
+func TestLegacyBlobGETLeaksNoPayload(t *testing.T) {
+	a, router := newRouter(t)
+	id := "00000000-0000-0000-0000-000000000004"
+	insertProtectedShare(t, a, id, "must-not-leak", futureTS(time.Hour), "correct")
+	req := httptest.NewRequest(http.MethodGet, "/blob/"+id, nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404 for missing share, got %d", w.Code)
+		t.Fatalf("legacy payload route status = %d, want 404", w.Code)
+	}
+	if strings.Contains(w.Body.String(), "must-not-leak") {
+		t.Fatalf("legacy GET leaked payload: %q", w.Body.String())
 	}
 }
 

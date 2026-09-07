@@ -357,7 +357,7 @@ clipbox.addEventListener("paste", (event) => {
 function uploadFormData(out, size) {
 	return new Promise((resolve, reject) => {
 		const xhr = new XMLHttpRequest();
-		xhr.open("POST", "/upload");
+		xhr.open("POST", "/api/v0/upload");
 		const csrf = form.elements.csrf?.value || "";
 		if (csrf) xhr.setRequestHeader("X-CSRF-Token", csrf);
 		xhr.upload.onprogress = (event) => {
@@ -396,6 +396,8 @@ form.onsubmit = async (event) => {
 	await settlePasswordInput(passwordEl, () => passwordComposing);
 	try {
 		const fd = new FormData(form);
+		const password = String(fd.get("password") || "");
+		if (!password) throw Error(translate("archiveError.passwordRequired"));
 		let files =
 			sourceEl.value === "clipboard" ? [...clipFiles] : [...filesEl.files];
 		// clipboard mode: typed text in the box becomes a text file alongside
@@ -433,7 +435,6 @@ form.onsubmit = async (event) => {
 		progress.done("zip", inputSize);
 		const zipSize = blob.size;
 		let cipherMeta = "";
-		const password = fd.get("password");
 		if (password) {
 			const stopEncrypt = progress.pulse(
 				"encrypt",
@@ -464,6 +465,7 @@ form.onsubmit = async (event) => {
 			"title",
 			"visibility",
 			"private_key",
+			"password",
 			"expiry_hours",
 		])
 			out.append(key, fd.get(key) || "");

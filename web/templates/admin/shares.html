@@ -1,13 +1,13 @@
 {{ define "admin_shares.html" }}
 {{ template "base_top" . }}
 <div class="wide">
-	<h1 data-i18n="admin.sharesTitle"># Shares</h1>
+	<h1 data-i18n="admin.sharesTitle">{{.T "admin.sharesTitle"}}</h1>
 	{{ if eq .DeleteResult "done" }}
-	<p class="comment-text" data-i18n="admin.deleteDone" data-i18n-vars='{"removed":"{{.Removed}}"}'>Removed {{.Removed}} selected Shares, including blobs and database records.</p>
+	<p class="comment-text" data-i18n="admin.deleteDone" data-i18n-vars='{"removed":"{{.Removed}}"}'>{{.T "admin.deleteDone" "removed" .Removed}}</p>
 	{{ else if eq .DeleteResult "failed" }}
-	<p class="err" data-i18n="admin.deleteFailed" data-i18n-vars='{"removed":"{{.Removed}}","failed":"{{.Failed}}"}'>Removed {{.Removed}} selected Shares; {{.Failed}} could not be removed and remain synchronized for retry.</p>
+	<p class="err" data-i18n="admin.deleteFailed" data-i18n-vars='{"removed":"{{.Removed}}","failed":"{{.Failed}}"}'>{{.T "admin.deleteFailed" "removed" .Removed "failed" .Failed}}</p>
 	{{ else if eq .DeleteResult "none" }}
-	<p class="comment-text" data-i18n="admin.deleteNone">Select at least one Share.</p>
+	<p class="comment-text" data-i18n="admin.deleteNone">{{.T "admin.deleteNone"}}</p>
 	{{ end }}
 	<div class="section-rule" aria-hidden="true"></div>
 	<form id="bulkDeleteShares" method="post" action="/admin/shares/delete">
@@ -15,46 +15,46 @@
 		<div class="admin-bulk-actions">
 			<label>
 				<input id="selectAllShares" type="checkbox">
-				<span data-i18n="admin.selectAll">select all</span>
+				<span data-i18n="admin.selectAll">{{.T "admin.selectAll"}}</span>
 			</label>
 			<button id="deleteSelectedShares" type="submit" class="field-md" disabled>
-				<span data-i18n="admin.deleteSelected">delete selected</span>
+				<span data-i18n="admin.deleteSelected">{{.T "admin.deleteSelected"}}</span>
 			</button>
 		</div>
 	<table class="admin-shares">
 		<thead>
 			<tr>
-				<th data-i18n="admin.select">select</th>
-				<th data-i18n="admin.id">id</th>
-				<th data-i18n="admin.shareTitle">title</th>
-				<th data-i18n="admin.state">state</th>
-				<th data-i18n="admin.size">size</th>
-				<th data-i18n="admin.uploadBy">upload by</th>
-				<th data-i18n="admin.expires">expires</th>
+				<th data-i18n="admin.select">{{.T "admin.select"}}</th>
+				<th data-i18n="admin.id">{{.T "admin.id"}}</th>
+				<th data-i18n="admin.shareTitle">{{.T "admin.shareTitle"}}</th>
+				<th data-i18n="admin.state">{{.T "admin.state"}}</th>
+				<th data-i18n="admin.size">{{.T "admin.size"}}</th>
+				<th data-i18n="admin.uploadBy">{{.T "admin.uploadBy"}}</th>
+				<th data-i18n="admin.expires">{{.T "admin.expires"}}</th>
 			</tr>
 		</thead>
 		<tbody>
 			{{ range .Shares }}
 			<tr>
 				<td>
-					<input class="share-selector" type="checkbox" name="ids" value="{{.ID}}" aria-label="Select {{.Title}}">
+					<input class="share-selector" type="checkbox" name="ids" value="{{.ID}}" aria-label='{{$.T "admin.selectShare" "title" .Title}}'>
 				</td>
 				<td><a href="/s/{{.ID}}">{{ short .ID }}</a></td>
 				<td class="admin-title">{{ .Title }}</td>
 				<td>
 					{{ if eq .Visibility "public" }}
-					<span data-i18n="upload.public">public</span>{{ else }}
-					<span data-i18n="upload.private">private</span>{{ end }}
-					{{ if .Encrypted }}<span data-i18n="admin.encrypted">encrypted</span>
-					{{ else }}<span data-i18n="admin.plain">plain</span>{{ end }}
-					{{ if .PurgedAt.Valid }}<span data-i18n="admin.purged">purged</span>
+					<span data-i18n="upload.public">{{$.T "upload.public"}}</span>{{ else }}
+					<span data-i18n="upload.private">{{$.T "upload.private"}}</span>{{ end }}
+					{{ if .Encrypted }}<span data-i18n="admin.encrypted">{{$.T "admin.encrypted"}}</span>
+					{{ else }}<span data-i18n="admin.plain">{{$.T "admin.plain"}}</span>{{ end }}
+					{{ if .PurgedAt.Valid }}<span data-i18n="admin.purged">{{$.T "admin.purged"}}</span>
 					{{ end }}
 				</td>
 				<td>{{ mb .Size }}</td>
 				<td>{{ .UploaderIP }}</td>
 				<td>
 					{{ if .ExpiresAt.Valid }}{{ fmtTime .ExpiresAt.String }}
-					{{ else }}<span data-i18n="admin.never">never</span>{{ end }}
+					{{ else }}<span data-i18n="admin.never">{{$.T "admin.never"}}</span>{{ end }}
 				</td>
 			</tr>
 			{{ end }}

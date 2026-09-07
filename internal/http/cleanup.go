@@ -10,19 +10,21 @@ import (
 
 // StartCleanup reconciles storage at boot, then runs daily purge and session cleanup.
 func (h *Handler) StartCleanup() {
+	unprotected := h.integrity().PurgeUnprotected()
+	r := h.ReconcileBlobStore()
+	n := h.PurgeExpired()
+	if r.MissingFiles > 0 || r.OrphanFiles > 0 || n > 0 || unprotected > 0 {
+		log.Printf("storage cleanup done count=%d unprotected=%d missing_files=%d orphan_files=%d", n, unprotected, r.MissingFiles, r.OrphanFiles)
+	}
 	go func() {
-		r := h.ReconcileBlobStore()
-		n := h.PurgeExpired()
-		if r.MissingFiles > 0 || r.OrphanFiles > 0 || n > 0 {
-			log.Printf("storage cleanup done count=%d missing_files=%d orphan_files=%d", n, r.MissingFiles, r.OrphanFiles)
-		}
 		for {
 			d := h.nextMidnight()
 			time.Sleep(time.Until(d))
+			unprotected := h.integrity().PurgeUnprotected()
 			r := h.ReconcileBlobStore()
 			n := h.PurgeExpired()
 			sc := h.CleanExpiredSessions()
-			log.Printf("purge done count=%d sessions=%d missing_files=%d orphan_files=%d", n, sc, r.MissingFiles, r.OrphanFiles)
+			log.Printf("purge done count=%d unprotected=%d sessions=%d missing_files=%d orphan_files=%d", n, unprotected, sc, r.MissingFiles, r.OrphanFiles)
 		}
 	}()
 }
