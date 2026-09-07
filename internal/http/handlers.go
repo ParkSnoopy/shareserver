@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"shareserver/internal/audit"
 	"shareserver/internal/auth"
@@ -16,7 +17,10 @@ import (
 	"time"
 )
 
-const maxDownloadPasswordBytes = 4 << 10
+const (
+	maxDownloadPasswordBytes = 4 << 10
+	maxUploadFieldBytes      = (64 << 10) + 1
+)
 
 // apiUploadPost accepts a client-encrypted archive and delegates storage policy to upload.
 func (h *Handler) apiUploadPost(w http.ResponseWriter, r *http.Request) {
@@ -41,33 +45,26 @@ func (h *Handler) apiUploadPost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "multipart upload required", http.StatusUnsupportedMediaType)
 		return
 	}
-	if err := r.ParseMultipartForm(2 << 20); err != nil {
-		var tooBig *http.MaxBytesError
-		if errors.As(err, &tooBig) {
-			http.Error(w, "upload too large", http.StatusRequestEntityTooLarge)
-			return
-		}
+	fields, file, filename, err := uploadParts(r)
+	if err != nil {
 		http.Error(w, "bad upload", 400)
 		return
 	}
-	if r.MultipartForm != nil {
-		defer r.MultipartForm.RemoveAll()
-	}
-	file, _, err := r.FormFile("blob")
-	if err != nil {
+	if file == nil {
 		http.Error(w, "missing blob", 400)
 		return
 	}
 	defer file.Close()
 	res, err := h.Upload.Do(upload.Request{
-		Title:            r.FormValue("title"),
-		Visibility:       r.FormValue("visibility"),
-		PrivateKey:       r.FormValue("private_key"),
-		DownloadPassword: r.FormValue("password"),
-		CipherMeta:       r.FormValue("cipher_meta"),
-		ZipManifest:      r.FormValue("zip_manifest"),
-		EncryptedFlag:    r.FormValue("encrypted"),
-		ExpiryHours:      r.FormValue("expiry_hours"),
+		Title:            fields["title"],
+		Visibility:       fields["visibility"],
+		PrivateKey:       fields["private_key"],
+		DownloadPassword: fields["password"],
+		CipherMeta:       fields["cipher_meta"],
+		ZipManifest:      fields["zip_manifest"],
+		EncryptedFlag:    fields["encrypted"],
+		ExpiryHours:      fields["expiry_hours"],
+		Filename:         filename,
 		Reader:           file,
 		UploaderIP:       ip,
 		Admin:            admin,
@@ -81,7 +78,7 @@ func (h *Handler) apiUploadPost(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, upload.ErrPasswordRequired):
 			http.Error(w, "download password required", 400)
 		case errors.Is(err, upload.ErrEncryptionRequired):
-			http.Error(w, "encrypted payload required", 400)
+			http.Error(w, "invalid encryption mode", 400)
 		case errors.Is(err, upload.ErrMetadataTooLarge):
 			http.Error(w, "metadata too large", http.StatusRequestEntityTooLarge)
 		case errors.Is(err, upload.ErrCap):
@@ -97,7 +94,72 @@ func (h *Handler) apiUploadPost(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"id": res.ID, "url": res.URL, "download_url": res.DownloadURL,
 		"size": res.Size, "expires_at": res.ExpiresAt,
+		"cipher_meta": json.RawMessage(res.CipherMeta), "encryption": res.Encryption,
 	})
+}
+
+// uploadParts reads metadata in memory and returns the blob as a live stream.
+// The blob must follow its metadata, as emitted by the web client and curl
+// example, so plain uploads never spill unencrypted bytes into multipart temp files.
+func uploadParts(r *http.Request) (map[string]string, io.ReadCloser, string, error) {
+	reader, err := r.MultipartReader()
+	if err != nil {
+		return nil, nil, "", err
+	}
+	fields := map[string]string{}
+	allowed := map[string]bool{
+		"csrf": true, "title": true, "visibility": true, "private_key": true,
+		"password": true, "cipher_meta": true, "zip_manifest": true,
+		"encrypted": true, "expiry_hours": true,
+	}
+	for {
+		part, err := reader.NextPart()
+		if errors.Is(err, io.EOF) {
+			return fields, nil, "", nil
+		}
+		if err != nil {
+			return nil, nil, "", err
+		}
+		if part.FormName() == "blob" {
+			if part.FileName() == "" {
+				part.Close()
+				return nil, nil, "", errors.New("blob filename required")
+			}
+			return fields, &uploadPart{Part: part}, part.FileName(), nil
+		}
+		name := part.FormName()
+		if part.FileName() != "" || !allowed[name] {
+			part.Close()
+			return nil, nil, "", errors.New("unexpected upload field")
+		}
+		if _, duplicate := fields[name]; duplicate {
+			part.Close()
+			return nil, nil, "", errors.New("duplicate upload field")
+		}
+		value, err := io.ReadAll(io.LimitReader(part, maxUploadFieldBytes))
+		part.Close()
+		if err != nil {
+			return nil, nil, "", err
+		}
+		if len(value) == maxUploadFieldBytes {
+			return nil, nil, "", errors.New("upload field too large")
+		}
+		fields[name] = string(value)
+	}
+}
+
+type uploadPart struct {
+	*multipart.Part
+}
+
+// Read maps HTTP body-limit failures into the storage limit error understood by upload policy.
+func (p *uploadPart) Read(buffer []byte) (int, error) {
+	n, err := p.Part.Read(buffer)
+	var tooBig *http.MaxBytesError
+	if errors.As(err, &tooBig) {
+		return n, storage.ErrTooLarge
+	}
+	return n, err
 }
 
 // apiDownloadPost verifies the separately stored password hash before exposing

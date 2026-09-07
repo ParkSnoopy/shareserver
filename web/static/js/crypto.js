@@ -2,6 +2,10 @@ const te = new TextEncoder();
 const DEFAULT_ITERATIONS = 600000;
 const MIN_ITERATIONS = 100000;
 const MAX_ITERATIONS = 1200000;
+const SERVER_CIPHER = "AES-256-GCM-CHUNKED";
+const SERVER_CHUNK_SIZE = 1 << 20;
+const SERVER_FRAME_HEADER_SIZE = 5;
+const SERVER_FINAL_FRAME = 1;
 
 // cipherIterations validates PBKDF2 cost metadata before decrypting.
 export function cipherIterations(meta) {
@@ -59,9 +63,9 @@ function passwordShape(value, raw) {
 }
 
 // The crypto backend derives an AES-256 key from a password and runs AES-GCM.
-// Wire bytes: PBKDF2-HMAC-SHA-384 -> 32-byte key, AES-256-GCM, 12-byte nonce,
-// no AAD, 16-byte tag appended. Only crypto.subtle is used — it is native,
-// fast, and available on all secure contexts.
+// Browser encryption uses one 12-byte nonce and appended tag. Server encryption
+// uses authenticated frames with an 8-byte random prefix plus frame index.
+// Only crypto.subtle is used — it is native and available on secure contexts.
 
 // subtleBackend wraps window.crypto.subtle (fast, native). Key handle: { subtle }.
 const subtleBackend = {
@@ -91,6 +95,72 @@ const subtleBackend = {
 			.then((buf) => new Uint8Array(buf));
 	},
 };
+
+async function decryptServerFrames(keyHandle, noncePrefix, body, chunkSize) {
+	if (noncePrefix.byteLength !== 8 || chunkSize !== SERVER_CHUNK_SIZE) {
+		throw Error("invalid encryption metadata");
+	}
+	let offset = 0;
+	let finalSeen = false;
+	let total = 0;
+	let frameCount = 0;
+	while (offset < body.byteLength) {
+		if (body.byteLength - offset < SERVER_FRAME_HEADER_SIZE || finalSeen) {
+			throw Error("invalid encrypted payload");
+		}
+		const header = body.subarray(offset, offset + SERVER_FRAME_HEADER_SIZE);
+		offset += SERVER_FRAME_HEADER_SIZE;
+		const flags = header[0];
+		const final = flags === SERVER_FINAL_FRAME;
+		if (flags !== 0 && !final) throw Error("invalid encrypted payload");
+		const size = new DataView(
+			header.buffer,
+			header.byteOffset,
+			header.byteLength,
+		).getUint32(1);
+		if (size === 0 || size > chunkSize || (!final && size !== chunkSize)) {
+			throw Error("invalid encrypted payload");
+		}
+		const encryptedSize = size + 16;
+		if (body.byteLength - offset < encryptedSize || frameCount > 0xffffffff) {
+			throw Error("invalid encrypted payload");
+		}
+		offset += encryptedSize;
+		total += size;
+		finalSeen = final;
+		frameCount++;
+	}
+	if (!finalSeen) throw Error("invalid encrypted payload");
+
+	const output = new Uint8Array(total);
+	offset = 0;
+	let position = 0;
+	for (let index = 0; index < frameCount; index++) {
+		const header = body.subarray(offset, offset + SERVER_FRAME_HEADER_SIZE);
+		offset += SERVER_FRAME_HEADER_SIZE;
+		const size = new DataView(
+			header.buffer,
+			header.byteOffset,
+			header.byteLength,
+		).getUint32(1);
+		const encryptedSize = size + 16;
+		const encrypted = body.subarray(offset, offset + encryptedSize);
+		offset += encryptedSize;
+		const nonce = new Uint8Array(12);
+		nonce.set(noncePrefix);
+		new DataView(nonce.buffer).setUint32(8, index);
+		const plain = new Uint8Array(
+			await globalThis.crypto.subtle.decrypt(
+				{ name: "AES-GCM", iv: nonce, additionalData: header },
+				keyHandle.subtle,
+				encrypted,
+			),
+		);
+		output.set(plain, position);
+		position += plain.byteLength;
+	}
+	return output;
+}
 
 // selectBackend returns the native subtle backend on secure contexts. On
 // insecure contexts (plain-HTTP LAN, where Chrome disables crypto.subtle) it
@@ -138,7 +208,8 @@ export async function encryptBlob(blob, password) {
 	};
 }
 
-// decryptBlob opens an encrypted share zip or reports a generic wrong-password error.
+// decryptBlob opens browser or server-encrypted share ZIP bytes, or reports a
+// generic wrong-password error.
 // Accepts a Blob or a pre-read Uint8Array to avoid an ArrayBuffer roundtrip when
 // the caller already has the bytes in memory.
 export async function decryptBlob(source, password, meta, options = {}) {
@@ -146,7 +217,10 @@ export async function decryptBlob(source, password, meta, options = {}) {
 		nonce = ub64(meta.nonce),
 		iterations = cipherIterations(meta),
 		rawPassword = String(password);
-	let body = source instanceof Uint8Array ? source : new Uint8Array(await source.arrayBuffer());
+	let body =
+		source instanceof Uint8Array
+			? source
+			: new Uint8Array(await source.arrayBuffer());
 	const subtleCrypto = hasSubtle();
 	options.onDebug?.("crypto-input", {
 		cipher: meta?.cipher || "",
@@ -170,7 +244,10 @@ export async function decryptBlob(source, password, meta, options = {}) {
 				salt,
 				iterations,
 			);
-			const pt = await backend.decrypt(k, nonce, body);
+			const pt =
+				meta.cipher === SERVER_CIPHER
+					? await decryptServerFrames(k, nonce, body, Number(meta.chunk_size))
+					: await backend.decrypt(k, nonce, body);
 			body = null;
 			options.onDebug?.("crypto-attempt-result", {
 				form: passwordForm.label,

@@ -27,6 +27,12 @@ func NewIntegrity(blobDir string, store *share.Store) *Integrity {
 	return &Integrity{BlobDir: blobDir, Store: store}
 }
 
+// ClearStaging removes encrypted upload fragments left by a previous process.
+// Called synchronously at startup, before any new upload can use staging.
+func (i *Integrity) ClearStaging() error {
+	return os.RemoveAll(filepath.Join(i.BlobDir, ".staging"))
+}
+
 // Lock excludes reconciliation and removal while a caller completes a
 // multi-step blob/database mutation. The returned function releases the lock.
 func (i *Integrity) Lock() func() {
@@ -110,6 +116,9 @@ func (i *Integrity) Reconcile() ReconcileResult {
 	}
 	_ = filepath.WalkDir(i.BlobDir, func(path string, entry os.DirEntry, err error) error {
 		if err != nil || entry == nil || entry.IsDir() {
+			if err == nil && entry != nil && entry.IsDir() && entry.Name() == ".staging" {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		blobPath := filepath.Clean(path)

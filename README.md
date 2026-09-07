@@ -1,18 +1,19 @@
 # shareserver
 
 A small, terminal-style file share web app in Go. Server-rendered pages, no
-SPA, no CDN. Files are zipped and encrypted in the browser; the server stores
-opaque payloads plus metadata through Ent on SQLite.
+SPA, no CDN. Web uploads are zipped and encrypted in the browser; API clients
+may instead send one plain file for streaming server-side ZIP and encryption.
+The server stores encrypted payloads plus metadata through Ent on SQLite.
 
 ## What it does
 
 - Upload one or more files → get a short link (`/s/{uuid}`).
 - Shares are **public** (listed on the home page) or **private** (unlisted;
   findable only with a private key, though the direct UUID link always works).
-- Every Share is **encrypted**. The password encrypts and decrypts in the
-  browser. The server receives it over HTTPS only to authorize payload access,
-  storing a separate salted bcrypt verifier rather than the password or
-  browser encryption key.
+- Every Share is **encrypted**. Web uploads encrypt in the browser; plain API
+  uploads are zipped and encrypted by the server before storage. The password
+  decrypts only in the browser. The server stores a separate salted bcrypt
+  verifier rather than the password or encryption key.
 - Shares expire (default 6h, max 24h for anonymous uploads).
 - Admin panel at `/admin` for inspecting/deleting shares and seeing storage
   usage + uploader IP.
@@ -81,29 +82,32 @@ present; real env vars win over the file). `README.md` below matches
 
 ## API
 
-API calls need no browser session and require HTTPS. API upload accepts a
-client-built, encrypted payload as `multipart/form-data` at
-`POST /api/v0/upload`:
+API calls need no browser session and require HTTPS. API upload accepts
+`multipart/form-data` at `POST /api/v0/upload` in two modes:
 
 The server accepts direct TLS or `X-Forwarded-Proto: https` only from a trusted
 loopback proxy when `TRUST_PROXY_HEADERS=true`.
 
-- `blob`: encrypted payload bytes;
+- `blob`: one plain file when `encrypted=0`, or client-encrypted ZIP bytes when
+  `encrypted=1`;
 - `password`: password used for download authorization and client decryption;
-- `encrypted`: `1`;
-- `cipher_meta`: JSON describing `PBKDF2-SHA-384` and `AES-256-GCM` parameters;
+- `encrypted`: `0/1`; `0` requests server ZIP and encryption, while `1` keeps
+  client-provided ciphertext unchanged;
+- `cipher_meta`: required only for `encrypted=1`; JSON describing
+  `PBKDF2-SHA-384` and `AES-256-GCM` parameters;
 - `title`, `visibility`, `private_key`, `expiry_hours`, and `zip_manifest`:
   same metadata used by the web upload form.
 
+Send all metadata fields before `blob`, as shown below. This lets plain mode
+encrypt the incoming file stream without writing plaintext multipart temp files.
+
 Successful upload returns HTTP `201` with `id`, Share `url`, `download_url`,
-stored `size`, and `expires_at`.
+stored `size`, `expires_at`, `encryption` (`server/client`), and `cipher_meta`.
 
 ### Upload with curl
 
-`curl` uploads an already encrypted payload; it does not encrypt source files.
-Replace `<filename>` with a payload prepared using AES-256-GCM. Its
-`<cipher-metadata-json>` must contain the matching PBKDF2 salt, iteration count,
-and AES-GCM nonce. Use fresh random salt and nonce values for every upload.
+This plain mode sends one source file. The server streams it into a ZIP entry,
+encrypts authenticated chunks, and stores only encrypted bytes.
 
 ```sh
 curl -fsSL \
@@ -111,9 +115,7 @@ curl -fsSL \
   --form 'title=<title>' \
   --form 'visibility=public/private' \
   --form-string 'password=<password>' \
-  --form 'encrypted=1' \
-  --form-string 'cipher_meta=<cipher-metadata-json>' \
-  --form 'zip_manifest=[]' \
+  --form 'encrypted=0' \
   --form 'expiry_hours=1/6/12/24' \
   --form 'blob=@<filename>;type=application/octet-stream' \
   'https://<Server Domain>/api/v0/upload'
@@ -123,17 +125,23 @@ Choose one slash-delimited value for `visibility` and `expiry_hours`. For a
 private Share, choose `private` and add
 `--form-string 'private_key=<private-key>'`.
 
+For client-side encryption, choose `encrypted=1`, upload an encrypted ZIP as
+`<filename>`, and add
+`--form-string 'cipher_meta=<cipher-metadata-json>'`. Use fresh random salt and
+nonce values for every client-encrypted upload.
+
 Upload responses:
 
 - `201 Created`: payload and Share metadata stored; JSON response contains
-  `id`, `url`, `download_url`, `size`, and `expires_at`.
+  `id`, `url`, `download_url`, `size`, `expires_at`, `encryption`, and
+  `cipher_meta`.
 - `400 Bad Request`: malformed multipart data, missing payload, missing required
-  password or private key, invalid encryption metadata, or payload too short to
-  contain an AES-GCM authentication tag.
+  password or private key, invalid encryption mode or metadata, or
+  client-encrypted payload too short to contain an AES-GCM authentication tag.
 - `403 Forbidden`: an `X-CSRF-Token` header was supplied but does not match the
   attached browser session. Command-line clients should omit this header.
-- `413 Content Too Large`: encrypted payload or submitted metadata exceeds its
-  configured limit.
+- `413 Content Too Large`: uploaded source, resulting encrypted payload, or
+  submitted metadata exceeds its configured limit.
 - `415 Unsupported Media Type`: request is not `multipart/form-data`.
 - `426 Upgrade Required`: request did not arrive through direct TLS or a trusted
   proxy reporting HTTPS.
@@ -218,7 +226,7 @@ Admins can select multiple Shares and remove each selected pair in one action.
 - Files must stay secure on the network and at rest: preserve HTTPS/proxy trust boundaries, safe cookies, CSP, opaque encrypted blobs, sanitized filenames, and no internal UUID/blob names as user-facing download names.
 - Keep the app small, boring, and easy to operate: one Go server, server-rendered pages, SQLite metadata, filesystem blobs, no SPA, no CDN, no unnecessary framework layer.
 - Treat each share as one logical object made from two durable parts: metadata in SQLite and opaque bytes in the blob directory; every create, delete, purge, and repair path must keep both sides consistent.
-- Keep browser and server responsibilities sharply separated: the browser zips files, always encrypts, decrypts previews/downloads, and preserves user-facing filenames; the server stores bytes, metadata, password verifiers, download authorization policy, sessions, and audit records.
+- Keep browser and server responsibilities sharply separated: the browser zips and encrypts web uploads, decrypts previews/downloads, and preserves user-facing filenames; the server streams plain API uploads through ZIP and authenticated encryption, stores encrypted bytes and metadata, and owns password verification, download authorization, sessions, and audit records.
 - Never make the server depend on plaintext encrypted-share contents; encrypted uploads must remain opaque server-side, and any metadata stored for them must be intentionally safe to reveal.
 - Favor deep, cohesive modules over shallow plumbing: upload policy lives in upload code, share querying lives in the share store, auth rules live in auth/session code, and storage repair lives with cleanup.
 - Keep HTTP handlers thin and boring: parse request, call the owning module, choose response status or redirect, and avoid embedding storage, auth, or database policy in route code.

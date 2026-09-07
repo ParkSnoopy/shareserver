@@ -4,10 +4,11 @@
 
 ### Add
 - Add stateless encrypted-payload upload and password-gated download endpoints under `/api/v0`.
-- Return Share URL, download URL, stored size, and expiry from API uploads.
+- Add plain API upload mode with streaming server-side ZIP and authenticated chunk encryption.
+- Return Share URL, download URL, stored size, expiry, encryption owner, and cipher metadata from API uploads.
 
 ### Update
-- Require every new Share payload to be client-encrypted and protected by a separately hashed download-password verifier.
+- Require every new Share payload to be encrypted before storage and protected by a separately hashed download-password verifier.
 - Render initial HTML in the language selected for the browser session, while reusing the same catalogs for dynamic browser content.
 
 ### Fix

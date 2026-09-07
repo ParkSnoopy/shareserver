@@ -85,6 +85,107 @@ describe("password canonicalization", () => {
 	});
 });
 
+async function serverCipherFixture(plaintext, password) {
+	const encoder = new TextEncoder();
+	const salt = new Uint8Array(16).fill(7);
+	const prefix = new Uint8Array(8).fill(9);
+	const base = await crypto.subtle.importKey(
+		"raw",
+		encoder.encode(password.normalize("NFC")),
+		"PBKDF2",
+		false,
+		["deriveKey"],
+	);
+	const key = await crypto.subtle.deriveKey(
+		{ name: "PBKDF2", hash: "SHA-384", salt, iterations: 600000 },
+		base,
+		{ name: "AES-GCM", length: 256 },
+		false,
+		["encrypt", "decrypt"],
+	);
+	const bytes =
+		plaintext instanceof Uint8Array ? plaintext : encoder.encode(plaintext);
+	const pieces = [];
+	let bodySize = 0;
+	for (let offset = 0, index = 0; offset < bytes.byteLength; index++) {
+		const size = Math.min(1 << 20, bytes.byteLength - offset);
+		const final = offset + size === bytes.byteLength;
+		const header = new Uint8Array(5);
+		header[0] = final ? 1 : 0;
+		new DataView(header.buffer).setUint32(1, size);
+		const nonce = new Uint8Array(12);
+		nonce.set(prefix);
+		new DataView(nonce.buffer).setUint32(8, index);
+		const encrypted = new Uint8Array(
+			await crypto.subtle.encrypt(
+				{ name: "AES-GCM", iv: nonce, additionalData: header },
+				key,
+				bytes.subarray(offset, offset + size),
+			),
+		);
+		pieces.push(header, encrypted);
+		bodySize += header.byteLength + encrypted.byteLength;
+		offset += size;
+	}
+	const body = new Uint8Array(bodySize);
+	let bodyOffset = 0;
+	for (const piece of pieces) {
+		body.set(piece, bodyOffset);
+		bodyOffset += piece.byteLength;
+	}
+	const b64 = (value) => btoa(String.fromCharCode(...value));
+	return {
+		body,
+		meta: {
+			kdf: "PBKDF2-SHA-384",
+			iterations: 600000,
+			salt: b64(salt),
+			cipher: "AES-256-GCM-CHUNKED",
+			nonce: b64(prefix),
+			chunk_size: 1 << 20,
+		},
+	};
+}
+
+describe("server-encrypted payload", () => {
+	test("decrypts authenticated framed ciphertext", async () => {
+		const encrypted = await serverCipherFixture(
+			"server zip bytes",
+			"cafe\u0301",
+		);
+		const plain = await decryptBlob(encrypted.body, "café", encrypted.meta, {
+			returnBytes: true,
+		});
+		expect(new TextDecoder().decode(plain)).toBe("server zip bytes");
+	});
+
+	test("rejects truncated framed ciphertext", async () => {
+		const encrypted = await serverCipherFixture("server zip bytes", "password");
+		await expect(
+			decryptBlob(
+				encrypted.body.subarray(0, encrypted.body.length - 1),
+				"password",
+				encrypted.meta,
+			),
+		).rejects.toThrow("wrong password");
+	});
+
+	test("decrypts multiple authenticated frames", async () => {
+		const source = new Uint8Array((1 << 20) + 17);
+		for (let i = 0; i < source.length; i++) source[i] = i % 251;
+		const encrypted = await serverCipherFixture(source, "password");
+		const plain = await decryptBlob(
+			encrypted.body,
+			"password",
+			encrypted.meta,
+			{
+				returnBytes: true,
+			},
+		);
+		expect(plain).toEqual(source);
+	});
+});
+
 // withInsecureContext runs `fn` with globalThis.crypto replaced by a stub that
 // has getRandomValues but no crypto.subtle, simulating a plain-HTTP LAN phone
 // where Chrome disables WebCrypto. Always restores the real crypto.

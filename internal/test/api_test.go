@@ -60,6 +60,7 @@ func TestAPIUploadStoresEncryptedPayloadWithSeparatePasswordHash(t *testing.T) {
 		ID          string `json:"id"`
 		URL         string `json:"url"`
 		DownloadURL string `json:"download_url"`
+		Encryption  string `json:"encryption"`
 		Size        int64  `json:"size"`
 		ExpiresAt   string `json:"expires_at"`
 	}
@@ -78,6 +79,128 @@ func TestAPIUploadStoresEncryptedPayloadWithSeparatePasswordHash(t *testing.T) {
 	}
 	if !auth.CheckDownloadPassword(stored.DownloadPasswordHash, fields["password"]) {
 		t.Fatal("stored download verifier does not match password")
+	}
+	if response.Encryption != "client" {
+		t.Fatalf("client upload encryption = %q, want client", response.Encryption)
+	}
+}
+
+func TestAPIPlainUploadReturnsGeneratedEncryptionMetadata(t *testing.T) {
+	a, router := newRouter(t)
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	for name, value := range map[string]string{
+		"title": "plain API payload", "visibility": "public", "password": "download-password",
+		"encrypted": "0", "expiry_hours": "6",
+	} {
+		if err := form.WriteField(name, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	part, err := form.CreateFormFile("blob", "notes.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("plain API content")); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/upload", &body)
+	req.TLS = &tls.ConnectionState{}
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("plain upload status = %d, body=%q", w.Code, w.Body.String())
+	}
+	var response struct {
+		ID         string           `json:"id"`
+		Encryption string           `json:"encryption"`
+		CipherMeta serverCipherMeta `json:"cipher_meta"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.ID == "" || response.Encryption != "server" || response.CipherMeta.Cipher != "AES-256-GCM-CHUNKED" {
+		t.Fatalf("plain upload response incomplete: %+v", response)
+	}
+	stored, ok := share.NewStore(a.DB).Get(response.ID)
+	if !ok || stored.CipherMeta == "" {
+		t.Fatal("server-encrypted Share missing")
+	}
+}
+
+func TestAPIPlainUploadRejectsOversizedSourceWithoutStoredBlob(t *testing.T) {
+	a := newTestApp(t)
+	a.C.MaxUploadBytes = 1
+	router := httpx.New(a)
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	for name, value := range map[string]string{
+		"title": "large plain payload", "visibility": "public", "password": "download-password",
+		"encrypted": "0", "expiry_hours": "6",
+	} {
+		if err := form.WriteField(name, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	part, err := form.CreateFormFile("blob", "large.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(bytes.Repeat([]byte("x"), (4<<20)+1024)); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/upload", &body)
+	req.TLS = &tls.ConnectionState{}
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized plain upload status = %d, body=%q", w.Code, w.Body.String())
+	}
+	if count := countBlobs(t, a.C.BlobDir); count != 0 {
+		t.Fatalf("oversized plain upload stored %d blobs", count)
+	}
+}
+
+func TestAPIRejectsOversizedMetadataInsteadOfTruncatingIt(t *testing.T) {
+	a, router := newRouter(t)
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	for name, value := range map[string]string{
+		"title": "large metadata", "visibility": "private", "password": "download-password",
+		"private_key": strings.Repeat("k", (64<<10)+1), "encrypted": "0", "expiry_hours": "6",
+	} {
+		if err := form.WriteField(name, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	part, err := form.CreateFormFile("blob", "payload.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("plain content")); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/upload", &body)
+	req.TLS = &tls.ConnectionState{}
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("oversized metadata status = %d, body=%q", w.Code, w.Body.String())
+	}
+	if count := countBlobs(t, a.C.BlobDir); count != 0 {
+		t.Fatalf("oversized metadata stored %d blobs", count)
 	}
 }
 

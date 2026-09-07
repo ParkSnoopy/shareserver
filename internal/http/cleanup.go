@@ -10,6 +10,9 @@ import (
 
 // StartCleanup reconciles storage at boot, then runs daily purge and session cleanup.
 func (h *Handler) StartCleanup() {
+	if err := h.integrity().ClearStaging(); err != nil {
+		log.Printf("staging cleanup failed: %v", err)
+	}
 	unprotected := h.integrity().PurgeUnprotected()
 	r := h.ReconcileBlobStore()
 	n := h.PurgeExpired()

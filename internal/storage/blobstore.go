@@ -23,18 +23,24 @@ func UUID() string {
 
 var ErrTooLarge = fmt.Errorf("upload too large")
 
-// Store streams a blob to a temp file, hashes it, enforces size, and atomically commits.
-func Store(dir, id string, r io.Reader, limit int64) (path, sum string, size int64, err error) {
-	if err = os.MkdirAll(dir, 0755); err != nil {
+// Stage streams a blob into private staging, hashes it, and enforces size.
+// Callers atomically Commit only after their final capacity check.
+func Stage(dir, id string, r io.Reader, limit int64) (path, sum string, size int64, err error) {
+	staging := filepath.Join(dir, ".staging")
+	if err = os.MkdirAll(staging, 0700); err != nil {
 		return
 	}
-	tmp := filepath.Join(dir, id+".tmp")
-	final := filepath.Join(dir, id+".blob")
-	f, err := os.Create(tmp)
+	path = filepath.Join(staging, id+".tmp")
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return
 	}
-	defer os.Remove(tmp)
+	committed := false
+	defer func() {
+		if !committed {
+			_ = os.Remove(path)
+		}
+	}()
 	defer f.Close()
 	h := sha256.New()
 	lr := &io.LimitedReader{R: r, N: limit + 1}
@@ -49,10 +55,17 @@ func Store(dir, id string, r io.Reader, limit int64) (path, sum string, size int
 	if err = f.Close(); err != nil {
 		return
 	}
-	if err = os.Rename(tmp, final); err != nil {
-		return
+	committed = true
+	return path, hex.EncodeToString(h.Sum(nil)), size, nil
+}
+
+// Commit atomically moves a staged blob into durable storage.
+func Commit(staged, dir, id string) (string, error) {
+	final := filepath.Join(dir, id+".blob")
+	if err := os.Rename(staged, final); err != nil {
+		return "", err
 	}
-	return final, hex.EncodeToString(h.Sum(nil)), size, nil
+	return final, nil
 }
 
 // UsedBytes totals committed blob files for storage-cap and admin display.

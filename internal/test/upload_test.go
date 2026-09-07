@@ -93,8 +93,8 @@ func TestUploadPurgesExpiredShareBeforeCapCheck(t *testing.T) {
 	}
 }
 
-func TestStorageReconcileWaitsForUploadMetadataInsert(t *testing.T) {
-	u, store, _ := newUploader(t, 1<<30)
+func TestStorageReconcileIgnoresInProgressUploadStaging(t *testing.T) {
+	u, store, _ := newUploader(t, 10<<20)
 	reader := &blockingReader{started: make(chan struct{}), release: make(chan struct{})}
 	uploadDone := make(chan error, 1)
 	go func() {
@@ -119,20 +119,25 @@ func TestStorageReconcileWaitsForUploadMetadataInsert(t *testing.T) {
 	}()
 	select {
 	case <-reconcileDone:
+	case <-time.After(time.Second):
 		close(reader.release)
 		<-uploadDone
-		t.Fatal("storage reconciliation ran before upload metadata was inserted")
-	case <-time.After(50 * time.Millisecond):
+		t.Fatal("storage reconciliation blocked on an in-progress upload")
+	}
+	_, err := u.Do(upload.Request{
+		Title: "second", Visibility: "public", ExpiryHours: "6",
+		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		Reader: strReader("another encrypted payload"), UploaderIP: "1.2.3.5",
+	})
+	if !errors.Is(err, upload.ErrCap) {
+		close(reader.release)
+		<-uploadDone
+		t.Fatalf("second upload bypassed in-flight capacity reservation: %v", err)
 	}
 
 	close(reader.release)
 	if err := <-uploadDone; err != nil {
 		t.Fatalf("upload failed during concurrent reconciliation: %v", err)
-	}
-	select {
-	case <-reconcileDone:
-	case <-time.After(time.Second):
-		t.Fatal("storage reconciliation did not resume after upload")
 	}
 }
 
@@ -285,7 +290,7 @@ func TestEncryptedUploadStripsManifest(t *testing.T) {
 	}
 }
 
-func TestPlainUploadRejected(t *testing.T) {
+func TestMissingEncryptionModeRejected(t *testing.T) {
 	u, _, dir := newUploader(t, 1<<30)
 	manifest := `[{"name":"note.txt","size":5,"type":"text/plain"}]`
 	_, err := u.Do(upload.Request{
@@ -297,7 +302,7 @@ func TestPlainUploadRejected(t *testing.T) {
 		t.Fatalf("expected ErrEncryptionRequired, got %v", err)
 	}
 	if n := countBlobs(t, dir); n != 0 {
-		t.Fatalf("plain payload written: %d blobs", n)
+		t.Fatalf("payload without encryption mode was written: %d blobs", n)
 	}
 }
 
