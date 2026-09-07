@@ -55,6 +55,12 @@ mkdir -p data/blobs    # directory for DB_PATH and BLOB_DIR
 # -> listening on :8080 (or ADDR from .env)
 ```
 
+Show installed version without starting the server:
+
+```sh
+./shareserver --version
+```
+
 For local play you can skip `.env`: with `DEBUG=1` an ephemeral `APP_SECRET`
 is generated and a default admin is created. Do **not** run `DEBUG=1` in
 production — it logs a warning and uses a throwaway secret.

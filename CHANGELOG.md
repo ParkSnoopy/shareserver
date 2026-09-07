@@ -10,6 +10,7 @@
 ### Update
 - Require every new Share payload to be encrypted before storage and protected by a separately hashed download-password verifier.
 - Render initial HTML in the language selected for the browser session, while reusing the same catalogs for dynamic browser content.
+- Set the installed version to `v0.2.0`; publish Docker images with matching version and `latest` tags.
 
 ### Fix
 - Remove anonymous payload GET access; wrong passwords return no payload bytes.
