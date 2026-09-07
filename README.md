@@ -98,11 +98,88 @@ loopback proxy when `TRUST_PROXY_HEADERS=true`.
 Successful upload returns HTTP `201` with `id`, Share `url`, `download_url`,
 stored `size`, and `expires_at`.
 
+### Upload with curl
+
+`curl` uploads an already encrypted payload; it does not encrypt source files.
+Replace `<filename>` with a payload prepared using AES-256-GCM. Its
+`<cipher-metadata-json>` must contain the matching PBKDF2 salt, iteration count,
+and AES-GCM nonce. Use fresh random salt and nonce values for every upload.
+
+```sh
+curl -fsSL \
+  --request POST \
+  --form 'title=<title>' \
+  --form 'visibility=public/private' \
+  --form-string 'password=<password>' \
+  --form 'encrypted=1' \
+  --form-string 'cipher_meta=<cipher-metadata-json>' \
+  --form 'zip_manifest=[]' \
+  --form 'expiry_hours=1/6/12/24' \
+  --form 'blob=@<filename>;type=application/octet-stream' \
+  'https://<Server Domain>/api/v0/upload'
+```
+
+Choose one slash-delimited value for `visibility` and `expiry_hours`. For a
+private Share, choose `private` and add
+`--form-string 'private_key=<private-key>'`.
+
+Upload responses:
+
+- `201 Created`: payload and Share metadata stored; JSON response contains
+  `id`, `url`, `download_url`, `size`, and `expires_at`.
+- `400 Bad Request`: malformed multipart data, missing payload, missing required
+  password or private key, invalid encryption metadata, or payload too short to
+  contain an AES-GCM authentication tag.
+- `403 Forbidden`: an `X-CSRF-Token` header was supplied but does not match the
+  attached browser session. Command-line clients should omit this header.
+- `413 Content Too Large`: encrypted payload or submitted metadata exceeds its
+  configured limit.
+- `415 Unsupported Media Type`: request is not `multipart/form-data`.
+- `426 Upgrade Required`: request did not arrive through direct TLS or a trusted
+  proxy reporting HTTPS.
+- `500 Internal Server Error`: payload or metadata storage failed.
+- `507 Insufficient Storage`: configured server storage capacity is exhausted.
+
 `POST /api/v0/download/{uuid}` accepts either JSON
 `{"password":"..."}` or form field `password`. A correct password returns the
 raw encrypted payload as `application/octet-stream`; clients own decryption.
 Wrong passwords return `401` without payload bytes. The endpoint returns `429`
 with `Retry-After` after the per-IP limit is reached.
+
+### Download with curl
+
+Use the returned `download_url`, or place its `id` in `<uuid>`. The saved file
+remains encrypted; decrypt it locally using its matching cipher metadata.
+
+```sh
+curl -fsSL \
+  --request POST \
+  --data-urlencode 'password=<password>' \
+  --output '<filename>' \
+  'https://<Server Domain>/api/v0/download/<uuid>'
+```
+
+Supply passwords through a shell secret manager or protected environment
+rather than saving real values in scripts or shell history.
+
+Download responses:
+
+- `200 OK`: password matched; response body is the encrypted payload.
+- `206 Partial Content`: password matched and a valid `Range` header requested
+  part of the encrypted payload.
+- `401 Unauthorized`: password is missing, malformed, or incorrect; UUID is
+  unknown; or Share lacks required download protection. No payload bytes are
+  returned.
+- `404 Not Found`: authorized payload disappeared before streaming began.
+- `410 Gone`: password matched, but Share expired.
+- `426 Upgrade Required`: request did not arrive through direct TLS or a trusted
+  proxy reporting HTTPS.
+- `429 Too Many Requests`: client IP exceeded configured rolling attempt limit;
+  `Retry-After` reports wait time in seconds.
+- `416 Range Not Satisfiable`: requested byte range is outside payload bounds.
+
+Both API routes return `404 Not Found` for an unknown path and `405 Method Not
+Allowed` when called with a method other than `POST`.
 
 On first startup after upgrading from versions without password-gated payload
 downloads, legacy Shares lacking a download-password verifier are removed with
