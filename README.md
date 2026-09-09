@@ -96,7 +96,10 @@ loopback proxy when `TRUST_PROXY_HEADERS=true`.
 
 - `blob`: one plain file when `encrypted=0`, or client-encrypted ZIP bytes when
   `encrypted=1`;
-- `password`: password used for download authorization and client decryption;
+- `password`: plaintext password required for `encrypted=0`, where the server
+  needs it for encryption and derives the separate download verifier;
+- `password_hash`: browser/API authorization hash for `encrypted=1`; base64
+  SHA-256 of `shareserver-download-password\\0` plus the NFC-normalized password;
 - `encrypted`: `0/1`; `0` requests server ZIP and encryption, while `1` keeps
   client-provided ciphertext unchanged;
 - `cipher_meta`: required only for `encrypted=1`; JSON describing
@@ -133,8 +136,10 @@ private Share, choose `private` and add
 
 For client-side encryption, choose `encrypted=1`, upload an encrypted ZIP as
 `<filename>`, and add
-`--form-string 'cipher_meta=<cipher-metadata-json>'`. Use fresh random salt and
-nonce values for every client-encrypted upload.
+`--form-string 'cipher_meta=<cipher-metadata-json>'` plus either `password` or
+`--form-string 'password_hash=<base64-password-authorization-hash>'`. Browser
+clients use only `password_hash`; command-line clients may use either. Use fresh
+random salt and nonce values for every client-encrypted upload.
 
 Upload responses:
 
@@ -154,9 +159,11 @@ Upload responses:
 - `500 Internal Server Error`: payload or metadata storage failed.
 - `507 Insufficient Storage`: configured server storage capacity is exhausted.
 
-`POST /api/v0/download/{uuid}` accepts either JSON
-`{"password":"..."}` or form field `password`. A correct password returns the
-raw encrypted payload as `application/octet-stream`; clients own decryption.
+`POST /api/v0/download/{uuid}` accepts exactly one of `password` or
+`password_hash`, in JSON or form data. Browser clients send only the derived
+hash; command-line clients may send the plaintext password. A correct
+credential returns the raw encrypted payload as `application/octet-stream`;
+clients own decryption.
 Wrong passwords return `401` without payload bytes. The endpoint returns `429`
 with `Retry-After` after the per-IP limit is reached.
 

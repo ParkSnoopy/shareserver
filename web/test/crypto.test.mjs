@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	cipherIterations,
 	decryptBlob,
+	downloadPasswordHash,
 	encryptBlob,
 } from "../static/js/crypto.js";
 
@@ -20,6 +21,14 @@ describe("cipherIterations", () => {
 });
 
 describe("password canonicalization", () => {
+	test("authorization hash is domain-separated and Unicode-normalized", async () => {
+		const composed = await downloadPasswordHash("café");
+		const decomposed = await downloadPasswordHash("cafe\u0301");
+		expect(composed).toBe(decomposed);
+		expect(composed).toBe("4CiVpafBV8PnCuswV0FLZKV/wE/aRw4ygv530eT3+aw=");
+		expect(composed).not.toContain("café");
+	});
+
 	test("decrypt accepts mobile and desktop Unicode forms", async () => {
 		const composed = "café";
 		const decomposed = "cafe\u0301";

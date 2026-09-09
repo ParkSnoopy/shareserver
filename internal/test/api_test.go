@@ -132,6 +132,57 @@ func TestAPIPlainUploadReturnsGeneratedEncryptionMetadata(t *testing.T) {
 	}
 }
 
+func TestAPIClientUploadAndDownloadAcceptBrowserPasswordHash(t *testing.T) {
+	a, router := newRouter(t)
+	passwordHash := auth.DownloadPasswordToken("browser-only-password")
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	for name, value := range map[string]string{
+		"title": "browser payload", "visibility": "public", "password_hash": passwordHash,
+		"encrypted": "1", "cipher_meta": testCipherMeta, "expiry_hours": "6",
+	} {
+		if err := form.WriteField(name, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	part, err := form.CreateFormFile("blob", "browser.payload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("browser-encrypted-payload")); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/upload", &body)
+	req.TLS = &tls.ConnectionState{}
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("browser-hash upload status = %d, body=%q", w.Code, w.Body.String())
+	}
+	var response struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	stored, ok := share.NewStore(a.DB).Get(response.ID)
+	if !ok || !auth.CheckDownloadPasswordToken(stored.DownloadPasswordHash, passwordHash) {
+		t.Fatal("browser authorization hash verifier missing")
+	}
+	download := httptest.NewRequest(http.MethodPost, "/api/v0/download/"+response.ID, strings.NewReader(`{"password_hash":"`+passwordHash+`"}`))
+	download.TLS = &tls.ConnectionState{}
+	download.Header.Set("Content-Type", "application/json")
+	downloadResponse := httptest.NewRecorder()
+	router.ServeHTTP(downloadResponse, download)
+	if downloadResponse.Code != http.StatusOK || downloadResponse.Body.String() != "browser-encrypted-payload" {
+		t.Fatalf("browser-hash download status = %d, body=%q", downloadResponse.Code, downloadResponse.Body.String())
+	}
+}
+
 func TestAPIPlainUploadRejectsOversizedSourceWithoutStoredBlob(t *testing.T) {
 	a := newTestApp(t)
 	a.C.MaxUploadBytes = 1
@@ -196,7 +247,7 @@ func TestAPIRejectsOversizedMetadataInsteadOfTruncatingIt(t *testing.T) {
 	req.Header.Set("Content-Type", form.FormDataContentType())
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest {
+	if w.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversized metadata status = %d, body=%q", w.Code, w.Body.String())
 	}
 	if count := countBlobs(t, a.C.BlobDir); count != 0 {

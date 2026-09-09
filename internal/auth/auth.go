@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"math/rand/v2"
 	"net"
 	"time"
@@ -33,7 +35,28 @@ func CheckPassword(hash, p string) bool {
 // this verifier independent from both admin hashes and browser PBKDF2 keys.
 func HashDownloadPassword(password string) (string, error) {
 	digest := downloadPasswordDigest(password)
-	b, err := bcrypt.GenerateFromPassword(digest[:], bcrypt.DefaultCost)
+	return hashDownloadDigest(digest[:])
+}
+
+// DownloadPasswordToken returns the browser/API authorization value derived
+// from a password. Sending this over HTTPS keeps the plaintext password in the
+// browser while the server stores only a separate slow bcrypt verifier.
+func DownloadPasswordToken(password string) string {
+	digest := downloadPasswordDigest(password)
+	return base64.StdEncoding.EncodeToString(digest[:])
+}
+
+// HashDownloadPasswordToken stores a verifier for a browser-derived token.
+func HashDownloadPasswordToken(token string) (string, error) {
+	digest, ok := decodeDownloadPasswordToken(token)
+	if !ok {
+		return "", errors.New("invalid download password hash")
+	}
+	return hashDownloadDigest(digest)
+}
+
+func hashDownloadDigest(digest []byte) (string, error) {
+	b, err := bcrypt.GenerateFromPassword(digest, bcrypt.DefaultCost)
 	return string(b), err
 }
 
@@ -41,6 +64,23 @@ func HashDownloadPassword(password string) (string, error) {
 func CheckDownloadPassword(hash, password string) bool {
 	digest := downloadPasswordDigest(password)
 	return bcrypt.CompareHashAndPassword([]byte(hash), digest[:]) == nil
+}
+
+// CheckDownloadPasswordToken compares a browser-derived token with its verifier.
+func CheckDownloadPasswordToken(hash, token string) bool {
+	digest, ok := decodeDownloadPasswordToken(token)
+	return ok && bcrypt.CompareHashAndPassword([]byte(hash), digest) == nil
+}
+
+// ValidDownloadPasswordToken checks canonical browser authorization encoding.
+func ValidDownloadPasswordToken(token string) bool {
+	_, ok := decodeDownloadPasswordToken(token)
+	return ok
+}
+
+func decodeDownloadPasswordToken(token string) ([]byte, bool) {
+	digest, err := base64.StdEncoding.DecodeString(token)
+	return digest, err == nil && len(digest) == sha256.Size && base64.StdEncoding.EncodeToString(digest) == token
 }
 
 func downloadPasswordDigest(password string) [sha256.Size]byte {

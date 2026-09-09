@@ -34,13 +34,14 @@ var (
 )
 
 var (
-	ErrTooLarge           = errors.New("upload too large")
-	ErrCap                = errors.New("storage cap reached")
-	ErrStore              = errors.New("store failed")
-	ErrPrivateKeyRequired = errors.New("private key required")
-	ErrPasswordRequired   = errors.New("download password required")
-	ErrEncryptionRequired = errors.New("invalid encryption mode")
-	ErrMetadataTooLarge   = errors.New("metadata too large")
+	ErrTooLarge            = errors.New("upload too large")
+	ErrCap                 = errors.New("storage cap reached")
+	ErrStore               = errors.New("store failed")
+	ErrPrivateKeyRequired  = errors.New("private key required")
+	ErrPasswordRequired    = errors.New("download password required")
+	ErrPasswordHashInvalid = errors.New("invalid download password hash")
+	ErrEncryptionRequired  = errors.New("invalid encryption mode")
+	ErrMetadataTooLarge    = errors.New("metadata too large")
 )
 
 // Config is the subset of config the upload policy depends on.
@@ -61,12 +62,12 @@ type Uploader struct {
 
 // Request is the parsed multipart form plus the blob reader.
 type Request struct {
-	Title, Visibility, PrivateKey, DownloadPassword, CipherMeta, ZipManifest string
-	EncryptedFlag, ExpiryHours                                               string
-	Filename                                                                 string
-	Reader                                                                   io.Reader
-	UploaderIP                                                               string
-	Admin                                                                    bool
+	Title, Visibility, PrivateKey, DownloadPassword, DownloadPasswordToken string
+	CipherMeta, ZipManifest, EncryptedFlag, ExpiryHours                    string
+	Filename                                                               string
+	Reader                                                                 io.Reader
+	UploaderIP                                                             string
+	Admin                                                                  bool
 }
 
 // Result is what a successful upload yields to the handler.
@@ -86,11 +87,8 @@ func (u *Uploader) Do(req Request) (Result, error) {
 	if title == "" {
 		title = "untitled share"
 	}
-	if len(title) > maxTitleBytes || len(req.DownloadPassword) > maxPasswordBytes || len(req.CipherMeta) > maxCipherBytes || len(req.ZipManifest) > maxManifestBytes {
+	if len(title) > maxTitleBytes || len(req.DownloadPassword) > maxPasswordBytes || len(req.DownloadPasswordToken) > maxPasswordBytes || len(req.CipherMeta) > maxCipherBytes || len(req.ZipManifest) > maxManifestBytes {
 		return Result{}, ErrMetadataTooLarge
-	}
-	if req.DownloadPassword == "" {
-		return Result{}, ErrPasswordRequired
 	}
 	clientEncrypted := req.EncryptedFlag == "1" || req.EncryptedFlag == "true"
 	serverEncrypted := req.EncryptedFlag == "0" || req.EncryptedFlag == "false"
@@ -102,6 +100,15 @@ func (u *Uploader) Do(req Request) (Result, error) {
 	}
 	if serverEncrypted && req.CipherMeta != "" {
 		return Result{}, ErrEncryptionRequired
+	}
+	if clientEncrypted && (req.DownloadPassword == "") == (req.DownloadPasswordToken == "") {
+		return Result{}, ErrPasswordRequired
+	}
+	if req.DownloadPasswordToken != "" && !auth.ValidDownloadPasswordToken(req.DownloadPasswordToken) {
+		return Result{}, ErrPasswordHashInvalid
+	}
+	if serverEncrypted && (req.DownloadPassword == "" || req.DownloadPasswordToken != "") {
+		return Result{}, ErrPasswordRequired
 	}
 	vis := req.Visibility
 	if vis != "private" {
@@ -144,7 +151,13 @@ func (u *Uploader) Do(req Request) (Result, error) {
 	// Serialize password KDFs behind capacity reservation so anonymous uploads
 	// cannot run unbounded bcrypt/PBKDF2 work in parallel or while storage is full.
 	hashMu.Lock()
-	downloadPasswordHash, err := auth.HashDownloadPassword(req.DownloadPassword)
+	var downloadPasswordHash string
+	var err error
+	if req.DownloadPasswordToken != "" {
+		downloadPasswordHash, err = auth.HashDownloadPasswordToken(req.DownloadPasswordToken)
+	} else {
+		downloadPasswordHash, err = auth.HashDownloadPassword(req.DownloadPassword)
+	}
 	if err != nil {
 		hashMu.Unlock()
 		return Result{}, ErrStore

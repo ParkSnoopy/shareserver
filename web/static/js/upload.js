@@ -1,4 +1,4 @@
-import { encryptBlob } from "./crypto.js";
+import { downloadPasswordHash, encryptBlob } from "./crypto.js";
 import { fmtBytes, Progress } from "./progress.js";
 import { initI18n, onLanguageChange, translate } from "./i18n.js";
 import { canPreview, filesToZip } from "./zip.js";
@@ -435,6 +435,7 @@ form.onsubmit = async (event) => {
 		progress.done("zip", inputSize);
 		const zipSize = blob.size;
 		let cipherMeta = "";
+		let passwordHash = "";
 		if (password) {
 			const stopEncrypt = progress.pulse(
 				"encrypt",
@@ -445,6 +446,7 @@ form.onsubmit = async (event) => {
 				const enc = await encryptBlob(blob, password);
 				blob = enc.blob;
 				cipherMeta = JSON.stringify(enc.meta);
+				passwordHash = await downloadPasswordHash(password);
 			} finally {
 				stopEncrypt();
 			}
@@ -465,11 +467,11 @@ form.onsubmit = async (event) => {
 			"title",
 			"visibility",
 			"private_key",
-			"password",
 			"expiry_hours",
 		])
 			out.append(key, fd.get(key) || "");
 		out.append("encrypted", password ? "1" : "0");
+		out.append("password_hash", passwordHash);
 		out.append("cipher_meta", cipherMeta);
 		out.append("zip_manifest", password ? "[]" : JSON.stringify(manifest));
 		out.append("blob", blob, "share.blob");

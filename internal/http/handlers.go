@@ -22,6 +22,8 @@ const (
 	maxUploadFieldBytes      = (64 << 10) + 1
 )
 
+var errUploadFieldTooLarge = errors.New("upload field too large")
+
 // apiUploadPost accepts a client-encrypted archive and delegates storage policy to upload.
 func (h *Handler) apiUploadPost(w http.ResponseWriter, r *http.Request) {
 	if !h.secureRequest(r) {
@@ -47,6 +49,10 @@ func (h *Handler) apiUploadPost(w http.ResponseWriter, r *http.Request) {
 	}
 	fields, file, filename, err := uploadParts(r)
 	if err != nil {
+		if errors.Is(err, errUploadFieldTooLarge) {
+			http.Error(w, "metadata too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "bad upload", 400)
 		return
 	}
@@ -56,18 +62,19 @@ func (h *Handler) apiUploadPost(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 	res, err := h.Upload.Do(upload.Request{
-		Title:            fields["title"],
-		Visibility:       fields["visibility"],
-		PrivateKey:       fields["private_key"],
-		DownloadPassword: fields["password"],
-		CipherMeta:       fields["cipher_meta"],
-		ZipManifest:      fields["zip_manifest"],
-		EncryptedFlag:    fields["encrypted"],
-		ExpiryHours:      fields["expiry_hours"],
-		Filename:         filename,
-		Reader:           file,
-		UploaderIP:       ip,
-		Admin:            admin,
+		Title:                 fields["title"],
+		Visibility:            fields["visibility"],
+		PrivateKey:            fields["private_key"],
+		DownloadPassword:      fields["password"],
+		DownloadPasswordToken: fields["password_hash"],
+		CipherMeta:            fields["cipher_meta"],
+		ZipManifest:           fields["zip_manifest"],
+		EncryptedFlag:         fields["encrypted"],
+		ExpiryHours:           fields["expiry_hours"],
+		Filename:              filename,
+		Reader:                file,
+		UploaderIP:            ip,
+		Admin:                 admin,
 	})
 	if err != nil {
 		switch {
@@ -77,6 +84,8 @@ func (h *Handler) apiUploadPost(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "private key required", 400)
 		case errors.Is(err, upload.ErrPasswordRequired):
 			http.Error(w, "download password required", 400)
+		case errors.Is(err, upload.ErrPasswordHashInvalid):
+			http.Error(w, "invalid password hash", 400)
 		case errors.Is(err, upload.ErrEncryptionRequired):
 			http.Error(w, "invalid encryption mode", 400)
 		case errors.Is(err, upload.ErrMetadataTooLarge):
@@ -109,7 +118,7 @@ func uploadParts(r *http.Request) (map[string]string, io.ReadCloser, string, err
 	fields := map[string]string{}
 	allowed := map[string]bool{
 		"csrf": true, "title": true, "visibility": true, "private_key": true,
-		"password": true, "cipher_meta": true, "zip_manifest": true,
+		"password": true, "password_hash": true, "cipher_meta": true, "zip_manifest": true,
 		"encrypted": true, "expiry_hours": true,
 	}
 	for {
@@ -142,7 +151,7 @@ func uploadParts(r *http.Request) (map[string]string, io.ReadCloser, string, err
 			return nil, nil, "", err
 		}
 		if len(value) == maxUploadFieldBytes {
-			return nil, nil, "", errors.New("upload field too large")
+			return nil, nil, "", errUploadFieldTooLarge
 		}
 		fields[name] = string(value)
 	}
@@ -186,14 +195,20 @@ func (h *Handler) apiDownloadPost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "too many download attempts", http.StatusTooManyRequests)
 		return
 	}
-	password, err := downloadPassword(r)
+	credential, token, err := downloadPassword(r)
 	if err != nil {
 		wait()
 		http.Error(w, "download denied", http.StatusUnauthorized)
 		return
 	}
 	s, ok := h.getShare(chi.URLParam(r, "id"))
-	if !ok || !s.Encrypted || s.DownloadPasswordHash == "" || !auth.CheckDownloadPassword(s.DownloadPasswordHash, password) {
+	passwordMatches := false
+	if token {
+		passwordMatches = ok && auth.CheckDownloadPasswordToken(s.DownloadPasswordHash, credential)
+	} else {
+		passwordMatches = ok && auth.CheckDownloadPassword(s.DownloadPasswordHash, credential)
+	}
+	if !ok || !s.Encrypted || s.DownloadPasswordHash == "" || !passwordMatches {
 		wait()
 		http.Error(w, "download denied", http.StatusUnauthorized)
 		return
@@ -210,26 +225,37 @@ func (h *Handler) apiDownloadPost(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, s.BlobPath)
 }
 
-func downloadPassword(r *http.Request) (string, error) {
+func downloadPassword(r *http.Request) (string, bool, error) {
 	contentType := strings.ToLower(r.Header.Get("Content-Type"))
 	if strings.HasPrefix(contentType, "application/json") {
 		var body struct {
-			Password string `json:"password"`
+			Password     string `json:"password"`
+			PasswordHash string `json:"password_hash"`
 		}
 		dec := json.NewDecoder(io.LimitReader(r.Body, maxDownloadPasswordBytes+256))
 		dec.DisallowUnknownFields()
-		if err := dec.Decode(&body); err != nil || body.Password == "" || len(body.Password) > maxDownloadPasswordBytes {
-			return "", errors.New("invalid password request")
+		if err := dec.Decode(&body); err != nil || (body.Password == "") == (body.PasswordHash == "") || len(body.Password) > maxDownloadPasswordBytes || len(body.PasswordHash) > maxDownloadPasswordBytes {
+			return "", false, errors.New("invalid password request")
 		}
 		if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-			return "", errors.New("invalid password request")
+			return "", false, errors.New("invalid password request")
 		}
-		return body.Password, nil
+		if body.PasswordHash != "" {
+			return body.PasswordHash, true, nil
+		}
+		return body.Password, false, nil
 	}
-	if err := r.ParseForm(); err != nil || r.FormValue("password") == "" || len(r.FormValue("password")) > maxDownloadPasswordBytes {
-		return "", errors.New("invalid password request")
+	if err := r.ParseForm(); err != nil {
+		return "", false, errors.New("invalid password request")
 	}
-	return r.FormValue("password"), nil
+	password, passwordHash := r.FormValue("password"), r.FormValue("password_hash")
+	if (password == "") == (passwordHash == "") || len(password) > maxDownloadPasswordBytes || len(passwordHash) > maxDownloadPasswordBytes {
+		return "", false, errors.New("invalid password request")
+	}
+	if passwordHash != "" {
+		return passwordHash, true, nil
+	}
+	return password, false, nil
 }
 
 // adminLoginPage renders the admin sign-in form.

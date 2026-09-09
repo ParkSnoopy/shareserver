@@ -1,4 +1,5 @@
 import { ArchiveError, ArchiveErrorCode, openArchive } from "./archive.js";
+import { downloadPasswordHash } from "./crypto.js";
 import {
 	armDownloadAction,
 	clickPreparedDownload,
@@ -63,10 +64,11 @@ let downloadCleanup = () => {};
 // progress. Returns a Uint8Array read directly into a single pre-sized buffer
 // to avoid the memory spike of accumulating chunk arrays and copying them.
 async function fetchBlobWithProgress(id, password, fallbackTotal) {
+	const passwordHash = await downloadPasswordHash(password);
 	const res = await fetch(`/api/v0/download/${id}`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ password }),
+		body: JSON.stringify({ password_hash: passwordHash }),
 	});
 	debugLog("blob-response", {
 		status: res.status,
