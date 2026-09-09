@@ -83,7 +83,7 @@ present; real env vars win over the file). `README.md` below matches
 | `MAX_UPLOAD_BYTES` | `314572800` | per-blob upload limit |
 | `STORAGE_CAP_BYTES` | `419430400` | global stored-blob cap |
 | `DOWNLOAD_ATTEMPTS_PER_MINUTE` | `5` | maximum payload download attempts per client IP each rolling minute |
-| `TRUST_PROXY_HEADERS` | `false` | trust `X-Forwarded-For`/`X-Real-IP`/`X-Forwarded-Proto` |
+| `TRUST_PROXY_HEADERS` | `true` | trust `X-Forwarded-For`/`X-Real-IP`/`X-Forwarded-Proto` from a verified local or Railway proxy |
 | `TZ` | `Asia/Shanghai` | timezone for purge scheduling and display |
 
 ## API
@@ -92,7 +92,8 @@ API calls need no browser session and require HTTPS. API upload accepts
 `multipart/form-data` at `POST /api/v0/upload` in two modes:
 
 The server accepts direct TLS or `X-Forwarded-Proto: https` only from a trusted
-loopback proxy when `TRUST_PROXY_HEADERS=true`.
+loopback proxy, or Railway's internal proxy network when Railway runtime markers
+are present, and only when `TRUST_PROXY_HEADERS=true`.
 
 - `blob`: one plain file when `encrypted=0`, or client-encrypted ZIP bytes when
   `encrypted=1`;

@@ -359,3 +359,16 @@ func TestAPIRequiresHTTPSWithoutCreatingSession(t *testing.T) {
 		t.Fatalf("rejected API created %d session rows", count)
 	}
 }
+
+func TestAPITrustsRailwayHTTPSProxy(t *testing.T) {
+	t.Setenv("RAILWAY_ENVIRONMENT_ID", "test-environment")
+	_, router := newRouter(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/upload", nil)
+	req.RemoteAddr = "100.64.0.1:4321"
+	req.Header.Set("X-Forwarded-Proto", "https")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("Railway HTTPS proxy status = %d, want 415 after HTTPS check", w.Code)
+	}
+}

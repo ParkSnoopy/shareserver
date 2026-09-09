@@ -16,6 +16,7 @@
 ### Fix
 - Remove anonymous payload GET access; wrong passwords return no payload bytes.
 - Delay every download attempt by at least 1 second and enforce a configurable rolling per-IP attempt limit.
+- Accept Railway's HTTPS forwarding header only from its documented internal proxy network.
 
 ### Breaking Changes
 - Remove legacy Share blobs and metadata at startup when no download-password verifier exists; retaining them would consume storage while no safe authorization path exists.

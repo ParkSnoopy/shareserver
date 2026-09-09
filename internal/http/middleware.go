@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -142,16 +143,19 @@ func forwardedIP(v string) string {
 	return parsed.String()
 }
 
-// trustProxyHeaders accepts proxy headers only from configured loopback peers.
+var railwayProxyNetwork = &net.IPNet{IP: net.IPv4(100, 0, 0, 0), Mask: net.CIDRMask(8, 32)}
+
+// trustProxyHeaders accepts proxy headers only from configured loopback peers
+// or Railway's documented internal proxy network when running on Railway.
 func (h *Handler) trustProxyHeaders(r *http.Request) bool {
 	if !h.A.C.TrustProxyHeaders {
 		return false
 	}
 	ip := net.ParseIP(auth.CleanIP(r.RemoteAddr))
-	return ip != nil && ip.IsLoopback()
+	return ip != nil && (ip.IsLoopback() || (os.Getenv("RAILWAY_ENVIRONMENT_ID") != "" && railwayProxyNetwork.Contains(ip)))
 }
 
-// secureRequest accepts direct TLS or HTTPS asserted by a trusted loopback proxy.
+// secureRequest accepts direct TLS or HTTPS asserted by a trusted proxy.
 func (h *Handler) secureRequest(r *http.Request) bool {
 	if r.TLS != nil {
 		return true
