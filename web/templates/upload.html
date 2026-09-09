@@ -6,27 +6,13 @@
 		<h1 data-i18n="upload.title">{{.T "upload.title"}}</h1>
 	</div>
 
-	<div class="editor-line">
-		<span class="line-gutter" aria-hidden="true">02</span>
-		<p class="comment-text" data-i18n="upload.intro">
-			{{.T "upload.intro"}}
-		</p>
-	</div>
-
-	<div class="editor-line">
-		<span class="line-gutter" aria-hidden="true">03</span>
-		<p class="comment-text" data-i18n="upload.privacy">
-			{{.T "upload.privacy"}}
-		</p>
-	</div>
-
 	<div class="editor-line" aria-hidden="true">
 		<span class="line-gutter">--</span>
 		<div class="section-rule"></div>
 	</div>
 
 	<div class="editor-line form-line">
-		<span class="line-gutter" aria-hidden="true">04</span>
+		<span class="line-gutter" aria-hidden="true">02</span>
 		<form
 			id="uploadForm"
 			class="input-panel upload-panel"
@@ -56,9 +42,6 @@
 				<label id="dropzone" class="dropzone field-full" for="files">
 					<span class="command-text" data-i18n="upload.dropFiles"
 						>{{.T "upload.dropFiles"}}</span
-					>
-					<span class="muted" data-i18n="upload.zipHint"
-						>{{.T "upload.zipHint"}}</span
 					>
 				</label>
 				<input class="native-file" id="files" type="file" multiple>
@@ -171,12 +154,12 @@
 	</div>
 
 	<div class="editor-line">
-		<span class="line-gutter" aria-hidden="true">05</span>
+		<span class="line-gutter" aria-hidden="true"></span>
 		<pre id="progress" class="progress-output"></pre>
 	</div>
 
 	<div class="editor-line">
-		<span class="line-gutter" aria-hidden="true">06</span>
+		<span class="line-gutter" aria-hidden="true"></span>
 		<div id="result" class="result-output"></div>
 	</div>
 </div>

@@ -477,7 +477,7 @@ form.onsubmit = async (event) => {
 		out.append("blob", blob, "share.blob");
 		const json = await uploadFormData(out, zipSize);
 		progress.done("upload", zipSize);
-		result.innerHTML = `<a class="cmd" href="${json.url}">${location.origin}${json.url}</a><br><span class="muted">${translate("upload.resultMeta", { raw: fmtBytes(inputSize), zipped: fmtBytes(zipSize) })}</span>`;
+		result.innerHTML = `<a class="cmd" href="${json.url}">${location.origin}${json.url}</a>`;
 	} catch (err) {
 		const msg = err.message || String(err);
 		if (

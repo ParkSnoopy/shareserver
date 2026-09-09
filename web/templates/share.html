@@ -40,16 +40,6 @@
 					<span data-i18n="share.lookup">{{.T "share.lookup"}}</span>
 				</button>
 			</form>
-			{{ if .PrivateMode }}
-			<p class="comment-text" data-i18n="share.showingPublic">
-				{{.T "share.showingPublic"}}
-			</p>
-			{{ else }}
-			<p class="comment-text" data-i18n="share.showingPublic">
-				{{.T "share.showingPublic"}}
-			</p>
-			{{ end }}
-
 			<div class="sidebar-rule" aria-hidden="true"></div>
 
 			<nav
@@ -90,13 +80,6 @@
 				>{{.T "time.secondsSuffix"}}
 			</p>
 			{{ else }}
-			<p class="comment-text">
-				<span
-					data-i18n="{{ if .Share.Encrypted }}share.encryptedHint{{ else }}share.plainHint{{ end }}"
-					>{{ if .Share.Encrypted }}{{.T "share.encryptedHint"}}{{ else }}{{.T "share.plainHint"}}{{ end }}</span
-				>
-			</p>
-
 			<nav
 				id="listing"
 				class="api-index"
@@ -105,9 +88,6 @@
 				hidden
 			>
 				<h3 data-i18n="share.filesTitle">{{.T "share.filesTitle"}}</h3>
-				<p class="muted" data-i18n="share.runArchive">
-					{{.T "share.runArchive"}}
-				</p>
 			</nav>
 
 			<div class="section-rule" aria-hidden="true"></div>
@@ -159,12 +139,7 @@
 
 			<pre id="progress" class="progress-output"></pre>
 
-			<section id="previewPane" class="api-detail detail-pane" hidden>
-				<h3 data-i18n="share.archiveTitle">{{.T "share.archiveTitle"}}</h3>
-				<p class="comment-text" data-i18n="share.selectAfterLoad">
-					{{.T "share.selectAfterLoad"}}
-				</p>
-			</section>
+			<section id="previewPane" class="api-detail detail-pane" hidden></section>
 			{{ end }}
 			{{ else }}
 			<h1 data-i18n="share.sharesTitle">{{.T "share.sharesTitle"}}</h1>
