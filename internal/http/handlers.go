@@ -49,7 +49,7 @@ func (h *Handler) apiUploadPost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "multipart upload required", http.StatusUnsupportedMediaType)
 		return
 	}
-	fields, file, filename, err := uploadParts(r)
+	fields, file, _, err := uploadParts(r)
 	if err != nil {
 		if errors.Is(err, errUploadFieldTooLarge) {
 			http.Error(w, "metadata too large", http.StatusRequestEntityTooLarge)
@@ -64,19 +64,17 @@ func (h *Handler) apiUploadPost(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 	res, err := h.Upload.Do(upload.Request{
-		Title:                 fields["title"],
-		Visibility:            fields["visibility"],
-		PrivateKey:            fields["private_key"],
-		DownloadPassword:      fields["password"],
-		DownloadPasswordToken: fields["password_hash"],
-		CipherMeta:            fields["cipher_meta"],
-		ZipManifest:           fields["zip_manifest"],
-		EncryptedFlag:         fields["encrypted"],
-		ExpiryHours:           fields["expiry_hours"],
-		Filename:              filename,
-		Reader:                file,
-		UploaderIP:            ip,
-		Admin:                 admin,
+		Title:                fields["title"],
+		Visibility:           fields["visibility"],
+		PrivateKey:           fields["private_key"],
+		DownloadPasswordHash: fields["password_hash"],
+		CipherMeta:           fields["cipher_meta"],
+		ZipManifest:          fields["zip_manifest"],
+		EncryptedFlag:        fields["encrypted"],
+		ExpiryHours:          fields["expiry_hours"],
+		Reader:               file,
+		UploaderIP:           ip,
+		Admin:                admin,
 	})
 	if err != nil {
 		switch {
@@ -84,14 +82,16 @@ func (h *Handler) apiUploadPost(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "upload too large after zip/encrypt", http.StatusRequestEntityTooLarge)
 		case errors.Is(err, upload.ErrPrivateKeyRequired):
 			http.Error(w, "private key required", 400)
-		case errors.Is(err, upload.ErrPasswordRequired):
-			http.Error(w, "download password required", 400)
+		case errors.Is(err, upload.ErrPasswordHashRequired):
+			http.Error(w, "download password hash required", 400)
 		case errors.Is(err, upload.ErrPasswordHashInvalid):
 			http.Error(w, "invalid password hash", 400)
 		case errors.Is(err, upload.ErrEncryptionRequired):
 			http.Error(w, "invalid encryption mode", 400)
 		case errors.Is(err, upload.ErrMetadataTooLarge):
 			http.Error(w, "metadata too large", http.StatusRequestEntityTooLarge)
+		case errors.Is(err, upload.ErrInvalidBody):
+			http.Error(w, "bad upload", http.StatusBadRequest)
 		case errors.Is(err, upload.ErrCap):
 			http.Error(w, "server couldn't keep this right now. try again later.", http.StatusInsufficientStorage)
 		default:
@@ -111,7 +111,7 @@ func (h *Handler) apiUploadPost(w http.ResponseWriter, r *http.Request) {
 
 // uploadParts reads metadata in memory and returns the blob as a live stream.
 // The blob must follow its metadata, as emitted by the web client and curl
-// example, so plain uploads never spill unencrypted bytes into multipart temp files.
+// example, so metadata is validated before encrypted payload bytes are stored.
 func uploadParts(r *http.Request) (map[string]string, io.ReadCloser, string, error) {
 	reader, err := r.MultipartReader()
 	if err != nil {
@@ -120,7 +120,7 @@ func uploadParts(r *http.Request) (map[string]string, io.ReadCloser, string, err
 	fields := map[string]string{}
 	allowed := map[string]bool{
 		"csrf": true, "title": true, "visibility": true, "private_key": true,
-		"password": true, "password_hash": true, "cipher_meta": true, "zip_manifest": true,
+		"password_hash": true, "cipher_meta": true, "zip_manifest": true,
 		"encrypted": true, "expiry_hours": true,
 	}
 	for {
@@ -136,7 +136,7 @@ func uploadParts(r *http.Request) (map[string]string, io.ReadCloser, string, err
 				part.Close()
 				return nil, nil, "", errors.New("blob filename required")
 			}
-			return fields, &uploadPart{Part: part}, part.FileName(), nil
+			return fields, &uploadPart{Part: part, reader: reader}, part.FileName(), nil
 		}
 		name := part.FormName()
 		if part.FileName() != "" || !allowed[name] {
@@ -161,14 +161,27 @@ func uploadParts(r *http.Request) (map[string]string, io.ReadCloser, string, err
 
 type uploadPart struct {
 	*multipart.Part
+	reader  *multipart.Reader
+	checked bool
 }
 
-// Read maps HTTP body-limit failures into the storage limit error understood by upload policy.
+// Read maps HTTP body-limit failures and requires the blob to be the final part.
 func (p *uploadPart) Read(buffer []byte) (int, error) {
 	n, err := p.Part.Read(buffer)
 	var tooBig *http.MaxBytesError
 	if errors.As(err, &tooBig) {
 		return n, storage.ErrTooLarge
+	}
+	if errors.Is(err, io.EOF) && !p.checked {
+		p.checked = true
+		next, nextErr := p.reader.NextPart()
+		if errors.Is(nextErr, io.EOF) {
+			return n, io.EOF
+		}
+		if next != nil {
+			next.Close()
+		}
+		return n, upload.ErrInvalidBody
 	}
 	return n, err
 }
@@ -219,7 +232,7 @@ func (h *Handler) apiDownloadPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s, ok := h.getShare(target)
-	passwordMatches := ok && auth.CheckDownloadPasswordToken(s.DownloadPasswordHash, passwordHash)
+	passwordMatches := ok && auth.CheckPasswordHash(s.DownloadPasswordHash, passwordHash)
 	if !ok || !s.Encrypted || s.DownloadPasswordHash == "" || !passwordMatches {
 		deny()
 		return
@@ -286,8 +299,12 @@ func (h *Handler) adminLoginPage(w http.ResponseWriter, r *http.Request) {
 // adminLoginPost delegates credential decisions to auth and rotates admin session state on success.
 func (h *Handler) adminLoginPost(w http.ResponseWriter, r *http.Request) {
 	ip := h.clientIP(r)
-	user, pass := r.FormValue("username"), r.FormValue("password")
-	result := auth.AdminLogin(r.Context(), h.A.DB, ip, user, pass, time.Now())
+	if r.URL.RawQuery != "" || r.ParseForm() != nil || len(r.PostForm) != 3 || len(r.PostForm["username"]) != 1 || len(r.PostForm["password_hash"]) != 1 || len(r.PostForm["csrf"]) != 1 {
+		http.Error(w, "login failed", http.StatusUnauthorized)
+		return
+	}
+	user, passwordHash := r.PostForm["username"][0], r.PostForm["password_hash"][0]
+	result := auth.AdminLogin(r.Context(), h.A.DB, ip, user, passwordHash, time.Now())
 	switch result.Status {
 	case auth.AdminLoginBanned:
 		audit.Log(h.A.DB, "public", ip, "login_banned", "", "")

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	"shareserver/internal/auth"
 	"shareserver/internal/ent"
 	"shareserver/internal/ent/loginfailureevent"
@@ -31,15 +32,47 @@ func TestCleanIPCanonicalizesEquivalentIPv6Addresses(t *testing.T) {
 }
 
 func TestPasswordHash(t *testing.T) {
-	h, err := auth.HashPassword("pw")
+	passwordHash := testAdminPasswordHash("pw")
+	h, err := auth.HashPasswordHash(passwordHash)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !auth.CheckPassword(h, "pw") {
+	if !auth.CheckPasswordHash(h, passwordHash) {
 		t.Fatalf("password should match")
 	}
-	if auth.CheckPassword(h, "bad") {
+	if auth.CheckPasswordHash(h, testAdminPasswordHash("bad")) {
 		t.Fatalf("bad password matched")
+	}
+}
+
+func TestAdminLoginRejectsPlaintextPassword(t *testing.T) {
+	client := newClient(t)
+	insertLoginAdmin(t, client, "admin", "correct")
+	result := auth.AdminLogin(context.Background(), client, "203.0.113.9", "admin", "correct", time.Now())
+	if result.Status != auth.AdminLoginFailed {
+		t.Fatalf("plaintext admin login status = %v, want failed", result.Status)
+	}
+}
+
+func TestEnsureAdminMigratesPlaintextRuntimeConfiguration(t *testing.T) {
+	client := newClient(t)
+	legacyVerifier, err := bcrypt.GenerateFromPassword([]byte("correct"), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Admin.Create().
+		SetUsername("admin").
+		SetPasswordHash(string(legacyVerifier)).
+		SetCreatedAt(time.Now().UTC().Format(time.RFC3339Nano)).
+		Save(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.EnsureAdmin(client, "admin", "correct", false); err != nil {
+		t.Fatal(err)
+	}
+	result := auth.AdminLogin(context.Background(), client, "203.0.113.8", "admin", testAdminPasswordHash("correct"), time.Now())
+	if result.Status != auth.AdminLoginSuccess {
+		t.Fatalf("migrated admin login status = %v, want success", result.Status)
 	}
 }
 
@@ -52,7 +85,7 @@ func TestAdminLoginBadCredentialsBanIP(t *testing.T) {
 
 	var result auth.AdminLoginResult
 	for i := 0; i < 5; i++ {
-		result = auth.AdminLogin(ctx, client, ip, "admin", "wrong", now.Add(time.Duration(i)*time.Second))
+		result = auth.AdminLogin(ctx, client, ip, "admin", testAdminPasswordHash("wrong"), now.Add(time.Duration(i)*time.Second))
 		if result.Status != auth.AdminLoginFailed {
 			t.Fatalf("attempt %d status = %v, want failed", i+1, result.Status)
 		}
@@ -82,7 +115,7 @@ func TestAdminLoginBannedIPStopsBeforeFailureRecording(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result := auth.AdminLogin(ctx, client, ip, "missing", "bad", now)
+	result := auth.AdminLogin(ctx, client, ip, "missing", testAdminPasswordHash("bad"), now)
 	if result.Status != auth.AdminLoginBanned {
 		t.Fatalf("status = %v, want banned", result.Status)
 	}
@@ -107,7 +140,7 @@ func TestAdminLoginSuccessResetsFailuresAndReturnsAdminID(t *testing.T) {
 		}
 	}
 
-	result := auth.AdminLogin(ctx, client, ip, "admin", "correct", now.Add(3*time.Second))
+	result := auth.AdminLogin(ctx, client, ip, "admin", testAdminPasswordHash("correct"), now.Add(3*time.Second))
 	if result.Status != auth.AdminLoginSuccess {
 		t.Fatalf("status = %v, want success", result.Status)
 	}
@@ -121,7 +154,7 @@ func TestAdminLoginSuccessResetsFailuresAndReturnsAdminID(t *testing.T) {
 
 func insertLoginAdmin(t *testing.T, client *ent.Client, username, password string) int {
 	t.Helper()
-	hash, err := auth.HashPassword(password)
+	hash, err := auth.HashPasswordHash(testAdminPasswordHash(password))
 	if err != nil {
 		t.Fatal(err)
 	}

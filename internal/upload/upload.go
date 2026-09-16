@@ -21,10 +21,10 @@ import (
 )
 
 const (
-	maxTitleBytes    = 512
-	maxCipherBytes   = 4096
-	maxManifestBytes = 64 << 10
-	maxPasswordBytes = 4 << 10
+	maxTitleBytes        = 512
+	maxCipherBytes       = 4096
+	maxManifestBytes     = 64 << 10
+	maxPasswordHashBytes = 4 << 10
 )
 
 var (
@@ -34,14 +34,15 @@ var (
 )
 
 var (
-	ErrTooLarge            = errors.New("upload too large")
-	ErrCap                 = errors.New("storage cap reached")
-	ErrStore               = errors.New("store failed")
-	ErrPrivateKeyRequired  = errors.New("private key required")
-	ErrPasswordRequired    = errors.New("download password required")
-	ErrPasswordHashInvalid = errors.New("invalid download password hash")
-	ErrEncryptionRequired  = errors.New("invalid encryption mode")
-	ErrMetadataTooLarge    = errors.New("metadata too large")
+	ErrTooLarge             = errors.New("upload too large")
+	ErrCap                  = errors.New("storage cap reached")
+	ErrStore                = errors.New("store failed")
+	ErrPrivateKeyRequired   = errors.New("private key required")
+	ErrPasswordHashRequired = errors.New("download password hash required")
+	ErrPasswordHashInvalid  = errors.New("invalid download password hash")
+	ErrEncryptionRequired   = errors.New("invalid encryption mode")
+	ErrMetadataTooLarge     = errors.New("metadata too large")
+	ErrInvalidBody          = errors.New("invalid upload body")
 )
 
 // Config is the subset of config the upload policy depends on.
@@ -62,12 +63,11 @@ type Uploader struct {
 
 // Request is the parsed multipart form plus the blob reader.
 type Request struct {
-	Title, Visibility, PrivateKey, DownloadPassword, DownloadPasswordToken string
-	CipherMeta, ZipManifest, EncryptedFlag, ExpiryHours                    string
-	Filename                                                               string
-	Reader                                                                 io.Reader
-	UploaderIP                                                             string
-	Admin                                                                  bool
+	Title, Visibility, PrivateKey, DownloadPasswordHash string
+	CipherMeta, ZipManifest, EncryptedFlag, ExpiryHours string
+	Reader                                              io.Reader
+	UploaderIP                                          string
+	Admin                                               bool
 }
 
 // Result is what a successful upload yields to the handler.
@@ -87,28 +87,21 @@ func (u *Uploader) Do(req Request) (Result, error) {
 	if title == "" {
 		title = "untitled share"
 	}
-	if len(title) > maxTitleBytes || len(req.DownloadPassword) > maxPasswordBytes || len(req.DownloadPasswordToken) > maxPasswordBytes || len(req.CipherMeta) > maxCipherBytes || len(req.ZipManifest) > maxManifestBytes {
+	if len(title) > maxTitleBytes || len(req.DownloadPasswordHash) > maxPasswordHashBytes || len(req.CipherMeta) > maxCipherBytes || len(req.ZipManifest) > maxManifestBytes {
 		return Result{}, ErrMetadataTooLarge
 	}
 	clientEncrypted := req.EncryptedFlag == "1" || req.EncryptedFlag == "true"
-	serverEncrypted := req.EncryptedFlag == "0" || req.EncryptedFlag == "false"
-	if !clientEncrypted && !serverEncrypted {
+	if !clientEncrypted {
 		return Result{}, ErrEncryptionRequired
 	}
-	if clientEncrypted && !validCipherMeta(req.CipherMeta) {
+	if !validCipherMeta(req.CipherMeta) {
 		return Result{}, ErrEncryptionRequired
 	}
-	if serverEncrypted && req.CipherMeta != "" {
-		return Result{}, ErrEncryptionRequired
+	if req.DownloadPasswordHash == "" {
+		return Result{}, ErrPasswordHashRequired
 	}
-	if clientEncrypted && (req.DownloadPassword == "") == (req.DownloadPasswordToken == "") {
-		return Result{}, ErrPasswordRequired
-	}
-	if req.DownloadPasswordToken != "" && !auth.ValidDownloadPasswordToken(req.DownloadPasswordToken) {
+	if !auth.ValidPasswordHash(req.DownloadPasswordHash) {
 		return Result{}, ErrPasswordHashInvalid
-	}
-	if serverEncrypted && (req.DownloadPassword == "" || req.DownloadPasswordToken != "") {
-		return Result{}, ErrPasswordRequired
 	}
 	vis := req.Visibility
 	if vis != "private" {
@@ -148,34 +141,16 @@ func (u *Uploader) Do(req Request) (Result, error) {
 	}
 	defer releaseCapacity(u.Cfg.BlobDir, reservation)
 
-	// Serialize password KDFs behind capacity reservation so anonymous uploads
-	// cannot run unbounded bcrypt/PBKDF2 work in parallel or while storage is full.
+	// Serialize password-verifier KDFs behind capacity reservation so anonymous
+	// uploads cannot run unbounded bcrypt work in parallel or while storage is full.
 	hashMu.Lock()
-	var downloadPasswordHash string
-	var err error
-	if req.DownloadPasswordToken != "" {
-		downloadPasswordHash, err = auth.HashDownloadPasswordToken(req.DownloadPasswordToken)
-	} else {
-		downloadPasswordHash, err = auth.HashDownloadPassword(req.DownloadPassword)
-	}
+	downloadPasswordVerifier, err := auth.HashPasswordHash(req.DownloadPasswordHash)
 	if err != nil {
 		hashMu.Unlock()
 		return Result{}, ErrStore
 	}
 	reader := req.Reader
 	cipherMeta := req.CipherMeta
-	encryption := "client"
-	if serverEncrypted {
-		encryptedReader, generatedMeta, err := encryptPlainUpload(req.Reader, req.Filename, req.DownloadPassword)
-		if err != nil {
-			hashMu.Unlock()
-			return Result{}, ErrStore
-		}
-		defer encryptedReader.Close()
-		reader = encryptedReader
-		cipherMeta = generatedMeta
-		encryption = "server"
-	}
 	hashMu.Unlock()
 
 	// Stage encrypted bytes without holding capacity/storage locks. Slow clients
@@ -183,6 +158,9 @@ func (u *Uploader) Do(req Request) (Result, error) {
 	id := storage.UUID()
 	stagedPath, sum, size, err := storage.Stage(u.Cfg.BlobDir, id, reader, reservation)
 	if err != nil {
+		if errors.Is(err, ErrInvalidBody) {
+			return Result{}, ErrInvalidBody
+		}
 		if errors.Is(err, storage.ErrTooLarge) {
 			if reservation < u.Cfg.MaxUploadBytes {
 				return Result{}, ErrCap
@@ -215,8 +193,8 @@ func (u *Uploader) Do(req Request) (Result, error) {
 
 	// Insert metadata; roll back blob on failure.
 	sh := share.Share{
-		ID: id, Title: title, Visibility: vis, PrivateKeyHash: keyHash, DownloadPasswordHash: downloadPasswordHash,
-		Encrypted: enc == 1, CipherMeta: cipherMeta, ZipManifest: manifestForInsert(enc, req.ZipManifest),
+		ID: id, Title: title, Visibility: vis, PrivateKeyHash: keyHash, DownloadPasswordHash: downloadPasswordVerifier,
+		Encrypted: enc == 1, CipherMeta: cipherMeta, ZipManifest: "[]",
 		Size: size, BlobPath: path, BlobSHA256: sum, UploaderIP: ip,
 		ExpiresAt: sql.NullString{String: exp, Valid: true},
 	}
@@ -224,10 +202,10 @@ func (u *Uploader) Do(req Request) (Result, error) {
 		storage.RemoveBlobBestEffort(path)
 		return Result{}, ErrStore
 	}
-	audit.Log(u.DB, "public", ip, "upload", id, fmt.Sprintf("size=%d visibility=%s encrypted=%d encryption=%s", size, vis, enc, encryption))
+	audit.Log(u.DB, "public", ip, "upload", id, fmt.Sprintf("size=%d visibility=%s encrypted=%d encryption=client", size, vis, enc))
 	return Result{
 		ID: id, URL: "/s/" + id, DownloadURL: "/api/v0/download/" + id,
-		Size: size, ExpiresAt: exp, CipherMeta: cipherMeta, Encryption: encryption,
+		Size: size, ExpiresAt: exp, CipherMeta: cipherMeta, Encryption: "client",
 	}, nil
 }
 
@@ -272,15 +250,4 @@ func validCipherMeta(raw string) bool {
 	salt, saltErr := base64.StdEncoding.DecodeString(meta.Salt)
 	nonce, nonceErr := base64.StdEncoding.DecodeString(meta.Nonce)
 	return saltErr == nil && nonceErr == nil && len(salt) == 16 && len(nonce) == 12
-}
-
-// manifestForInsert drops the plaintext ZIP manifest for encrypted shares so
-// file names/sizes/types are not readable without the password. The browser
-// already sends "[]" for encrypted uploads, but the server enforces it so a
-// malicious client cannot leak the manifest by sending it anyway.
-func manifestForInsert(encrypted int, raw string) string {
-	if encrypted == 1 {
-		return "[]"
-	}
-	return raw
 }

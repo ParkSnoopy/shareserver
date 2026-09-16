@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	adminPasswordHash,
 	cipherIterations,
 	decryptBlob,
 	downloadPasswordHash,
@@ -27,6 +28,13 @@ describe("password canonicalization", () => {
 		expect(composed).toBe(decomposed);
 		expect(composed).toBe("4CiVpafBV8PnCuswV0FLZKV/wE/aRw4ygv530eT3+aw=");
 		expect(composed).not.toContain("café");
+	});
+
+	test("admin hash is domain-separated and Unicode-normalized", async () => {
+		const composed = await adminPasswordHash("café");
+		const decomposed = await adminPasswordHash("cafe\u0301");
+		expect(composed).toBe(decomposed);
+		expect(composed).not.toBe(await downloadPasswordHash("café"));
 	});
 
 	test("decrypt accepts mobile and desktop Unicode forms", async () => {

@@ -19,16 +19,22 @@ export function cipherIterations(meta) {
 const b64 = (u) => btoa(String.fromCharCode(...u));
 const ub64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
-// downloadPasswordHash derives the domain-separated authorization token sent
-// to the server. The plaintext password remains browser-local for encryption.
-export async function downloadPasswordHash(password) {
+// passwordHash derives a domain-separated authorization value. Plaintext stays
+// browser-local; only the canonical Base64 SHA-256 value crosses the network.
+async function passwordHash(domain, password) {
 	if (!hasSubtle()) throw unsupportedCryptoError();
-	const input = te.encode(
-		`shareserver-download-password\u0000${String(password).normalize("NFC")}`,
-	);
+	const input = te.encode(`${domain}\u0000${String(password).normalize("NFC")}`);
 	return b64(
 		new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", input)),
 	);
+}
+
+export function downloadPasswordHash(password) {
+	return passwordHash("shareserver-download-password", password);
+}
+
+export function adminPasswordHash(password) {
+	return passwordHash("shareserver-admin-password", password);
 }
 
 function unsupportedCryptoError(cause) {

@@ -32,10 +32,11 @@
 				<pre class="api-code"><code>curl -fsS -X POST \
   --form 'title=TITLE' \
   --form 'visibility=public' \
-  --form 'password=PASSWORD' \
-  --form 'encrypted=0' \
+  --form 'password_hash=BASE64_SHA256' \
+  --form 'encrypted=1' \
+  --form 'cipher_meta=CIPHER_METADATA_JSON' \
   --form 'expiry_hours=6' \
-  --form 'blob=@FILE' \
+  --form 'blob=@ENCRYPTED_ZIP' \
   https://HOST/api/v0/upload</code></pre>
 			</section>
 

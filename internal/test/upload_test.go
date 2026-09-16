@@ -34,7 +34,7 @@ func TestPrivateKeyRequiredWritesNoBlob(t *testing.T) {
 	u, _, dir := newUploader(t, 1<<30)
 	_, err := u.Do(upload.Request{
 		Title: "x", Visibility: "private", PrivateKey: "",
-		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		DownloadPasswordHash: testDownloadPasswordHash("password"), EncryptedFlag: "1", CipherMeta: testCipherMeta,
 		ExpiryHours: "6", Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if !errors.Is(err, upload.ErrPrivateKeyRequired) {
@@ -49,7 +49,7 @@ func TestCapReachedWritesNoBlob(t *testing.T) {
 	u, _, dir := newUploader(t, 0)
 	_, err := u.Do(upload.Request{
 		Title: "x", Visibility: "public", ExpiryHours: "6",
-		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		DownloadPasswordHash: testDownloadPasswordHash("password"), EncryptedFlag: "1", CipherMeta: testCipherMeta,
 		Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if !errors.Is(err, upload.ErrCap) {
@@ -73,7 +73,7 @@ func TestUploadPurgesExpiredShareBeforeCapCheck(t *testing.T) {
 
 	res, err := u.Do(upload.Request{
 		Title: "replacement", Visibility: "public", ExpiryHours: "6",
-		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		DownloadPasswordHash: testDownloadPasswordHash("password"), EncryptedFlag: "1", CipherMeta: testCipherMeta,
 		Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if err != nil {
@@ -100,7 +100,7 @@ func TestStorageReconcileIgnoresInProgressUploadStaging(t *testing.T) {
 	go func() {
 		res, err := u.Do(upload.Request{
 			Title: "concurrent", Visibility: "public", ExpiryHours: "6",
-			DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+			DownloadPasswordHash: testDownloadPasswordHash("password"), EncryptedFlag: "1", CipherMeta: testCipherMeta,
 			Reader: reader, UploaderIP: "1.2.3.4",
 		})
 		if err == nil {
@@ -126,7 +126,7 @@ func TestStorageReconcileIgnoresInProgressUploadStaging(t *testing.T) {
 	}
 	_, err := u.Do(upload.Request{
 		Title: "second", Visibility: "public", ExpiryHours: "6",
-		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		DownloadPasswordHash: testDownloadPasswordHash("password"), EncryptedFlag: "1", CipherMeta: testCipherMeta,
 		Reader: strReader("another encrypted payload"), UploaderIP: "1.2.3.5",
 	})
 	if !errors.Is(err, upload.ErrCap) {
@@ -145,7 +145,7 @@ func TestSuccessfulUploadInsertsRowAndBlob(t *testing.T) {
 	u, store, dir := newUploader(t, 1<<30)
 	res, err := u.Do(upload.Request{
 		Title: "ok", Visibility: "public", ExpiryHours: "6",
-		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta, ZipManifest: "[]",
+		DownloadPasswordHash: testDownloadPasswordHash("password"), EncryptedFlag: "1", CipherMeta: testCipherMeta, ZipManifest: "[]",
 		Reader: strReader("hello shareserver"), UploaderIP: "1.2.3.4",
 	})
 	if err != nil {
@@ -173,7 +173,7 @@ func TestExpiryClampedTo24h(t *testing.T) {
 	u, store, _ := newUploader(t, 1<<30)
 	res, err := u.Do(upload.Request{
 		Title: "x", Visibility: "public", ExpiryHours: "9999",
-		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		DownloadPasswordHash: testDownloadPasswordHash("password"), EncryptedFlag: "1", CipherMeta: testCipherMeta,
 		Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if err != nil {
@@ -197,7 +197,7 @@ func TestNonAdminSevenDayExpiryClampedTo24h(t *testing.T) {
 	u, store, _ := newUploader(t, 1<<30)
 	res, err := u.Do(upload.Request{
 		Title: "x", Visibility: "public", ExpiryHours: "168",
-		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		DownloadPasswordHash: testDownloadPasswordHash("password"), EncryptedFlag: "1", CipherMeta: testCipherMeta,
 		Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if err != nil {
@@ -218,7 +218,7 @@ func TestAdminExpiryAllowsThreeMonths(t *testing.T) {
 	u, store, _ := newUploader(t, 1<<30)
 	res, err := u.Do(upload.Request{
 		Title: "x", Visibility: "public", ExpiryHours: "2160", Admin: true,
-		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		DownloadPasswordHash: testDownloadPasswordHash("password"), EncryptedFlag: "1", CipherMeta: testCipherMeta,
 		Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if err != nil {
@@ -239,7 +239,7 @@ func TestExpiryDefault6h(t *testing.T) {
 	u, store, _ := newUploader(t, 1<<30)
 	res, err := u.Do(upload.Request{
 		Title: "x", Visibility: "public", ExpiryHours: "0",
-		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		DownloadPasswordHash: testDownloadPasswordHash("password"), EncryptedFlag: "1", CipherMeta: testCipherMeta,
 		Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if err != nil {
@@ -258,7 +258,7 @@ func TestMetadataTooLargeRejected(t *testing.T) {
 	big := strings.Repeat("x", (64<<10)+1)
 	_, err := u.Do(upload.Request{
 		Title: "x", Visibility: "public", ExpiryHours: "6",
-		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		DownloadPasswordHash: testDownloadPasswordHash("password"), EncryptedFlag: "1", CipherMeta: testCipherMeta,
 		ZipManifest: big,
 		Reader:      strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
@@ -275,7 +275,7 @@ func TestEncryptedUploadStripsManifest(t *testing.T) {
 	manifest := `[{"name":"secret.txt","size":10,"type":"text/plain"}]`
 	res, err := u.Do(upload.Request{
 		Title: "enc", Visibility: "public", ExpiryHours: "6",
-		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta, ZipManifest: manifest,
+		DownloadPasswordHash: testDownloadPasswordHash("password"), EncryptedFlag: "1", CipherMeta: testCipherMeta, ZipManifest: manifest,
 		Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if err != nil {
@@ -295,7 +295,7 @@ func TestMissingEncryptionModeRejected(t *testing.T) {
 	manifest := `[{"name":"note.txt","size":5,"type":"text/plain"}]`
 	_, err := u.Do(upload.Request{
 		Title: "plain", Visibility: "public", ExpiryHours: "6",
-		DownloadPassword: "password", ZipManifest: manifest,
+		DownloadPasswordHash: testDownloadPasswordHash("password"), ZipManifest: manifest,
 		Reader: strReader("encrypted payload"), UploaderIP: "1.2.3.4",
 	})
 	if !errors.Is(err, upload.ErrEncryptionRequired) {
@@ -310,7 +310,7 @@ func TestTooShortCiphertextRejectedAndRemoved(t *testing.T) {
 	u, _, dir := newUploader(t, 1<<30)
 	_, err := u.Do(upload.Request{
 		Title: "short", Visibility: "public", ExpiryHours: "6",
-		DownloadPassword: "password", EncryptedFlag: "1", CipherMeta: testCipherMeta,
+		DownloadPasswordHash: testDownloadPasswordHash("password"), EncryptedFlag: "1", CipherMeta: testCipherMeta,
 		Reader: strReader("short"), UploaderIP: "1.2.3.4",
 	})
 	if !errors.Is(err, upload.ErrEncryptionRequired) {

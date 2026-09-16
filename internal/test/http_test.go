@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,6 +23,48 @@ func assertBodyContains(t *testing.T, body string, wants ...string) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q in:\n%s", want, body)
 		}
+	}
+}
+
+func TestAdminLoginAcceptsOnlyPasswordHash(t *testing.T) {
+	a, router := newRouter(t)
+	insertLoginAdmin(t, a.DB, "admin", "correct")
+	now := time.Now().UTC()
+	if _, err := a.DB.Session.Create().
+		SetID("admin-login-sid").
+		SetCsrf("admin-login-csrf").
+		SetCreatedAt(now.Format(time.RFC3339Nano)).
+		SetExpiresAt(now.Add(time.Hour).Format(time.RFC3339Nano)).
+		Save(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	page := httptest.NewRecorder()
+	router.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/admin/login", nil))
+	if strings.Contains(page.Body.String(), `name="password"`) {
+		t.Fatal("admin login form submits plaintext password")
+	}
+	assertBodyContains(t, page.Body.String(), `name="password_hash"`, `/static/js/admin-login.js`)
+
+	request := func(values url.Values) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/admin/login", strings.NewReader(values.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(&http.Cookie{Name: "sid", Value: "admin-login-sid"})
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, req)
+		return response
+	}
+	plaintext := request(url.Values{
+		"csrf": {"admin-login-csrf"}, "username": {"admin"}, "password": {"correct"},
+	})
+	if plaintext.Code != http.StatusUnauthorized {
+		t.Fatalf("plaintext admin login status = %d, want 401", plaintext.Code)
+	}
+	hashed := request(url.Values{
+		"csrf": {"admin-login-csrf"}, "username": {"admin"}, "password_hash": {testAdminPasswordHash("correct")},
+	})
+	if hashed.Code != http.StatusSeeOther || hashed.Header().Get("Location") != "/admin" {
+		t.Fatalf("hashed admin login response = %d %q", hashed.Code, hashed.Header().Get("Location"))
 	}
 }
 

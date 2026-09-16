@@ -11,7 +11,7 @@ const maxBytes = Number(form.dataset.maxBytes || 0);
 const filesEl = document.getElementById("files");
 const titleEl = form.elements.title;
 const sourceEl = document.getElementById("source");
-const passwordEl = form.elements.password;
+const passwordEl = document.getElementById("uploadPassword");
 const visibilityEl = document.getElementById("visibility");
 const privateKeyLabel = document.getElementById("privateKeyLabel");
 const privateKey = document.getElementById("privateKey");
@@ -396,7 +396,7 @@ form.onsubmit = async (event) => {
 	await settlePasswordInput(passwordEl, () => passwordComposing);
 	try {
 		const fd = new FormData(form);
-		const password = String(fd.get("password") || "");
+		const password = passwordEl.value;
 		if (!password) throw Error(translate("archiveError.passwordRequired"));
 		let files =
 			sourceEl.value === "clipboard" ? [...clipFiles] : [...filesEl.files];
@@ -426,32 +426,29 @@ form.onsubmit = async (event) => {
 			translate("state.working"),
 		);
 		let blob;
-		let manifest;
 		try {
-			({ blob, manifest } = await filesToZip(files));
+			({ blob } = await filesToZip(files));
 		} finally {
 			stopZip();
 		}
 		progress.done("zip", inputSize);
 		const zipSize = blob.size;
-		let cipherMeta = "";
-		let passwordHash = "";
-		if (password) {
-			const stopEncrypt = progress.pulse(
-				"encrypt",
-				zipSize,
-				translate("state.working"),
-			);
-			try {
-				const enc = await encryptBlob(blob, password);
-				blob = enc.blob;
-				cipherMeta = JSON.stringify(enc.meta);
-				passwordHash = await downloadPasswordHash(password);
-			} finally {
-				stopEncrypt();
-			}
-			progress.done("encrypt", zipSize);
+		let cipherMeta;
+		let passwordHash;
+		const stopEncrypt = progress.pulse(
+			"encrypt",
+			zipSize,
+			translate("state.working"),
+		);
+		try {
+			const enc = await encryptBlob(blob, password);
+			blob = enc.blob;
+			cipherMeta = JSON.stringify(enc.meta);
+			passwordHash = await downloadPasswordHash(password);
+		} finally {
+			stopEncrypt();
 		}
+		progress.done("encrypt", zipSize);
 		if (maxBytes && blob.size > maxBytes) {
 			const msg = translate("upload.tooLarge", {
 				actual: fmtBytes(blob.size),
@@ -470,10 +467,10 @@ form.onsubmit = async (event) => {
 			"expiry_hours",
 		])
 			out.append(key, fd.get(key) || "");
-		out.append("encrypted", password ? "1" : "0");
+		out.append("encrypted", "1");
 		out.append("password_hash", passwordHash);
 		out.append("cipher_meta", cipherMeta);
-		out.append("zip_manifest", password ? "[]" : JSON.stringify(manifest));
+		out.append("zip_manifest", "[]");
 		out.append("blob", blob, "share.blob");
 		const json = await uploadFormData(out, zipSize);
 		progress.done("upload", zipSize);

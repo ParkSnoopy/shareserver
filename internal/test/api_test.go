@@ -19,7 +19,7 @@ import (
 	"shareserver/internal/share"
 )
 
-func TestAPIUploadStoresEncryptedPayloadWithSeparatePasswordHash(t *testing.T) {
+func TestAPIUploadRejectsPlaintextPasswordField(t *testing.T) {
 	a, router := newRouter(t)
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
@@ -53,48 +53,68 @@ func TestAPIUploadStoresEncryptedPayloadWithSeparatePasswordHash(t *testing.T) {
 	req.Header.Set("Content-Type", form.FormDataContentType())
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("upload status = %d, body=%q", w.Code, w.Body.String())
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("plaintext password upload status = %d, want 400", w.Code)
 	}
-	if w.Header().Get("Set-Cookie") != "" {
-		t.Fatalf("stateless API created browser session: %q", w.Header().Get("Set-Cookie"))
-	}
-	var response struct {
-		ID          string `json:"id"`
-		URL         string `json:"url"`
-		DownloadURL string `json:"download_url"`
-		Encryption  string `json:"encryption"`
-		Size        int64  `json:"size"`
-		ExpiresAt   string `json:"expires_at"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+	count, err := a.DB.Share.Query().Count(context.Background())
+	if err != nil {
 		t.Fatal(err)
 	}
-	if response.ID == "" || response.URL != "/s/"+response.ID || response.DownloadURL != "/api/v0/download/"+response.ID || response.Size != int64(len("client-encrypted-payload")) || response.ExpiresAt == "" {
-		t.Fatalf("incomplete upload response: %+v", response)
-	}
-	stored, ok := share.NewStore(a.DB).Get(response.ID)
-	if !ok {
-		t.Fatal("uploaded Share missing")
-	}
-	if !stored.Encrypted || stored.DownloadPasswordHash == "" || stored.DownloadPasswordHash == fields["password"] {
-		t.Fatalf("download verifier not stored safely: %+v", stored)
-	}
-	if !auth.CheckDownloadPassword(stored.DownloadPasswordHash, fields["password"]) {
-		t.Fatal("stored download verifier does not match password")
-	}
-	if response.Encryption != "client" {
-		t.Fatalf("client upload encryption = %q, want client", response.Encryption)
+	if count != 0 {
+		t.Fatalf("plaintext password upload stored %d shares", count)
 	}
 }
 
-func TestAPIPlainUploadReturnsGeneratedEncryptionMetadata(t *testing.T) {
+func TestAPIUploadRejectsPlaintextPasswordFieldAfterBlob(t *testing.T) {
 	a, router := newRouter(t)
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
 	for name, value := range map[string]string{
-		"title": "plain API payload", "visibility": "public", "password": "download-password",
-		"encrypted": "0", "expiry_hours": "6",
+		"title": "api payload", "visibility": "public", "password_hash": testDownloadPasswordHash("download-password"),
+		"encrypted": "1", "cipher_meta": testCipherMeta, "expiry_hours": "6",
+	} {
+		if err := form.WriteField(name, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	part, err := form.CreateFormFile("blob", "payload.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("client-encrypted-payload")); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.WriteField("password", "download-password"); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/upload", &body)
+	req.TLS = &tls.ConnectionState{}
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("trailing plaintext password upload status = %d, want 400", w.Code)
+	}
+	count, err := a.DB.Share.Query().Count(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("trailing plaintext password upload stored %d shares", count)
+	}
+}
+
+func TestAPIUploadRejectsServerSideEncryption(t *testing.T) {
+	_, router := newRouter(t)
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	for name, value := range map[string]string{
+		"title": "plain API payload", "visibility": "public", "password_hash": testDownloadPasswordHash("download-password"),
+		"encrypted": "0", "cipher_meta": testCipherMeta, "expiry_hours": "6",
 	} {
 		if err := form.WriteField(name, value); err != nil {
 			t.Fatal(err)
@@ -115,29 +135,14 @@ func TestAPIPlainUploadReturnsGeneratedEncryptionMetadata(t *testing.T) {
 	req.Header.Set("Content-Type", form.FormDataContentType())
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("plain upload status = %d, body=%q", w.Code, w.Body.String())
-	}
-	var response struct {
-		ID         string           `json:"id"`
-		Encryption string           `json:"encryption"`
-		CipherMeta serverCipherMeta `json:"cipher_meta"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-		t.Fatal(err)
-	}
-	if response.ID == "" || response.Encryption != "server" || response.CipherMeta.Cipher != "AES-256-GCM-CHUNKED" {
-		t.Fatalf("plain upload response incomplete: %+v", response)
-	}
-	stored, ok := share.NewStore(a.DB).Get(response.ID)
-	if !ok || stored.CipherMeta == "" {
-		t.Fatal("server-encrypted Share missing")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("server-side encryption upload status = %d, want 400", w.Code)
 	}
 }
 
 func TestAPIClientUploadAndDownloadAcceptBrowserPasswordHash(t *testing.T) {
 	a, router := newRouter(t)
-	passwordHash := auth.DownloadPasswordToken("browser-only-password")
+	passwordHash := testDownloadPasswordHash("browser-only-password")
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
 	for name, value := range map[string]string{
@@ -173,7 +178,7 @@ func TestAPIClientUploadAndDownloadAcceptBrowserPasswordHash(t *testing.T) {
 		t.Fatal(err)
 	}
 	stored, ok := share.NewStore(a.DB).Get(response.ID)
-	if !ok || !auth.CheckDownloadPasswordToken(stored.DownloadPasswordHash, passwordHash) {
+	if !ok || !auth.CheckPasswordHash(stored.DownloadPasswordHash, passwordHash) {
 		t.Fatal("browser authorization hash verifier missing")
 	}
 	download := httptest.NewRequest(http.MethodPost, "/api/v0/download/"+response.ID, strings.NewReader(`{"password_hash":"`+passwordHash+`"}`))
@@ -204,7 +209,7 @@ func TestAPIDownloadRejectsAmbiguousFormPasswordHash(t *testing.T) {
 	a, router := newRouter(t)
 	id := "00000000-0000-0000-0000-000000000123"
 	insertProtectedShare(t, a, id, "encrypted-payload", futureTS(time.Hour), "correct")
-	passwordHash := url.QueryEscape(auth.DownloadPasswordToken("correct"))
+	passwordHash := url.QueryEscape(testDownloadPasswordHash("correct"))
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/download/"+id, strings.NewReader("password_hash="+passwordHash+"&password_hash="+passwordHash))
 	req.TLS = &tls.ConnectionState{}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -219,7 +224,7 @@ func TestAPIDownloadRejectsQueryPasswordHash(t *testing.T) {
 	a, router := newRouter(t)
 	id := "00000000-0000-0000-0000-000000000124"
 	insertProtectedShare(t, a, id, "encrypted-payload", futureTS(time.Hour), "correct")
-	passwordHash := url.QueryEscape(auth.DownloadPasswordToken("correct"))
+	passwordHash := url.QueryEscape(testDownloadPasswordHash("correct"))
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/download/"+id+"?password_hash="+passwordHash, nil)
 	req.TLS = &tls.ConnectionState{}
 	w := httptest.NewRecorder()
@@ -233,7 +238,7 @@ func TestAPIDownloadRejectsUnsupportedContentType(t *testing.T) {
 	a, router := newRouter(t)
 	id := "00000000-0000-0000-0000-000000000125"
 	insertProtectedShare(t, a, id, "encrypted-payload", futureTS(time.Hour), "correct")
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/download/"+id, strings.NewReader("password_hash="+url.QueryEscape(auth.DownloadPasswordToken("correct"))))
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/download/"+id, strings.NewReader("password_hash="+url.QueryEscape(testDownloadPasswordHash("correct"))))
 	req.TLS = &tls.ConnectionState{}
 	req.Header.Set("Content-Type", "text/plain")
 	w := httptest.NewRecorder()
@@ -243,15 +248,15 @@ func TestAPIDownloadRejectsUnsupportedContentType(t *testing.T) {
 	}
 }
 
-func TestAPIPlainUploadRejectsOversizedSourceWithoutStoredBlob(t *testing.T) {
+func TestAPIEncryptedUploadRejectsOversizedSourceWithoutStoredBlob(t *testing.T) {
 	a := newTestApp(t)
 	a.C.MaxUploadBytes = 1
 	router := httpx.New(a)
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
 	for name, value := range map[string]string{
-		"title": "large plain payload", "visibility": "public", "password": "download-password",
-		"encrypted": "0", "expiry_hours": "6",
+		"title": "large encrypted payload", "visibility": "public", "password_hash": testDownloadPasswordHash("download-password"),
+		"encrypted": "1", "cipher_meta": testCipherMeta, "expiry_hours": "6",
 	} {
 		if err := form.WriteField(name, value); err != nil {
 			t.Fatal(err)
@@ -273,10 +278,10 @@ func TestAPIPlainUploadRejectsOversizedSourceWithoutStoredBlob(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusRequestEntityTooLarge {
-		t.Fatalf("oversized plain upload status = %d, body=%q", w.Code, w.Body.String())
+		t.Fatalf("oversized encrypted upload status = %d, body=%q", w.Code, w.Body.String())
 	}
 	if count := countBlobs(t, a.C.BlobDir); count != 0 {
-		t.Fatalf("oversized plain upload stored %d blobs", count)
+		t.Fatalf("oversized encrypted upload stored %d blobs", count)
 	}
 }
 
@@ -285,8 +290,8 @@ func TestAPIRejectsOversizedMetadataInsteadOfTruncatingIt(t *testing.T) {
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
 	for name, value := range map[string]string{
-		"title": "large metadata", "visibility": "private", "password": "download-password",
-		"private_key": strings.Repeat("k", (64<<10)+1), "encrypted": "0", "expiry_hours": "6",
+		"title": "large metadata", "visibility": "private", "password_hash": testDownloadPasswordHash("download-password"),
+		"private_key": strings.Repeat("k", (64<<10)+1), "encrypted": "1", "cipher_meta": testCipherMeta, "expiry_hours": "6",
 	} {
 		if err := form.WriteField(name, value); err != nil {
 			t.Fatal(err)
@@ -444,23 +449,6 @@ func TestServerRendersAndPersistsSessionLanguageBeforeJavaScript(t *testing.T) {
 	secondResponse := httptest.NewRecorder()
 	router.ServeHTTP(secondResponse, second)
 	assertBodyContains(t, secondResponse.Body.String(), `<html lang="zh">`, "# 上传", "必填加密密码")
-}
-
-func TestDownloadPasswordHashNormalizesUnicodeIndependently(t *testing.T) {
-	hash, err := auth.HashDownloadPassword("e\u0301")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !auth.CheckDownloadPassword(hash, "é") {
-		t.Fatal("NFC-equivalent download password did not match")
-	}
-	adminHash, err := auth.HashPassword("é")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hash == adminHash {
-		t.Fatal("download and admin password hashes must use separate processes")
-	}
 }
 
 func TestAPIDownloadTwoSecondDelayAppliesToDeniedRequests(t *testing.T) {

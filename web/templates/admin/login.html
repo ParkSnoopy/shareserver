@@ -13,14 +13,15 @@
 
 	<div class="row">
 		<span>02</span>
-		<form class="panel" method="post" action="/admin/login">
+		<form class="panel" id="adminLoginForm" method="post" action="/admin/login">
 			<input type="hidden" name="csrf" value="{{.CSRF}}">
+			<input type="hidden" name="password_hash" id="adminPasswordHash">
 
 			<label data-i18n="admin.user">{{ .T "admin.user" }}</label>
 			<input class="field-md" name="username">
 
 			<label data-i18n="admin.password">{{ .T "admin.password" }}</label>
-			<input class="field-md" type="password" name="password">
+			<input class="field-md" id="adminPassword" type="password" autocomplete="current-password">
 
 			<button class="field-md" data-i18n="admin.login">
 				{{ .T "admin.login" }}
@@ -28,5 +29,6 @@
 		</form>
 	</div>
 </div>
+<script type="module" src="/static/js/admin-login.js"></script>
 {{ template "base_bottom" . }}
 {{ end }}

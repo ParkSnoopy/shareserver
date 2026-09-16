@@ -4,7 +4,6 @@
 
 ### Add
 - Add stateless encrypted-payload upload and password-gated download endpoints under `/api/v0`.
-- Add plain API upload mode with streaming server-side ZIP and authenticated chunk encryption.
 - Return Share URL, download URL, stored size, expiry, encryption owner, and cipher metadata from API uploads.
 - Add `/api/` with a public archive list and API usage guide.
 - Add root `robots.txt`, allowing `/api/*` while disallowing all other paths.
@@ -13,8 +12,8 @@
 - Require every new Share payload to be encrypted before storage and protected by a separately hashed download-password verifier.
 - Render initial HTML in the language selected for the browser session, while reusing the same catalogs for dynamic browser content.
 - Set the installed version to `v0.2.0`; publish Docker images with matching version and `latest` tags.
-- Derive browser download authorization hashes before upload/download requests so plaintext payload passwords stay in the browser.
-- Require SHA-256-derived `password_hash` credentials for archive downloads.
+- Derive browser authorization hashes before upload, download, and admin-login requests so plaintext passwords stay in the browser.
+- Require SHA-256-derived `password_hash` credentials for archive uploads and downloads.
 
 ### Fix
 - Remove anonymous payload GET access; wrong passwords return no payload bytes.
@@ -23,6 +22,7 @@
 
 ### Breaking Changes
 - Remove legacy Share blobs and metadata at startup when no download-password verifier exists; retaining them would consume storage while no safe authorization path exists.
+- Remove plaintext and server-encrypted API upload modes; clients must encrypt payloads and submit only `password_hash` credentials.
 
 ## 2026-08-10
 

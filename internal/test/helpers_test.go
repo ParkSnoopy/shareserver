@@ -2,7 +2,9 @@ package internaltest
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	stdhttp "net/http"
 	"os"
 	"path/filepath"
@@ -134,7 +136,7 @@ func insertProtectedShare(t *testing.T, a *app.App, id, payload, expiry, passwor
 	if err := os.WriteFile(path, []byte(payload), 0644); err != nil {
 		t.Fatal(err)
 	}
-	hash, err := auth.HashDownloadPassword(password)
+	hash, err := auth.HashPasswordHash(testDownloadPasswordHash(password))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +148,20 @@ func insertProtectedShare(t *testing.T, a *app.App, id, payload, expiry, passwor
 
 // downloadPasswordJSON builds the canonical hashed archive credential request.
 func downloadPasswordJSON(password string) string {
-	return `{"password_hash":"` + auth.DownloadPasswordToken(password) + `"}`
+	return `{"password_hash":"` + testDownloadPasswordHash(password) + `"}`
+}
+
+func testDownloadPasswordHash(password string) string {
+	return testPasswordHash("shareserver-download-password", password)
+}
+
+func testAdminPasswordHash(password string) string {
+	return testPasswordHash("shareserver-admin-password", password)
+}
+
+func testPasswordHash(domain, password string) string {
+	digest := sha256.Sum256([]byte(domain + "\x00" + password))
+	return base64.StdEncoding.EncodeToString(digest[:])
 }
 
 // existsSession checks whether a session row survived a request path.

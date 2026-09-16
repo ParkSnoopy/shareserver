@@ -19,72 +19,32 @@ import (
 	"shareserver/internal/ent/loginfailureevent"
 )
 
-// HashPassword creates a bcrypt hash for admin credentials.
-func HashPassword(p string) (string, error) {
-	b, err := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
-	return string(b), err
-}
-
-// CheckPassword compares a plaintext password with a stored bcrypt hash.
-func CheckPassword(hash, p string) bool {
-	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(p)) == nil
-}
-
-// HashDownloadPassword stores a slow, salted verifier for payload access.
-// SHA-256 domain separation removes bcrypt's 72-byte password limit and keeps
-// this verifier independent from both admin hashes and browser PBKDF2 keys.
-func HashDownloadPassword(password string) (string, error) {
-	digest := downloadPasswordDigest(password)
-	return hashDownloadDigest(digest[:])
-}
-
-// DownloadPasswordToken returns the browser/API authorization value derived
-// from a password. Sending this over HTTPS keeps the plaintext password in the
-// browser while the server stores only a separate slow bcrypt verifier.
-func DownloadPasswordToken(password string) string {
-	digest := downloadPasswordDigest(password)
-	return base64.StdEncoding.EncodeToString(digest[:])
-}
-
-// HashDownloadPasswordToken stores a verifier for a browser-derived token.
-func HashDownloadPasswordToken(token string) (string, error) {
-	digest, ok := decodeDownloadPasswordToken(token)
+// HashPasswordHash stores a slow, salted verifier for one canonical Base64
+// SHA-256 value. HTTP requests never pass plaintext passwords to this package.
+func HashPasswordHash(passwordHash string) (string, error) {
+	digest, ok := decodePasswordHash(passwordHash)
 	if !ok {
-		return "", errors.New("invalid download password hash")
+		return "", errors.New("invalid password hash")
 	}
-	return hashDownloadDigest(digest)
-}
-
-func hashDownloadDigest(digest []byte) (string, error) {
 	b, err := bcrypt.GenerateFromPassword(digest, bcrypt.DefaultCost)
 	return string(b), err
 }
 
-// CheckDownloadPassword compares a payload password with its stored verifier.
-func CheckDownloadPassword(hash, password string) bool {
-	digest := downloadPasswordDigest(password)
-	return bcrypt.CompareHashAndPassword([]byte(hash), digest[:]) == nil
+// CheckPasswordHash compares a canonical Base64 SHA-256 value with its stored verifier.
+func CheckPasswordHash(verifier, passwordHash string) bool {
+	digest, ok := decodePasswordHash(passwordHash)
+	return ok && bcrypt.CompareHashAndPassword([]byte(verifier), digest) == nil
 }
 
-// CheckDownloadPasswordToken compares a browser-derived token with its verifier.
-func CheckDownloadPasswordToken(hash, token string) bool {
-	digest, ok := decodeDownloadPasswordToken(token)
-	return ok && bcrypt.CompareHashAndPassword([]byte(hash), digest) == nil
-}
-
-// ValidDownloadPasswordToken checks canonical browser authorization encoding.
-func ValidDownloadPasswordToken(token string) bool {
-	_, ok := decodeDownloadPasswordToken(token)
+// ValidPasswordHash checks canonical Base64 SHA-256 encoding.
+func ValidPasswordHash(passwordHash string) bool {
+	_, ok := decodePasswordHash(passwordHash)
 	return ok
 }
 
-func decodeDownloadPasswordToken(token string) ([]byte, bool) {
-	digest, err := base64.StdEncoding.DecodeString(token)
-	return digest, err == nil && len(digest) == sha256.Size && base64.StdEncoding.EncodeToString(digest) == token
-}
-
-func downloadPasswordDigest(password string) [sha256.Size]byte {
-	return sha256.Sum256([]byte("shareserver-download-password\x00" + norm.NFC.String(password)))
+func decodePasswordHash(passwordHash string) ([]byte, bool) {
+	digest, err := base64.StdEncoding.DecodeString(passwordHash)
+	return digest, err == nil && len(digest) == sha256.Size && base64.StdEncoding.EncodeToString(digest) == passwordHash
 }
 
 // HMACKey turns a private share key into a stable, secret-scoped lookup hash.
@@ -111,7 +71,7 @@ type AdminLoginResult struct {
 }
 
 // AdminLogin verifies an admin login attempt in fail-closed order.
-func AdminLogin(ctx context.Context, client *ent.Client, ip, username, password string, now time.Time) AdminLoginResult {
+func AdminLogin(ctx context.Context, client *ent.Client, ip, username, passwordHash string, now time.Time) AdminLoginResult {
 	now = now.UTC()
 	if isBanned(ctx, client, ip, now) {
 		return AdminLoginResult{Status: AdminLoginBanned}
@@ -119,7 +79,7 @@ func AdminLogin(ctx context.Context, client *ent.Client, ip, username, password 
 	adminRow, err := client.Admin.Query().
 		Where(entadmin.UsernameEQ(username)).
 		Only(ctx)
-	if err != nil || !CheckPassword(adminRow.PasswordHash, password) {
+	if err != nil || !CheckPasswordHash(adminRow.PasswordHash, passwordHash) {
 		_, until := recordLoginFailure(ctx, client, ip, now)
 		return AdminLoginResult{Status: AdminLoginFailed, BannedUntil: until}
 	}
@@ -127,19 +87,25 @@ func AdminLogin(ctx context.Context, client *ent.Client, ip, username, password 
 	return AdminLoginResult{Status: AdminLoginSuccess, AdminID: adminRow.ID}
 }
 
-// EnsureAdmin creates or syncs the bootstrap admin without overwriting prod credentials.
-func EnsureAdmin(client *ent.Client, user, pass string, syncPassword bool) error {
+// EnsureAdmin derives the configured plaintext password once at startup. HTTP
+// authentication still accepts only the derived SHA-256 value.
+func EnsureAdmin(client *ent.Client, user, password string, syncPassword bool) error {
+	passwordHash := adminPasswordHash(password)
 	ctx := context.Background()
 	a, err := client.Admin.Query().Where(entadmin.UsernameEQ(user)).Only(ctx)
 	if err == nil {
-		if syncPassword {
-			h, err := HashPassword(pass)
-			if err != nil {
-				return err
-			}
-			return client.Admin.UpdateOneID(a.ID).SetPasswordHash(h).Exec(ctx)
+		if CheckPasswordHash(a.PasswordHash, passwordHash) {
+			return nil
 		}
-		return nil
+		legacyMatches := bcrypt.CompareHashAndPassword([]byte(a.PasswordHash), []byte(password)) == nil
+		if !syncPassword && !legacyMatches {
+			return nil
+		}
+		h, err := HashPasswordHash(passwordHash)
+		if err != nil {
+			return err
+		}
+		return client.Admin.UpdateOneID(a.ID).SetPasswordHash(h).Exec(ctx)
 	}
 	if !ent.IsNotFound(err) {
 		return err
@@ -148,7 +114,7 @@ func EnsureAdmin(client *ent.Client, user, pass string, syncPassword bool) error
 	if n > 0 && !syncPassword {
 		return nil
 	}
-	h, err := HashPassword(pass)
+	h, err := HashPasswordHash(passwordHash)
 	if err != nil {
 		return err
 	}
@@ -158,6 +124,11 @@ func EnsureAdmin(client *ent.Client, user, pass string, syncPassword bool) error
 		SetCreatedAt(db.Now()).
 		Save(ctx)
 	return err
+}
+
+func adminPasswordHash(password string) string {
+	digest := sha256.Sum256([]byte("shareserver-admin-password\x00" + norm.NFC.String(password)))
+	return base64.StdEncoding.EncodeToString(digest[:])
 }
 
 // isBanned reports whether an IP has an active login ban.
