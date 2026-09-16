@@ -306,7 +306,7 @@ func TestAPIDownloadExpiredReturns410AfterPasswordCheck(t *testing.T) {
 	id := "00000000-0000-0000-0000-000000000001"
 	insertProtectedShare(t, a, id, "expired", time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano), "correct")
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/download/"+id, strings.NewReader("{\"password\":\"correct\"}"))
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/download/"+id, strings.NewReader(downloadPasswordJSON("correct")))
 	req.TLS = &tls.ConnectionState{}
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -325,7 +325,7 @@ func TestAPIDownloadCorrectPasswordReturnsEncryptedPayloadAfterDelay(t *testing.
 	id := "00000000-0000-0000-0000-000000000002"
 	insertProtectedShare(t, a, id, "encrypted-payload", time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano), "correct")
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/download/"+id, strings.NewReader("{\"password\":\"correct\"}"))
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/download/"+id, strings.NewReader(downloadPasswordJSON("correct")))
 	req.TLS = &tls.ConnectionState{}
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -338,8 +338,8 @@ func TestAPIDownloadCorrectPasswordReturnsEncryptedPayloadAfterDelay(t *testing.
 	if w.Body.String() != "encrypted-payload" {
 		t.Fatalf("expected encrypted payload, got %q", w.Body.String())
 	}
-	if elapsed := time.Since(started); elapsed < time.Second {
-		t.Fatalf("download delay = %v, want at least 1s", elapsed)
+	if elapsed := time.Since(started); elapsed < 2*time.Second {
+		t.Fatalf("download delay = %v, want at least 2s", elapsed)
 	}
 }
 
@@ -348,7 +348,7 @@ func TestAPIDownloadWrongPasswordLeaksNoPayload(t *testing.T) {
 	id := "00000000-0000-0000-0000-000000000003"
 	insertProtectedShare(t, a, id, "must-not-leak", "", "correct")
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/download/"+id, strings.NewReader("{\"password\":\"wrong\"}"))
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/download/"+id, strings.NewReader(downloadPasswordJSON("wrong")))
 	req.TLS = &tls.ConnectionState{}
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -417,6 +417,41 @@ func TestDebugConfigStillRendersProductionPage(t *testing.T) {
 	}
 }
 
+func TestAPIIndexShowsArchiveListAndUsageGuide(t *testing.T) {
+	a, router := newRouter(t)
+	store := share.NewStore(a.DB)
+	id := "00000000-0000-0000-0000-000000000121"
+	blob := filepath.Join(a.C.BlobDir, id+".blob")
+	if err := os.WriteFile(blob, []byte("api archive"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sh := sampleShare(id, "public", futureTS(time.Hour))
+	sh.Title = "API archive fixture"
+	sh.BlobPath = blob
+	mustInsertShare(t, store, sh)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("API index status = %d, want 200", w.Code)
+	}
+	if w.Header().Get("Set-Cookie") != "" {
+		t.Fatalf("API index created session cookie: %q", w.Header().Get("Set-Cookie"))
+	}
+	assertBodyContains(t, w.Body.String(),
+		"# Archive List",
+		"API archive fixture",
+		"# Usage Guide",
+		`class="method-label method-post">POST</span>`,
+		"/api/v0/upload",
+		"/api/v0/download/{uuid}",
+		"SHA-256",
+		"at least 2 seconds",
+		"23–29 hour ban",
+	)
+}
+
 func TestHTMLPagesHaveNoStoreCacheControl(t *testing.T) {
 	_, router := newRouter(t)
 
@@ -467,6 +502,25 @@ func TestStaticFilesHaveRevalidateCacheControl(t *testing.T) {
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected favicon 200, got %d", w.Code)
+	}
+}
+
+func TestRobotsTxtAllowsOnlyAPIWithoutCreatingSession(t *testing.T) {
+	_, router := newRouter(t)
+	req := httptest.NewRequest(http.MethodGet, "/robots.txt", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("robots.txt status = %d, want 200", w.Code)
+	}
+	if w.Body.String() != "User-agent: *\nDisallow: /\nAllow: /api/\n" {
+		t.Fatalf("robots.txt body = %q", w.Body.String())
+	}
+	if contentType := w.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "text/plain") {
+		t.Fatalf("robots.txt Content-Type = %q", contentType)
+	}
+	if w.Header().Get("Set-Cookie") != "" {
+		t.Fatalf("robots.txt created session cookie: %q", w.Header().Get("Set-Cookie"))
 	}
 }
 

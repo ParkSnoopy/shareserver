@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -23,7 +22,7 @@ type Handler struct {
 	Integrity *storage.Integrity
 	Upload    *upload.Uploader
 	Sessions  SessionLifecycle
-	Downloads *downloadRateLimiter
+	Downloads *downloadProtection
 }
 
 // New wires middleware, routes, templates, share store, and upload policy.
@@ -39,7 +38,7 @@ func New(a *app.App) http.Handler {
 		Store:     store,
 		Integrity: integrity,
 		Sessions:  NewSessions(a.DB),
-		Downloads: newDownloadRateLimiter(a.C.DownloadAttemptsPerMinute, time.Minute),
+		Downloads: newDownloadProtection(a.DB),
 		Upload: &upload.Uploader{
 			Cfg: upload.Config{
 				BlobDir:         a.C.BlobDir,
@@ -59,11 +58,13 @@ func New(a *app.App) http.Handler {
 	r.Use(h.withSession)
 	r.Use(h.csrf)
 	r.Get("/download-sw.js", h.downloadServiceWorker)
+	r.Get("/robots.txt", h.robotsTXT)
 	r.Handle("/static/*", noCacheStatic(http.StripPrefix("/static/", http.FileServer(http.Dir(repoFile("web", "static"))))))
 	r.Get("/", h.home)
 	r.Post("/", h.home)
 	r.Get("/s/", h.archivePage)
 	r.Get("/upload", h.uploadPage)
+	r.Get("/api/", h.apiPage)
 	r.Get("/s/{id}", h.sharePage)
 	r.Post("/api/v0/upload", h.apiUploadPost)
 	r.Post("/api/v0/download/{id}", h.apiDownloadPost)
@@ -90,6 +91,13 @@ func (h *Handler) downloadServiceWorker(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Service-Worker-Allowed", "/")
 	http.ServeFile(w, r, repoFile("web", "static", "js", "download-sw.js"))
+}
+
+// robotsTXT serves the root crawler policy without creating browser state.
+func (h *Handler) robotsTXT(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	http.ServeFile(w, r, repoFile("web", "robots.txt"))
 }
 
 // noCacheStatic wraps the static file server so browsers always revalidate
@@ -136,6 +144,12 @@ func (h *Handler) archivePage(w http.ResponseWriter, r *http.Request) {
 // uploadPage renders the browser-side zip/encrypt upload form.
 func (h *Handler) uploadPage(w http.ResponseWriter, r *http.Request) {
 	h.renderUploadPage(w, r)
+}
+
+// apiPage renders public archives beside the API usage contract.
+func (h *Handler) apiPage(w http.ResponseWriter, r *http.Request) {
+	archives, _ := h.archivesForKey(r, "")
+	h.renderAPIPage(w, r, apiPageData{Archives: archives})
 }
 
 // sharePage renders one share, preserving expired status and hiding purged shares.

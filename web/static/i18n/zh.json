@@ -1,9 +1,22 @@
 {
 	"nav": {
 		"upload": "上传",
+		"api": "API",
 		"admin": "管理",
 		"logout": "退出",
 		"language": "语言"
+	},
+	"api": {
+		"archiveListLabel": "归档列表",
+		"archiveListTitle": "# 归档列表",
+		"noArchives": "暂无公开归档。",
+		"usageTitle": "# 使用指南",
+		"uploadSummary": "使用 multipart/form-data 上传一个文件。服务器会压缩并加密明文文件。",
+		"uploadFields": "必填：blob、password、encrypted=0。可选：title、visibility、private_key、expiry_hours。",
+		"passwordHashTitle": "# 密码哈希",
+		"passwordHashSummary": "下载仅接受下方 Base64 编码的 SHA-256 密码哈希。",
+		"downloadSummary": "以 JSON 或表单发送 password_hash。成功响应返回加密归档内容。",
+		"downloadPolicy": "每次响应至少等待 2 秒。同一 IP 一分钟内密码失败超过 10 次，将触发持续 23–29 小时的封禁。"
 	},
 	"time": { "secondsSuffix": "秒。" },
 	"upload": {

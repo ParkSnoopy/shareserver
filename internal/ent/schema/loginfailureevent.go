@@ -6,7 +6,7 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// LoginFailureEvent stores recent failed login attempts for rate limiting.
+// LoginFailureEvent stores namespaced authentication failures for rate limiting.
 type LoginFailureEvent struct {
 	ent.Schema
 }

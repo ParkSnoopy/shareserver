@@ -43,13 +43,12 @@ func newStore(t *testing.T) (*share.Store, *ent.Client) {
 func testConfig(t *testing.T) config.Config {
 	t.Helper()
 	return config.Config{
-		TZ:                        time.UTC,
-		BlobDir:                   t.TempDir(),
-		MaxUploadBytes:            10 << 20,
-		StorageCapBytes:           1 << 30,
-		AppSecret:                 []byte("test-secret"),
-		DownloadAttemptsPerMinute: 5,
-		TrustProxyHeaders:         true,
+		TZ:                time.UTC,
+		BlobDir:           t.TempDir(),
+		MaxUploadBytes:    10 << 20,
+		StorageCapBytes:   1 << 30,
+		AppSecret:         []byte("test-secret"),
+		TrustProxyHeaders: true,
 	}
 }
 
@@ -143,6 +142,11 @@ func insertProtectedShare(t *testing.T, a *app.App, id, payload, expiry, passwor
 	sh.BlobPath = path
 	sh.DownloadPasswordHash = hash
 	mustInsertShare(t, share.NewStore(a.DB), sh)
+}
+
+// downloadPasswordJSON builds the canonical hashed archive credential request.
+func downloadPasswordJSON(password string) string {
+	return `{"password_hash":"` + auth.DownloadPasswordToken(password) + `"}`
 }
 
 // existsSession checks whether a session row survived a request path.

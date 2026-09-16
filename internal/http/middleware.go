@@ -51,10 +51,10 @@ func (h *Handler) security(next http.Handler) http.Handler {
 	})
 }
 
-// withSession attaches browser session state while keeping sessionless API calls stateless.
+// withSession attaches browser session state while keeping machine-readable routes stateless.
 func (h *Handler) withSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isAPIPath(r.URL.Path) {
+		if isSessionlessPath(r.URL.Path) {
 			session := Session{}
 			if cookie, err := r.Cookie("sid"); err == nil {
 				if existing, ok := h.sessions().Get(r.Context(), cookie.Value); ok {
@@ -67,6 +67,10 @@ func (h *Handler) withSession(next http.Handler) http.Handler {
 		s := h.getOrCreateSession(w, r)
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey, s)))
 	})
+}
+
+func isSessionlessPath(path string) bool {
+	return path == "/robots.txt" || path == "/api/" || isAPIPath(path)
 }
 
 func isAPIPath(path string) bool {

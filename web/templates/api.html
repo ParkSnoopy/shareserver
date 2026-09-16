@@ -1,0 +1,61 @@
+{{ define "api.html" }}
+{{ template "base_top" . }}
+<div class="share-source-buffer">
+	<div class="api-doc-layout">
+		<aside
+			class="api-sidebar"
+			aria-label='{{.T "api.archiveListLabel"}}'
+			data-i18n-aria-label="api.archiveListLabel"
+		>
+			<nav class="api-index">
+				<h3 data-i18n="api.archiveListTitle">{{.T "api.archiveListTitle"}}</h3>
+				<div class="api-index-list">
+					{{ range .Archives }}
+					<a class="api-index-row" href="/s/{{.ID}}">
+						<span class="archive-name">{{.Title}}</span>
+						<span class="method-label method-put">ENC</span>
+					</a>
+					{{ else }}
+					<p class="muted" data-i18n="api.noArchives">{{$.T "api.noArchives"}}</p>
+					{{ end }}
+				</div>
+			</nav>
+		</aside>
+
+		<section class="api-main api-guide">
+			<h1 data-i18n="api.usageTitle">{{.T "api.usageTitle"}}</h1>
+
+			<section class="api-detail" id="upload">
+				<h3 class="api-endpoint"><span class="method-label method-post">POST</span> /api/v0/upload</h3>
+				<p class="api-meta" data-i18n="api.uploadSummary">{{.T "api.uploadSummary"}}</p>
+				<p class="api-meta" data-i18n="api.uploadFields">{{.T "api.uploadFields"}}</p>
+				<pre class="api-code"><code>curl -fsS -X POST \
+  --form 'title=TITLE' \
+  --form 'visibility=public' \
+  --form 'password=PASSWORD' \
+  --form 'encrypted=0' \
+  --form 'expiry_hours=6' \
+  --form 'blob=@FILE' \
+  https://HOST/api/v0/upload</code></pre>
+			</section>
+
+			<section class="api-detail" id="password-hash">
+				<h3 data-i18n="api.passwordHashTitle">{{.T "api.passwordHashTitle"}}</h3>
+				<p class="api-meta" data-i18n="api.passwordHashSummary">{{.T "api.passwordHashSummary"}}</p>
+				<pre class="api-code"><code>password_hash = Base64(SHA-256("shareserver-download-password\0" + NFC(password)))</code></pre>
+			</section>
+
+			<section class="api-detail" id="download">
+				<h3 class="api-endpoint"><span class="method-label method-post">POST</span> /api/v0/download/{uuid}</h3>
+				<p class="api-meta" data-i18n="api.downloadSummary">{{.T "api.downloadSummary"}}</p>
+				<p class="api-meta api-policy" data-i18n="api.downloadPolicy">{{.T "api.downloadPolicy"}}</p>
+				<pre class="api-code"><code>curl -fsS -X POST \
+  --json '{"password_hash":"BASE64_SHA256"}' \
+  --output archive.payload \
+  https://HOST/api/v0/download/UUID</code></pre>
+			</section>
+		</section>
+	</div>
+</div>
+{{ template "base_bottom" . }}
+{{ end }}

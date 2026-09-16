@@ -5,7 +5,7 @@ import (
 	"entgo.io/ent/schema/field"
 )
 
-// IpBan stores temporary login bans by IP address.
+// IpBan stores scoped temporary bans by namespaced IP identifier.
 type IpBan struct {
 	ent.Schema
 }

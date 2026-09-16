@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"shareserver/internal/audit"
 	"shareserver/internal/auth"
 	"shareserver/internal/share"
@@ -176,7 +178,7 @@ func (p *uploadPart) Read(buffer []byte) (int, error) {
 func (h *Handler) apiDownloadPost(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	wait := func() {
-		if remaining := time.Second - time.Since(started); remaining > 0 {
+		if remaining := downloadResponseDelay - time.Since(started); remaining > 0 {
 			time.Sleep(remaining)
 		}
 	}
@@ -187,30 +189,39 @@ func (h *Handler) apiDownloadPost(w http.ResponseWriter, r *http.Request) {
 	}
 	ip := h.clientIP(r)
 	if h.Downloads == nil {
-		h.Downloads = newDownloadRateLimiter(5, time.Minute)
+		h.Downloads = newDownloadProtection(h.A.DB)
 	}
-	if !h.Downloads.Allow(ip, started) {
+	if until, banned := h.Downloads.bannedUntil(r.Context(), ip, started); banned {
 		wait()
-		w.Header().Set("Retry-After", "60")
+		w.Header().Set("Retry-After", retryAfterSeconds(until, started))
 		http.Error(w, "too many download attempts", http.StatusTooManyRequests)
 		return
 	}
-	credential, token, err := downloadPassword(r)
-	if err != nil {
+	target := chi.URLParam(r, "id")
+	deny := func() {
+		until, banned, err := h.Downloads.recordFailure(r.Context(), ip, started)
 		wait()
+		if err != nil {
+			w.Header().Set("Retry-After", "60")
+			http.Error(w, "too many download attempts", http.StatusTooManyRequests)
+			return
+		}
+		if banned {
+			w.Header().Set("Retry-After", retryAfterSeconds(until, started))
+			http.Error(w, "too many download attempts", http.StatusTooManyRequests)
+			return
+		}
 		http.Error(w, "download denied", http.StatusUnauthorized)
+	}
+	passwordHash, err := downloadPasswordHash(r)
+	if err != nil {
+		deny()
 		return
 	}
-	s, ok := h.getShare(chi.URLParam(r, "id"))
-	passwordMatches := false
-	if token {
-		passwordMatches = ok && auth.CheckDownloadPasswordToken(s.DownloadPasswordHash, credential)
-	} else {
-		passwordMatches = ok && auth.CheckDownloadPassword(s.DownloadPasswordHash, credential)
-	}
+	s, ok := h.getShare(target)
+	passwordMatches := ok && auth.CheckDownloadPasswordToken(s.DownloadPasswordHash, passwordHash)
 	if !ok || !s.Encrypted || s.DownloadPasswordHash == "" || !passwordMatches {
-		wait()
-		http.Error(w, "download denied", http.StatusUnauthorized)
+		deny()
 		return
 	}
 	if !share.ActiveAt(requestTime(r)).IsActive(s) {
@@ -225,37 +236,46 @@ func (h *Handler) apiDownloadPost(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, s.BlobPath)
 }
 
-func downloadPassword(r *http.Request) (string, bool, error) {
-	contentType := strings.ToLower(r.Header.Get("Content-Type"))
-	if strings.HasPrefix(contentType, "application/json") {
+// downloadPasswordHash accepts only the canonical SHA-256 authorization token;
+// plaintext archive passwords never cross the download API boundary.
+func downloadPasswordHash(r *http.Request) (string, error) {
+	if r.URL.RawQuery != "" {
+		return "", errors.New("invalid password request")
+	}
+	contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil {
+		return "", errors.New("invalid password request")
+	}
+	if contentType == "application/json" {
 		var body struct {
-			Password     string `json:"password"`
 			PasswordHash string `json:"password_hash"`
 		}
 		dec := json.NewDecoder(io.LimitReader(r.Body, maxDownloadPasswordBytes+256))
 		dec.DisallowUnknownFields()
-		if err := dec.Decode(&body); err != nil || (body.Password == "") == (body.PasswordHash == "") || len(body.Password) > maxDownloadPasswordBytes || len(body.PasswordHash) > maxDownloadPasswordBytes {
-			return "", false, errors.New("invalid password request")
+		if err := dec.Decode(&body); err != nil || body.PasswordHash == "" || len(body.PasswordHash) > maxDownloadPasswordBytes {
+			return "", errors.New("invalid password request")
 		}
 		if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-			return "", false, errors.New("invalid password request")
+			return "", errors.New("invalid password request")
 		}
-		if body.PasswordHash != "" {
-			return body.PasswordHash, true, nil
-		}
-		return body.Password, false, nil
+		return body.PasswordHash, nil
 	}
-	if err := r.ParseForm(); err != nil {
-		return "", false, errors.New("invalid password request")
+	if contentType != "application/x-www-form-urlencoded" {
+		return "", errors.New("invalid password request")
 	}
-	password, passwordHash := r.FormValue("password"), r.FormValue("password_hash")
-	if (password == "") == (passwordHash == "") || len(password) > maxDownloadPasswordBytes || len(passwordHash) > maxDownloadPasswordBytes {
-		return "", false, errors.New("invalid password request")
+	formBody, err := io.ReadAll(io.LimitReader(r.Body, maxDownloadPasswordBytes+257))
+	if err != nil || len(formBody) > maxDownloadPasswordBytes+256 {
+		return "", errors.New("invalid password request")
 	}
-	if passwordHash != "" {
-		return passwordHash, true, nil
+	form, err := url.ParseQuery(string(formBody))
+	if err != nil {
+		return "", errors.New("invalid password request")
 	}
-	return password, false, nil
+	passwordHashes := form["password_hash"]
+	if len(form) != 1 || len(passwordHashes) != 1 || passwordHashes[0] == "" || len(passwordHashes[0]) > maxDownloadPasswordBytes {
+		return "", errors.New("invalid password request")
+	}
+	return passwordHashes[0], nil
 }
 
 // adminLoginPage renders the admin sign-in form.

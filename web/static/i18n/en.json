@@ -1,9 +1,22 @@
 {
 	"nav": {
 		"upload": "upload",
+		"api": "api",
 		"admin": "admin",
 		"logout": "logout",
 		"language": "language"
+	},
+	"api": {
+		"archiveListLabel": "archive list",
+		"archiveListTitle": "# Archive List",
+		"noArchives": "no public archives.",
+		"usageTitle": "# Usage Guide",
+		"uploadSummary": "Upload one file as multipart/form-data. Plain files are zipped and encrypted by the server.",
+		"uploadFields": "Required: blob, password, encrypted=0. Optional: title, visibility, private_key, expiry_hours.",
+		"passwordHashTitle": "# Password Hash",
+		"passwordHashSummary": "Downloads accept only the Base64-encoded SHA-256 password hash below.",
+		"downloadSummary": "Send password_hash as JSON or form data. A successful response returns the encrypted archive payload.",
+		"downloadPolicy": "Every response waits at least 2 seconds. More than 10 failed password requests from one IP in one minute trigger a persistent 23–29 hour ban."
 	},
 	"time": { "secondsSuffix": "s." },
 	"upload": {

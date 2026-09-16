@@ -28,8 +28,9 @@ These are baked in and not negotiable without changing what this is:
   decryption happens only in the browser.
 - **Payload access requires the password.** The server compares each download
   password against its separate verifier before returning any encrypted bytes.
-- **Every download is a POST.** Payload requests wait at least 1 second and are
-  rate-limited per client IP to slow brute-force attempts.
+- **Every download is a POST.** Payload responses wait at least 2 seconds.
+  More than 10 failed password requests from one IP in one minute create a
+  persistent 24-hour ban with random `-3600..18000` second jitter.
 - **Every upload is zip-backed**, even a single file.
 - **CSRF on browser-session mutations.** Stateless API calls cannot gain admin
   policy without a matching session-bound token.
@@ -82,13 +83,15 @@ present; real env vars win over the file). `README.md` below matches
 | `ADMIN_PASSWORD` | commented out | initial admin password |
 | `MAX_UPLOAD_BYTES` | `314572800` | per-blob upload limit |
 | `STORAGE_CAP_BYTES` | `419430400` | global stored-blob cap |
-| `DOWNLOAD_ATTEMPTS_PER_MINUTE` | `5` | maximum payload download attempts per client IP each rolling minute |
 | `TRUST_PROXY_HEADERS` | `true` | trust `X-Forwarded-For`/`X-Real-IP`/`X-Forwarded-Proto` from a verified local or Railway proxy |
 | `TZ` | `Asia/Shanghai` | timezone for purge scheduling and display |
 
 ## API
 
-API calls need no browser session and require HTTPS. API upload accepts
+`GET /api/` renders the active public archive list and usage contract. Crawlers
+may index `/api/*`; `robots.txt` disallows every other path.
+
+API operation calls need no browser session and require HTTPS. API upload accepts
 `multipart/form-data` at `POST /api/v0/upload` in two modes:
 
 The server accepts direct TLS or `X-Forwarded-Proto: https` only from a trusted
@@ -99,8 +102,9 @@ are present, and only when `TRUST_PROXY_HEADERS=true`.
   `encrypted=1`;
 - `password`: plaintext password required for `encrypted=0`, where the server
   needs it for encryption and derives the separate download verifier;
-- `password_hash`: browser/API authorization hash for `encrypted=1`; base64
-  SHA-256 of `shareserver-download-password\\0` plus the NFC-normalized password;
+- `password_hash`: browser/API authorization hash for `encrypted=1`; Base64
+  SHA-256 of `shareserver-download-password`, one `0x00` byte, then the
+  NFC-normalized password;
 - `encrypted`: `0/1`; `0` requests server ZIP and encryption, while `1` keeps
   client-provided ciphertext unchanged;
 - `cipher_meta`: required only for `encrypted=1`; JSON describing
@@ -160,13 +164,14 @@ Upload responses:
 - `500 Internal Server Error`: payload or metadata storage failed.
 - `507 Insufficient Storage`: configured server storage capacity is exhausted.
 
-`POST /api/v0/download/{uuid}` accepts exactly one of `password` or
-`password_hash`, in JSON or form data. Browser clients send only the derived
-hash; command-line clients may send the plaintext password. A correct
-credential returns the raw encrypted payload as `application/octet-stream`;
-clients own decryption.
-Wrong passwords return `401` without payload bytes. The endpoint returns `429`
-with `Retry-After` after the per-IP limit is reached.
+`POST /api/v0/download/{uuid}` accepts only `password_hash` in JSON or form
+data. It is the Base64-encoded SHA-256 digest described above; plaintext archive
+passwords are rejected. A correct credential returns the raw encrypted payload
+as `application/octet-stream`; clients own decryption.
+Wrong passwords return `401` without payload bytes. Every response waits at
+least 2 seconds. The eleventh failed password request from one IP within a
+rolling minute creates a persistent `24h + random(-3600s..18000s)` ban;
+subsequent responses return `429` with `Retry-After`.
 
 ### Download with curl
 
@@ -176,7 +181,7 @@ remains encrypted; decrypt it locally using its matching cipher metadata.
 ```sh
 curl -fsSL \
   --request POST \
-  --data-urlencode 'password=<password>' \
+  --json '{"password_hash":"<base64-password-authorization-hash>"}' \
   --output '<filename>' \
   'https://<Server Domain>/api/v0/download/<uuid>'
 ```
@@ -196,12 +201,12 @@ Download responses:
 - `410 Gone`: password matched, but Share expired.
 - `426 Upgrade Required`: request did not arrive through direct TLS or a trusted
   proxy reporting HTTPS.
-- `429 Too Many Requests`: client IP exceeded configured rolling attempt limit;
-  `Retry-After` reports wait time in seconds.
+- `429 Too Many Requests`: client IP is under a persistent failed-password ban;
+  `Retry-After` reports remaining ban time in seconds.
 - `416 Range Not Satisfiable`: requested byte range is outside payload bounds.
 
-Both API routes return `404 Not Found` for an unknown path and `405 Method Not
-Allowed` when called with a method other than `POST`.
+Both API operation routes return `404 Not Found` for an unknown path and `405
+Method Not Allowed` when called with a method other than `POST`.
 
 On first startup after upgrading from versions without password-gated payload
 downloads, legacy Shares lacking a download-password verifier are removed with

@@ -6,16 +6,19 @@
 - Add stateless encrypted-payload upload and password-gated download endpoints under `/api/v0`.
 - Add plain API upload mode with streaming server-side ZIP and authenticated chunk encryption.
 - Return Share URL, download URL, stored size, expiry, encryption owner, and cipher metadata from API uploads.
+- Add `/api/` with a public archive list and API usage guide.
+- Add root `robots.txt`, allowing `/api/*` while disallowing all other paths.
 
 ### Update
 - Require every new Share payload to be encrypted before storage and protected by a separately hashed download-password verifier.
 - Render initial HTML in the language selected for the browser session, while reusing the same catalogs for dynamic browser content.
 - Set the installed version to `v0.2.0`; publish Docker images with matching version and `latest` tags.
 - Derive browser download authorization hashes before upload/download requests so plaintext payload passwords stay in the browser.
+- Require SHA-256-derived `password_hash` credentials for archive downloads.
 
 ### Fix
 - Remove anonymous payload GET access; wrong passwords return no payload bytes.
-- Delay every download attempt by at least 1 second and enforce a configurable rolling per-IP attempt limit.
+- Delay every download response by at least 2 seconds; persist a 23–29 hour IP ban after more than 10 failed password requests in one minute.
 - Accept Railway's HTTPS forwarding header only from its documented internal proxy network.
 
 ### Breaking Changes

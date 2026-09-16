@@ -71,6 +71,11 @@ type archivePageData struct {
 	PrivateMode bool
 }
 
+type apiPageData struct {
+	pageContext
+	Archives []share.Share
+}
+
 type adminDashboardPage struct {
 	pageContext
 	Used, Cap               int64
@@ -131,6 +136,11 @@ func (h *Handler) renderArchivePage(w http.ResponseWriter, r *http.Request, data
 		data.pageContext.Title = strings.TrimPrefix(data.pageContext.T("share.sharesTitle"), "# ")
 	}
 	h.renderTemplate(w, http.StatusOK, "share.html", data)
+}
+
+func (h *Handler) renderAPIPage(w http.ResponseWriter, r *http.Request, data apiPageData) {
+	data.pageContext = h.pageContext(r, "API")
+	h.renderTemplate(w, http.StatusOK, "api.html", data)
 }
 
 func (h *Handler) renderAdminLoginPage(w http.ResponseWriter, r *http.Request) {
