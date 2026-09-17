@@ -1,9 +1,8 @@
 # shareserver
 
 A small, terminal-style file share web app in Go. Server-rendered pages, no
-SPA, no CDN. Web uploads are zipped and encrypted in the browser; API clients
-may instead send one plain file for streaming server-side ZIP and encryption.
-The server stores encrypted payloads plus metadata through Ent on SQLite.
+SPA, no CDN. Every client zips and encrypts its payload before upload. The
+server stores opaque encrypted payloads plus metadata through Ent on SQLite.
 
 ## What it does
 
@@ -232,6 +231,9 @@ Admins can select multiple Shares and remove each selected pair in one action.
 ---
 
 ## Instruction For AI Agent
+
+Read the [AI-agent API and project guide](./LLM_WIKI.md) before operating the
+HTTP API or changing its request, encryption, storage, or response contracts.
 
 - Security is the highest priority; if safety conflicts with speed, convenience, UI polish, or cleanup, choose safety and keep the tradeoff explicit.
 - Admin auth must fail closed: unknown users, password-check errors, session rotation errors, CSRF failures, and ban checks must never create or preserve admin access.
