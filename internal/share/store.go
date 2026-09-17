@@ -54,7 +54,7 @@ func (s *Store) ListPublic(active ActiveRule) []Share {
 // Used by the private-key lookup flow.
 func (s *Store) ListByKey(active ActiveRule, keyHash string) []Share {
 	return s.query(s.Client.Share.Query().
-		Where(active.Predicate(), entshare.PrivateKeyHashEQ(keyHash), entshare.EncryptedEQ(true), entshare.DownloadPasswordHashNotNil()).
+		Where(active.Predicate(), entshare.VisibilityEQ("private"), entshare.PrivateKeyHashEQ(keyHash), entshare.EncryptedEQ(true), entshare.DownloadPasswordHashNotNil()).
 		Order(ent.Desc(entshare.FieldCreatedAt)).
 		Limit(100))
 }

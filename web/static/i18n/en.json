@@ -13,6 +13,7 @@
 		"usageTitle": "# Usage Guide",
 		"uploadSummary": "Upload one client-encrypted ZIP as multipart/form-data.",
 		"uploadFields": "Required: blob, password_hash, encrypted=1, cipher_meta. Optional: title, visibility, private_key, expiry_hours.",
+		"listSummary": "Send private_key as JSON or form data to return matching active private archives.",
 		"passwordHashTitle": "# Password Hash",
 		"passwordHashSummary": "Uploads and downloads accept only the Base64-encoded SHA-256 password hash below.",
 		"downloadSummary": "Send password_hash as JSON or form data. A successful response returns the encrypted archive payload.",

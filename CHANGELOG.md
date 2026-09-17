@@ -6,6 +6,7 @@
 - Add stateless encrypted-payload upload and password-gated download endpoints under `/api/v0`.
 - Return Share URL, download URL, stored size, expiry, encryption owner, and cipher metadata from API uploads.
 - Add `/api/` with a public archive list and API usage guide.
+- Add a body-only private-key endpoint for listing matching active private Shares.
 - Add root `robots.txt`, allowing `/api/*` while disallowing all other paths.
 
 ### Update

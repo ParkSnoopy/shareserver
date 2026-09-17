@@ -13,6 +13,7 @@
 		"usageTitle": "# 使用指南",
 		"uploadSummary": "使用 multipart/form-data 上传一个由客户端加密的 ZIP。",
 		"uploadFields": "必填：blob、password_hash、encrypted=1、cipher_meta。可选：title、visibility、private_key、expiry_hours。",
+		"listSummary": "以 JSON 或表单数据发送 private_key，返回匹配的有效私有归档。",
 		"passwordHashTitle": "# 密码哈希",
 		"passwordHashSummary": "上传和下载仅接受下方 Base64 编码的 SHA-256 密码哈希。",
 		"downloadSummary": "以 JSON 或表单发送 password_hash。成功响应返回加密归档内容。",

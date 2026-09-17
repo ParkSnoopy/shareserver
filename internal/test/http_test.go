@@ -488,6 +488,8 @@ func TestAPIIndexShowsArchiveListAndUsageGuide(t *testing.T) {
 		"# Usage Guide",
 		`class="method-label method-post">POST</span>`,
 		"/api/v0/upload",
+		"/api/v0/list",
+		"matching active private archives",
 		"/api/v0/download/{uuid}",
 		"SHA-256",
 		"at least 2 seconds",

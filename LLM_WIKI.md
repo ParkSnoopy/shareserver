@@ -84,6 +84,7 @@ The current routes are registered in the [route table](./internal/http/router.go
 | --- | --- | --- | --- |
 | `GET` | `/api/` | HTML archive list and human-readable API usage page | Sessionless; an existing cookie may be read, but no session is created |
 | `POST` | `/api/v0/upload` | Store one client-encrypted ZIP payload | Sessionless; an existing admin session is optional |
+| `POST` | `/api/v0/list` | Return active private Shares matching a private lookup key | Sessionless |
 | `POST` | `/api/v0/download/{uuid}` | Authorize and stream one encrypted payload | Sessionless |
 | `GET` | `/s/{uuid}` | Render the browser Share page with current cipher metadata | Browser session route |
 | `GET` | `/` and `/s/` | Public archive browsing and private-key lookup UI | Browser session route |
@@ -91,11 +92,12 @@ The current routes are registered in the [route table](./internal/http/router.go
 | `GET` | `/robots.txt` | Allow crawler access only to `/api/` | Sessionless |
 | `GET`/`POST` | `/admin/...` | Administrative login, inspection, and deletion | Browser session and CSRF protected |
 
-There is no JSON archive-list endpoint. `GET /api/` is HTML and lists at most
-the 100 newest active public Shares. The query is defined by the
-[Share store](./internal/share/store.go), and rendering is defined by the
-[API template](./web/templates/api.html). The crawler policy is the
-[robots file](./web/robots.txt).
+`GET /api/` is HTML and lists at most the 100 newest active public Shares.
+`POST /api/v0/list` is the machine-readable private-key lookup and returns at
+most the 100 newest active private Shares matching that key. Both queries are
+defined by the [Share store](./internal/share/store.go), while the public page is
+rendered by the [API template](./web/templates/api.html). The crawler policy is
+the [robots file](./web/robots.txt).
 
 Unknown paths return `404`. The API operation routes are registered only for
 `POST`; another method receives the router's `405 Method Not Allowed` response.
@@ -104,7 +106,7 @@ Unknown paths return `404`. The API operation routes are registered only for
 
 ### HTTPS requirement
 
-Both operation endpoints reject insecure requests with `426 Upgrade Required`
+All three operation endpoints reject insecure requests with `426 Upgrade Required`
 and the text body `HTTPS required`.
 
 A request is secure when either:
@@ -132,9 +134,10 @@ trusted reverse proxy.
 
 ### Stateless API behavior
 
-The `/api/`, upload, download, and crawler-policy routes do not create browser
-session rows or issue session cookies. If a valid `sid` cookie already exists,
-the server may attach that session to the request without creating a new one.
+The `/api/`, upload, private-list, download, and crawler-policy routes do not
+create browser session rows or issue session cookies. If a valid `sid` cookie
+already exists, the server may attach that session to the request without
+creating a new one.
 This behavior is implemented in [HTTP middleware](./internal/http/middleware.go).
 
 Ordinary machine clients should omit cookies and `X-CSRF-Token`. Upload has one
@@ -265,6 +268,121 @@ verification before upload when reliability matters.
 but new Share rows store `[]`. Do not depend on it for archive recovery or MIME
 metadata. Clients must inspect ZIP entries after decryption. This behavior is
 visible in the [upload module](./internal/upload/upload.go).
+
+## Private archive-list endpoint
+
+### Request
+
+```text
+POST /api/v0/list
+```
+
+The lookup endpoint requires verified HTTPS and accepts exactly one non-empty
+`private_key` string in either JSON or URL-encoded form data. It is sessionless,
+does not require CSRF state, and does not create a browser session.
+
+#### JSON
+
+```http
+Content-Type: application/json
+
+{"private_key":"<private lookup key>"}
+```
+
+#### URL-encoded form
+
+```http
+Content-Type: application/x-www-form-urlencoded
+
+private_key=<percent-encoded private lookup key>
+```
+
+The endpoint rejects:
+
+- any query string;
+- an empty or missing key;
+- more than one JSON property;
+- an unknown JSON property;
+- duplicate JSON or form values;
+- a second JSON value after the request object;
+- unsupported content types; and
+- a key larger than 64 KiB.
+
+The strict body parser is shared with download authorization and lives in the
+[HTTP handlers](./internal/http/handlers.go). A private key belongs only in the
+request body. Never place it in a URL, because URLs commonly enter browser
+history, reverse-proxy logs, analytics, and referrer data.
+
+### Lookup and filtering
+
+After parsing the key, the server:
+
+1. reconciles Share rows and blob files so missing or orphaned storage is not
+   advertised;
+2. computes `HMAC-SHA-256(APP_SECRET, private_key)`;
+3. queries only active Shares whose visibility is exactly `private`;
+4. requires each result to be encrypted and download-password protected;
+5. orders matching Shares newest first; and
+6. limits the response to 100 entries.
+
+The raw key is used transiently for HMAC derivation. It is never written to the
+Share row, audit log, or response. Lookup hashing is implemented by the
+[authentication module](./internal/auth/auth.go); filtering is implemented by
+the [Share store](./internal/share/store.go).
+
+### Success response
+
+Both a matching key and a key with no matches return `200 OK`,
+`Content-Type: application/json`, and `Cache-Control: no-store`. An empty result
+does not reveal whether the key was previously valid.
+
+```json
+{
+  "archives": [
+    {
+      "id": "<uuid>",
+      "title": "<share title>",
+      "url": "/s/<uuid>",
+      "download_url": "/api/v0/download/<uuid>",
+      "size": 12345,
+      "expires_at": "<UTC RFC3339Nano timestamp>",
+      "created_at": "<UTC RFC3339Nano timestamp>",
+      "cipher_meta": {
+        "kdf": "PBKDF2-SHA-384",
+        "iterations": 600000,
+        "salt": "<Base64>",
+        "cipher": "AES-256-GCM",
+        "nonce": "<Base64>"
+      },
+      "encryption": "client"
+    }
+  ]
+}
+```
+
+The response intentionally excludes the raw private key, private-key HMAC,
+download-password verifier, uploader IP, blob path, blob checksum, and audit
+metadata. Relative URLs must be resolved against the same verified HTTPS origin.
+The included `cipher_meta` lets an API client decrypt a matching private Share
+after separately authorizing and downloading its payload.
+
+The private key lists Shares; it does not authorize payload bytes. Each returned
+archive still requires the corresponding archive password hash at
+`POST /api/v0/download/{uuid}` and the plaintext password locally for AES-GCM
+decryption.
+
+### Errors and retry behavior
+
+| Status | Meaning | Agent action |
+| --- | --- | --- |
+| `400 Bad Request` | The body, key count, key size, query string, or content type violates the strict request contract | Fix the request; do not retry unchanged |
+| `426 Upgrade Required` | The request lacked direct TLS or trusted forwarded HTTPS | Correct TLS or proxy configuration |
+
+The endpoint has no wrong-key error and no pagination token. A successful empty
+list is terminal for that exact key at that instant. Do not brute-force private
+keys or send concurrent key guesses. The endpoint has no fixed two-second delay;
+the delay and persistent failure-ban policy apply to payload authorization, not
+archive lookup.
 
 ## Upload endpoint
 
@@ -587,12 +705,13 @@ bytes, then unzips in-browser to reduce duplicate memory pressure. See the
 [Share client](./web/static/js/share.js), [archive client](./web/static/js/archive.js),
 [crypto client](./web/static/js/crypto.js), and [ZIP helpers](./web/static/js/zip.js).
 
-If the agent did not perform the original upload and lacks `cipher_meta`, there
-is no supported JSON metadata endpoint. The browser Share page currently embeds
-metadata in HTML through the [Share template](./web/templates/share.html), but
-that markup is a UI implementation detail rather than a stable machine API. A
-robust automation workflow should retain metadata at upload time instead of
-scraping HTML later.
+For a private Share, `POST /api/v0/list` returns `cipher_meta` after a matching
+private-key lookup. There is no equivalent JSON metadata lookup for a public
+Share. The browser Share page embeds metadata in HTML through the
+[Share template](./web/templates/share.html), but that markup is a UI
+implementation detail rather than a stable machine API. A robust automation
+workflow should retain metadata at upload time or obtain it through the private
+list endpoint rather than scraping HTML.
 
 ## Public and private Shares
 
@@ -601,6 +720,7 @@ Encryption and visibility are separate controls:
 - Every current Share is encrypted and password-authorized.
 - A public Share appears in public archive listings while active.
 - A private Share is omitted from public listings.
+- `POST /api/v0/list` returns active private Shares matching the submitted key.
 - The private lookup key is submitted to the server and converted to
   `HMAC-SHA-256(APP_SECRET, private_key)` for matching.
 - The raw private lookup key is not stored in the Share row.
@@ -736,6 +856,15 @@ For an existing Share download:
 8. On `410`, mark the Share terminally expired.
 9. Verify complete ciphertext length before decryption.
 10. Decrypt and authenticate locally, then inspect/extract the ZIP safely.
+
+For private-key discovery before download:
+
+1. Send one body-only private key to `POST /api/v0/list` over verified HTTPS.
+2. Treat `200 OK` with an empty `archives` array as a normal no-match result.
+3. Select a returned Share by stable `id`, not by potentially duplicated title.
+4. Retain its `cipher_meta` and use its `download_url` for separate password-hash
+   authorization.
+5. Do not log the private key or attempt key enumeration.
 
 ## Retry and timeout guidance
 

@@ -40,6 +40,14 @@
   https://HOST/api/v0/upload</code></pre>
 			</section>
 
+			<section class="api-detail" id="private-list">
+				<h3 class="api-endpoint"><span class="method-label method-post">POST</span> /api/v0/list</h3>
+				<p class="api-meta" data-i18n="api.listSummary">{{.T "api.listSummary"}}</p>
+				<pre class="api-code"><code>curl -fsS -X POST \
+  --json '{"private_key":"PRIVATE_KEY"}' \
+  https://HOST/api/v0/list</code></pre>
+			</section>
+
 			<section class="api-detail" id="password-hash">
 				<h3 data-i18n="api.passwordHashTitle">{{.T "api.passwordHashTitle"}}</h3>
 				<p class="api-meta" data-i18n="api.passwordHashSummary">{{.T "api.passwordHashSummary"}}</p>

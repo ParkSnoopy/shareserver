@@ -156,6 +156,24 @@ Upload responses:
 - `500 Internal Server Error`: payload or metadata storage failed.
 - `507 Insufficient Storage`: configured server storage capacity is exhausted.
 
+`POST /api/v0/list` accepts exactly one `private_key` value in JSON or
+`application/x-www-form-urlencoded` body data. Query-string keys, duplicate
+values, unknown JSON fields, and other content types are rejected. A successful
+request returns up to 100 active private Shares matching the key as
+`{"archives":[...]}`. Each entry contains `id`, `title`, Share `url`,
+`download_url`, stored `size`, `expires_at`, `created_at`, `cipher_meta`, and
+`encryption`. A key with no matches returns `200 OK` with an empty list.
+
+```sh
+curl -fsSL \
+  --request POST \
+  --json '{"private_key":"<private-key>"}' \
+  'https://<Server Domain>/api/v0/list'
+```
+
+Treat the private key as sensitive lookup material. The server uses it only to
+derive its secret-scoped lookup hash and never returns or stores the raw value.
+
 `POST /api/v0/download/{uuid}` accepts only `password_hash` in JSON or form
 data. It is the Base64-encoded SHA-256 digest described above; plaintext archive
 passwords are rejected. A correct credential returns the raw encrypted payload
@@ -197,7 +215,7 @@ Download responses:
   `Retry-After` reports remaining ban time in seconds.
 - `416 Range Not Satisfiable`: requested byte range is outside payload bounds.
 
-Both API operation routes return `404 Not Found` for an unknown path and `405
+All API operation routes return `404 Not Found` for an unknown path and `405
 Method Not Allowed` when called with a method other than `POST`.
 
 On first startup after upgrading from versions without password-gated payload

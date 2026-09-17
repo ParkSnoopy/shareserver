@@ -74,7 +74,9 @@ func isSessionlessPath(path string) bool {
 }
 
 func isAPIPath(path string) bool {
-	return path == "/api/v0/upload" || strings.HasPrefix(path, "/api/v0/download/")
+	return path == "/api/v0/upload" ||
+		path == "/api/v0/list" ||
+		strings.HasPrefix(path, "/api/v0/download/")
 }
 
 // CurrentSession returns the session stored in context or an empty fail-closed value.

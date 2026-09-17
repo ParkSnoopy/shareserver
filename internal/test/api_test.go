@@ -140,6 +140,125 @@ func TestAPIUploadRejectsServerSideEncryption(t *testing.T) {
 	}
 }
 
+func TestAPIPrivateArchiveListReturnsOnlyActiveKeyMatches(t *testing.T) {
+	a, router := newRouter(t)
+	privateKey := "team-private-key"
+	keyHash := auth.HMACKey(a.C.AppSecret, privateKey)
+	seed := func(id, expiry string, matches bool) {
+		t.Helper()
+		insertProtectedShare(t, a, id, "encrypted-payload", expiry, "correct")
+		update := a.DB.Share.UpdateOneID(id).
+			SetVisibility("private").
+			SetCipherMeta(testCipherMeta)
+		if matches {
+			update.SetPrivateKeyHash(keyHash)
+		} else {
+			update.SetPrivateKeyHash(auth.HMACKey(a.C.AppSecret, "other-key"))
+		}
+		if err := update.Exec(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantedID := "00000000-0000-0000-0000-000000000127"
+	seed(wantedID, futureTS(time.Hour), true)
+	seed("00000000-0000-0000-0000-000000000128", pastTS(time.Hour), true)
+	seed("00000000-0000-0000-0000-000000000129", futureTS(time.Hour), false)
+	publicID := "00000000-0000-0000-0000-000000000130"
+	insertProtectedShare(t, a, publicID, "encrypted-payload", futureTS(time.Hour), "correct")
+	if err := a.DB.Share.UpdateOneID(publicID).SetPrivateKeyHash(keyHash).SetCipherMeta(testCipherMeta).Exec(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/list", strings.NewReader(`{"private_key":"`+privateKey+`"}`))
+	req.TLS = &tls.ConnectionState{}
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("private archive list status = %d, body=%q", w.Code, w.Body.String())
+	}
+	if w.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("private archive list cache policy = %q", w.Header().Get("Cache-Control"))
+	}
+	if w.Header().Get("Set-Cookie") != "" {
+		t.Fatalf("private archive list created session cookie: %q", w.Header().Get("Set-Cookie"))
+	}
+	var response struct {
+		Archives []struct {
+			ID          string         `json:"id"`
+			Title       string         `json:"title"`
+			URL         string         `json:"url"`
+			DownloadURL string         `json:"download_url"`
+			CipherMeta  map[string]any `json:"cipher_meta"`
+		} `json:"archives"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Archives) != 1 || response.Archives[0].ID != wantedID {
+		t.Fatalf("private archive list = %+v, want only %s", response.Archives, wantedID)
+	}
+	archive := response.Archives[0]
+	if archive.Title == "" || archive.URL != "/s/"+wantedID || archive.DownloadURL != "/api/v0/download/"+wantedID || archive.CipherMeta["cipher"] != "AES-256-GCM" {
+		t.Fatalf("private archive response incomplete: %+v", archive)
+	}
+	for _, sensitive := range []string{privateKey, keyHash, "download-hash", a.C.BlobDir, "1.2.3.4"} {
+		if strings.Contains(w.Body.String(), sensitive) {
+			t.Fatalf("private archive response exposed sensitive value %q", sensitive)
+		}
+	}
+	sessions, err := a.DB.Session.Query().Count(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sessions != 0 {
+		t.Fatalf("private archive list created %d session rows", sessions)
+	}
+
+	noMatch := httptest.NewRequest(http.MethodPost, "/api/v0/list", strings.NewReader("private_key=unknown-key"))
+	noMatch.TLS = &tls.ConnectionState{}
+	noMatch.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	noMatchResponse := httptest.NewRecorder()
+	router.ServeHTTP(noMatchResponse, noMatch)
+	if noMatchResponse.Code != http.StatusOK || strings.TrimSpace(noMatchResponse.Body.String()) != `{"archives":[]}` {
+		t.Fatalf("unknown private key response = %d %q", noMatchResponse.Code, noMatchResponse.Body.String())
+	}
+}
+
+func TestAPIPrivateArchiveListRejectsCredentialsOutsideStrictBody(t *testing.T) {
+	_, router := newRouter(t)
+	tests := []struct {
+		name        string
+		target      string
+		contentType string
+		body        string
+		secure      bool
+		want        int
+	}{
+		{name: "query", target: "/api/v0/list?private_key=secret", contentType: "application/json", body: `{}`, secure: true, want: http.StatusBadRequest},
+		{name: "duplicate json", target: "/api/v0/list", contentType: "application/json", body: `{"private_key":"one","private_key":"two"}`, secure: true, want: http.StatusBadRequest},
+		{name: "unknown json", target: "/api/v0/list", contentType: "application/json", body: `{"private_key":"one","extra":"two"}`, secure: true, want: http.StatusBadRequest},
+		{name: "second json value", target: "/api/v0/list", contentType: "application/json", body: `{"private_key":"one"} {}`, secure: true, want: http.StatusBadRequest},
+		{name: "duplicate form", target: "/api/v0/list", contentType: "application/x-www-form-urlencoded", body: `private_key=one&private_key=two`, secure: true, want: http.StatusBadRequest},
+		{name: "unsupported content type", target: "/api/v0/list", contentType: "text/plain", body: `private_key=one`, secure: true, want: http.StatusBadRequest},
+		{name: "insecure transport", target: "/api/v0/list", contentType: "application/json", body: `{"private_key":"one"}`, want: http.StatusUpgradeRequired},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, tt.target, strings.NewReader(tt.body))
+			if tt.secure {
+				req.TLS = &tls.ConnectionState{}
+			}
+			req.Header.Set("Content-Type", tt.contentType)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			if w.Code != tt.want {
+				t.Fatalf("status = %d, want %d; body=%q", w.Code, tt.want, w.Body.String())
+			}
+		})
+	}
+}
+
 func TestAPIClientUploadAndDownloadAcceptBrowserPasswordHash(t *testing.T) {
 	a, router := newRouter(t)
 	passwordHash := testDownloadPasswordHash("browser-only-password")

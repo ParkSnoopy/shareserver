@@ -67,6 +67,7 @@ func New(a *app.App) http.Handler {
 	r.Get("/api/", h.apiPage)
 	r.Get("/s/{id}", h.sharePage)
 	r.Post("/api/v0/upload", h.apiUploadPost)
+	r.Post("/api/v0/list", h.apiPrivateListPost)
 	r.Post("/api/v0/download/{id}", h.apiDownloadPost)
 	r.Get("/admin/login", h.adminLoginPage)
 	r.Post("/admin/login", h.adminLoginPost)
