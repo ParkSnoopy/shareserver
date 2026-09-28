@@ -1,7 +1,17 @@
 {{ define "admin_shares.html" }}
 {{ template "base_top" . }}
-<div class="wide">
-	<h1 data-i18n="admin.sharesTitle">{{.T "admin.sharesTitle"}}</h1>
+<div class="numbered-page">
+	<div class="editor-line">
+		<span class="line-gutter" aria-hidden="true">01</span>
+		<h1 data-i18n="admin.sharesTitle">{{.T "admin.sharesTitle"}}</h1>
+	</div>
+	<div class="editor-line" aria-hidden="true">
+		<span class="line-gutter">--</span>
+		<div class="section-rule"></div>
+	</div>
+	<div class="editor-line">
+		<span class="line-gutter" aria-hidden="true">02</span>
+		<div class="wide">
 	{{ if eq .DeleteResult "done" }}
 	<p class="comment-text" data-i18n="admin.deleteDone" data-i18n-vars='{"removed":"{{.Removed}}"}'>{{.T "admin.deleteDone" "removed" .Removed}}</p>
 	{{ else if eq .DeleteResult "failed" }}
@@ -9,7 +19,6 @@
 	{{ else if eq .DeleteResult "none" }}
 	<p class="comment-text" data-i18n="admin.deleteNone">{{.T "admin.deleteNone"}}</p>
 	{{ end }}
-	<div class="section-rule" aria-hidden="true"></div>
 	<form id="bulkDeleteShares" method="post" action="/admin/shares/delete">
 		<input type="hidden" name="csrf" value="{{.CSRF}}">
 		<div class="admin-bulk-actions">
@@ -63,6 +72,8 @@
 	</table>
 	</div>
 	</form>
+		</div>
+	</div>
 </div>
 <script type="module" src="/static/js/admin-shares.js"></script>
 {{ template "base_bottom" . }}

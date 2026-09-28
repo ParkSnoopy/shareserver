@@ -1,7 +1,21 @@
 {{ define "share.html" }}
 {{ template "base_top" . }}
-<div class="share-source-buffer">
-	<div class="api-doc-layout share-doc-layout" data-selected="{{.Selected}}">
+<div class="numbered-page">
+	<div class="editor-line">
+		<span class="line-gutter" aria-hidden="true">01</span>
+		{{ if .Selected }}
+		<h1># {{ .Share.Title }}</h1>
+		{{ else }}
+		<h1 data-i18n="share.sharesTitle">{{.T "share.sharesTitle"}}</h1>
+		{{ end }}
+	</div>
+	<div class="editor-line" aria-hidden="true">
+		<span class="line-gutter">--</span>
+		<div class="section-rule"></div>
+	</div>
+	<div class="editor-line">
+		<span class="line-gutter" aria-hidden="true">02</span>
+		<div class="api-doc-layout share-doc-layout" data-selected="{{.Selected}}">
 		<button
 			type="button"
 			class="sidebar-toggle"
@@ -70,7 +84,6 @@
 
 		<section class="api-main">
 			{{ if .Selected }}
-			<h1># {{ .Share.Title }}</h1>
 			{{ if .Expired }}
 			<p class="err" data-i18n="share.expired">{{.T "share.expired"}}</p>
 			<p class="comment-text">
@@ -142,7 +155,6 @@
 			<section id="previewPane" class="api-detail detail-pane" hidden></section>
 			{{ end }}
 			{{ else }}
-			<h1 data-i18n="share.sharesTitle">{{.T "share.sharesTitle"}}</h1>
 			<p class="comment-text">
 				<span data-i18n="share.chooseArchive"
 					>{{.T "share.chooseArchive"}}</span
@@ -157,6 +169,7 @@
 			</section>
 			{{ end }}
 		</section>
+		</div>
 	</div>
 </div>
 {{ if and .Selected (not .Expired) }}

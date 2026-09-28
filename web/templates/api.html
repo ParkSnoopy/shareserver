@@ -1,7 +1,17 @@
 {{ define "api.html" }}
 {{ template "base_top" . }}
-<div class="share-source-buffer">
-	<div class="api-doc-layout">
+<div class="numbered-page">
+	<div class="editor-line">
+		<span class="line-gutter" aria-hidden="true">01</span>
+		<h1 data-i18n="api.usageTitle">{{.T "api.usageTitle"}}</h1>
+	</div>
+	<div class="editor-line" aria-hidden="true">
+		<span class="line-gutter">--</span>
+		<div class="section-rule"></div>
+	</div>
+	<div class="editor-line">
+		<span class="line-gutter" aria-hidden="true">02</span>
+		<div class="api-doc-layout">
 		<aside
 			class="api-sidebar"
 			aria-label='{{.T "api.archiveListLabel"}}'
@@ -23,8 +33,6 @@
 		</aside>
 
 		<section class="api-main api-guide">
-			<h1 data-i18n="api.usageTitle">{{.T "api.usageTitle"}}</h1>
-
 			<section class="api-detail" id="upload">
 				<h3 class="api-endpoint"><span class="method-label method-post">POST</span> /api/v0/upload</h3>
 				<p class="api-meta" data-i18n="api.uploadSummary">{{.T "api.uploadSummary"}}</p>
@@ -64,6 +72,7 @@
   https://HOST/api/v0/download/UUID</code></pre>
 			</section>
 		</section>
+		</div>
 	</div>
 </div>
 {{ template "base_bottom" . }}

@@ -337,6 +337,7 @@ func TestExpiredSharePageShowsCountdownRedirect(t *testing.T) {
 	}
 	assertBodyContains(t, w.Body.String(),
 		"expired.",
+		`class="numbered-page"`,
 		"data-redirect-countdown",
 		"data-seconds=\"5\"",
 		"data-redirect-to=\"/\"",
@@ -495,6 +496,28 @@ func TestAPIIndexShowsArchiveListAndUsageGuide(t *testing.T) {
 		"at least 2 seconds",
 		"23–29 hour ban",
 	)
+}
+
+func TestReaderPagesUseNumberedLayout(t *testing.T) {
+	_, router := newRouter(t)
+	for _, path := range []string{"/", "/api/", "/s/nope"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			if path == "/s/nope" && w.Code != http.StatusNotFound {
+				t.Fatalf("error page status = %d", w.Code)
+			}
+			if path != "/s/nope" && w.Code != http.StatusOK {
+				t.Fatalf("page status = %d", w.Code)
+			}
+			assertBodyContains(t, w.Body.String(),
+				`class="numbered-page`,
+				`class="line-gutter" aria-hidden="true">01</span>`,
+				`class="line-gutter" aria-hidden="true">02</span>`,
+			)
+		})
+	}
 }
 
 func TestHTMLPagesHaveNoStoreCacheControl(t *testing.T) {
@@ -664,6 +687,7 @@ func TestAdminSharesOffersBulkSelection(t *testing.T) {
 		t.Fatalf("expected admin shares 200, got %d", w.Code)
 	}
 	assertBodyContains(t, w.Body.String(),
+		`class="numbered-page"`,
 		`action="/admin/shares/delete"`,
 		`id="selectAllShares"`,
 		`name="ids" value="`+id+`"`,
