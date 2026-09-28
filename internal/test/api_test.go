@@ -547,14 +547,14 @@ func TestAPIDownloadRemovesExpiredBanBeforeNextRequest(t *testing.T) {
 func TestServerRendersAndPersistsSessionLanguageBeforeJavaScript(t *testing.T) {
 	_, router := newRouter(t)
 	first := httptest.NewRequest(http.MethodGet, "/upload", nil)
-	first.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+	first.Header.Set("Accept-Language", "ko-KR,ko;q=0.9,en;q=0.8")
 	firstResponse := httptest.NewRecorder()
 	router.ServeHTTP(firstResponse, first)
 	if firstResponse.Code != http.StatusOK {
 		t.Fatalf("first page status = %d", firstResponse.Code)
 	}
-	assertBodyContains(t, firstResponse.Body.String(), `<html lang="zh">`, "# 上传", "必填加密密码")
-	if strings.Contains(firstResponse.Body.String(), "# Upload") {
+	assertBodyContains(t, firstResponse.Body.String(), `<html lang="ko">`, ">업로드</h1>", "필수 암호화 비밀번호")
+	if strings.Contains(firstResponse.Body.String(), ">Upload</h1>") {
 		t.Fatal("initial translated HTML still contains English upload heading")
 	}
 	cookies := firstResponse.Result().Cookies()
@@ -567,7 +567,28 @@ func TestServerRendersAndPersistsSessionLanguageBeforeJavaScript(t *testing.T) {
 	second.AddCookie(cookies[0])
 	secondResponse := httptest.NewRecorder()
 	router.ServeHTTP(secondResponse, second)
-	assertBodyContains(t, secondResponse.Body.String(), `<html lang="zh">`, "# 上传", "必填加密密码")
+	assertBodyContains(t, secondResponse.Body.String(), `<html lang="ko">`, ">업로드</h1>", "필수 암호화 비밀번호")
+}
+
+func TestUnsupportedChineseLanguageFallsBackToEnglish(t *testing.T) {
+	a, router := newRouter(t)
+	req := httptest.NewRequest(http.MethodGet, "/upload", nil)
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assertBodyContains(t, w.Body.String(), `<html lang="en">`, ">Upload</h1>")
+	cookies := w.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("session cookie missing")
+	}
+	if err := a.DB.Session.UpdateOneID(cookies[0].Value).SetLanguage("zh").Exec(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	next := httptest.NewRequest(http.MethodGet, "/upload", nil)
+	next.AddCookie(cookies[0])
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, next)
+	assertBodyContains(t, response.Body.String(), `<html lang="en">`, ">Upload</h1>")
 }
 
 func TestAPIDownloadTwoSecondDelayAppliesToDeniedRequests(t *testing.T) {

@@ -103,10 +103,16 @@ func (h *Handler) getOrCreateSession(w http.ResponseWriter, r *http.Request) Ses
 var languageMatcher = language.NewMatcher([]language.Tag{
 	language.English,
 	language.Korean,
-	language.Chinese,
 })
 
-var languageCodes = []string{"en", "ko", "zh"}
+var languageCodes = []string{"en", "ko"}
+
+func supportedLanguage(code string) string {
+	if code == "ko" {
+		return "ko"
+	}
+	return "en"
+}
 
 // preferredLanguage chooses one supported language for a new browser session.
 func preferredLanguage(acceptLanguage string) string {

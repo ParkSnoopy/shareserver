@@ -235,7 +235,7 @@ func TestNotFoundPageShowsCountdownRedirect(t *testing.T) {
 		t.Fatalf("expected 404 page status, got %d", w.Code)
 	}
 	assertBodyContains(t, w.Body.String(),
-		"# 404",
+		"<h1>404</h1>",
 		"data-redirect-countdown",
 		"data-seconds=\"5\"",
 		"data-redirect-to=\"/\"",
@@ -484,9 +484,9 @@ func TestAPIIndexShowsArchiveListAndUsageGuide(t *testing.T) {
 		t.Fatalf("API index created session cookie: %q", w.Header().Get("Set-Cookie"))
 	}
 	assertBodyContains(t, w.Body.String(),
-		"# Archive List",
+		"Archive List",
 		"API archive fixture",
-		"# Usage Guide",
+		"Usage Guide",
 		`class="method-label method-post">POST</span>`,
 		"/api/v0/upload",
 		"/api/v0/list",
@@ -498,9 +498,9 @@ func TestAPIIndexShowsArchiveListAndUsageGuide(t *testing.T) {
 	)
 }
 
-func TestReaderPagesUseNumberedLayout(t *testing.T) {
+func TestReaderPagesUseBeveledFrame(t *testing.T) {
 	_, router := newRouter(t)
-	for _, path := range []string{"/", "/api/", "/s/nope"} {
+	for _, path := range []string{"/", "/upload", "/api/", "/s/nope"} {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			w := httptest.NewRecorder()
@@ -512,10 +512,13 @@ func TestReaderPagesUseNumberedLayout(t *testing.T) {
 				t.Fatalf("page status = %d", w.Code)
 			}
 			assertBodyContains(t, w.Body.String(),
-				`class="numbered-page`,
-				`class="line-gutter" aria-hidden="true">01</span>`,
-				`class="line-gutter" aria-hidden="true">02</span>`,
+				`class="site-frame"`,
+				`bordercolorlight="#dcdcdc"`,
+				`href="/static/css/app.css"`,
 			)
+			if path == "/" || path == "/api/" {
+				assertBodyContains(t, w.Body.String(), `class="api-doc-layout`)
+			}
 		})
 	}
 }

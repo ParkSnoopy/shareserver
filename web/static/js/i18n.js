@@ -1,5 +1,5 @@
 const DEFAULT_LANG = "en";
-const LANGS = ["en", "ko", "zh"];
+const LANGS = ["en", "ko"];
 
 let lang = DEFAULT_LANG;
 let messages = {};
@@ -27,7 +27,7 @@ function valueFor(key) {
 }
 
 function fallback(key) {
-	if (key === "action.download") return "> download";
+	if (key === "action.download") return "Download";
 	if (key === "state.done") return "done";
 	if (key === "state.failed") return "failed";
 	if (key.startsWith("phase.")) return key.slice("phase.".length);

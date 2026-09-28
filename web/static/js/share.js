@@ -6,10 +6,10 @@ import {
 	prepareBlobDownload,
 	safeDownloadName,
 } from "./download.js";
-import { fmtBytes, Progress } from "./progress.js";
 import { initI18n, onLanguageChange, translate } from "./i18n.js";
-import { normalizeText } from "./text.js";
 import { settlePasswordInput } from "./ime.js";
+import { fmtBytes, Progress } from "./progress.js";
+import { normalizeText } from "./text.js";
 import { canPreview, entriesToZip } from "./zip.js";
 
 await initI18n();
@@ -372,7 +372,7 @@ function openEntry(entry, row) {
 	actions.append(download);
 
 	previewPane.replaceChildren(
-		heading(`# ${entry.name}`),
+		heading(entry.name),
 		metaLine(entry),
 		actions,
 		previewWell(entry),

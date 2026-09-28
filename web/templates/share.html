@@ -4,7 +4,7 @@
 	<div class="editor-line">
 		<span class="line-gutter" aria-hidden="true">01</span>
 		{{ if .Selected }}
-		<h1># {{ .Share.Title }}</h1>
+		<h1>{{ .Share.Title }}</h1>
 		{{ else }}
 		<h1 data-i18n="share.sharesTitle">{{.T "share.sharesTitle"}}</h1>
 		{{ end }}
@@ -15,7 +15,8 @@
 	</div>
 	<div class="editor-line">
 		<span class="line-gutter" aria-hidden="true">02</span>
-		<div class="api-doc-layout share-doc-layout" data-selected="{{.Selected}}">
+		<table class="api-doc-layout share-doc-layout" data-selected="{{.Selected}}" role="presentation"><tbody>
+		<tr class="sidebar-toggle-row"><td colspan="2">
 		<button
 			type="button"
 			class="sidebar-toggle"
@@ -26,6 +27,7 @@
 		>
 			{{.T "share.showSearch"}}
 		</button>
+		</td></tr><tr><td class="sidebar-cell">
 		<aside
 			id="archiveSidebar"
 			class="api-sidebar {{ if .Selected }}is-collapsed{{ end }}"
@@ -81,6 +83,7 @@
 				</div>
 			</nav>
 		</aside>
+		</td><td>
 
 		<section class="api-main">
 			{{ if .Selected }}
@@ -169,7 +172,7 @@
 			</section>
 			{{ end }}
 		</section>
-		</div>
+		</td></tr></tbody></table>
 	</div>
 </div>
 {{ if and .Selected (not .Expired) }}

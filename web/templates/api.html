@@ -11,7 +11,7 @@
 	</div>
 	<div class="editor-line">
 		<span class="line-gutter" aria-hidden="true">02</span>
-		<div class="api-doc-layout">
+		<table class="api-doc-layout" role="presentation"><tbody><tr><td class="sidebar-cell">
 		<aside
 			class="api-sidebar"
 			aria-label='{{.T "api.archiveListLabel"}}'
@@ -31,7 +31,7 @@
 				</div>
 			</nav>
 		</aside>
-
+		</td><td>
 		<section class="api-main api-guide">
 			<section class="api-detail" id="upload">
 				<h3 class="api-endpoint"><span class="method-label method-post">POST</span> /api/v0/upload</h3>
@@ -72,7 +72,7 @@
   https://HOST/api/v0/download/UUID</code></pre>
 			</section>
 		</section>
-		</div>
+		</td></tr></tbody></table>
 	</div>
 </div>
 {{ template "base_bottom" . }}

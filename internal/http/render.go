@@ -92,10 +92,7 @@ type adminSharesPage struct {
 
 func (h *Handler) pageContext(r *http.Request, title string) pageContext {
 	session := CurrentSession(r)
-	language := session.Language
-	if language == "" {
-		language = "en"
-	}
+	language := supportedLanguage(session.Language)
 	return pageContext{Title: title, CSRF: session.CSRF, Admin: session.AdminID > 0, Language: language}
 }
 

@@ -51,7 +51,7 @@ describe("armDownloadAction", () => {
 		const entry = makeEntry("notes.txt", "hello", "text/plain");
 		armDownloadAction(anchor, entry, "share-123");
 		expect(anchor.href).toBe("/s/share-123/f/notes.txt");
-		expect(anchor.textContent).toBe("> download");
+		expect(anchor.textContent).toBe("Download");
 	});
 
 	test("returns a cleanup function that does not throw", () => {

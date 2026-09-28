@@ -4,31 +4,34 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <meta name="color-scheme" content="dark">
+    <meta name="color-scheme" content="light">
     <title>{{.Title}}</title>
     <link rel="icon" href="/static/img/favicon.ico" sizes="any">
     <link rel="stylesheet" href="/static/css/app.css">
   </head>
   <body>
-    <nav class="tabs">
-      <a class="logo" href="/">share://</a>
-      <div class="tab-links">
-        <a href="/upload" data-i18n="nav.upload">{{.T "nav.upload"}}</a>
-        <a href="/api/" data-i18n="nav.api">{{.T "nav.api"}}</a>
-        <a href="/admin" data-i18n="nav.admin">{{.T "nav.admin"}}</a>
-        {{if .Admin}}
-          <form method="post" action="/admin/logout">
-            <input type="hidden" name="csrf" value="{{.CSRF}}">
-            <button data-i18n="nav.logout">{{.T "nav.logout"}}</button>
-          </form>
-        {{end}}
-      </div>
-    </nav>
-    <main class="shell">
+    <table class="site-frame" border="1" bordercolorlight="#dcdcdc" bordercolordark="#696969" role="presentation"><tbody>
+      <tr><td class="site-head">
+        <nav class="tabs" aria-label="Main navigation">
+          <a class="logo" href="/"><span class="logo-initial">S</span>hare://</a>
+          <div class="tab-links">
+            <a href="/upload" data-i18n="nav.upload">{{.T "nav.upload"}}</a>
+            <a href="/api/" data-i18n="nav.api">{{.T "nav.api"}}</a>
+            <a href="/admin" data-i18n="nav.admin">{{.T "nav.admin"}}</a>
+            {{if .Admin}}
+              <form method="post" action="/admin/logout">
+                <input type="hidden" name="csrf" value="{{.CSRF}}">
+                <button data-i18n="nav.logout">{{.T "nav.logout"}}</button>
+              </form>
+            {{end}}
+          </div>
+        </nav>
+      </td></tr>
+      <tr><td><main class="shell">
 {{end}}
 
 {{define "base_bottom"}}
-    </main>
+    </main></td></tr></tbody></table>
     <script type="module" src="/static/js/i18n.js"></script>
   </body>
 </html>

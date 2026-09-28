@@ -90,9 +90,7 @@ func (s *DBSessions) now() time.Time {
 }
 
 func (s *DBSessions) create(ctx context.Context, now time.Time, adminID int64, admin bool, language string) Session {
-	if language == "" {
-		language = "en"
-	}
+	language = supportedLanguage(language)
 	sess := Session{ID: randHex(32), AdminID: adminID, CSRF: randHex(32), Language: language, ExpiresAt: now.Add(sessionDuration).UTC()}
 	create := s.DB.Session.Create().
 		SetID(sess.ID).
@@ -108,7 +106,7 @@ func (s *DBSessions) create(ctx context.Context, now time.Time, adminID int64, a
 }
 
 func sessionFromRow(row *ent.Session) Session {
-	sess := Session{ID: row.ID, CSRF: row.Csrf, Language: row.Language}
+	sess := Session{ID: row.ID, CSRF: row.Csrf, Language: supportedLanguage(row.Language)}
 	if row.AdminID != nil {
 		sess.AdminID = *row.AdminID
 	}
