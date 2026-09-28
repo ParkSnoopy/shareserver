@@ -24,6 +24,7 @@
                 <button data-i18n="nav.logout">{{.T "nav.logout"}}</button>
               </form>
             {{end}}
+            <button type="button" class="language-toggle" data-language-toggle aria-label='{{.T "nav.language"}}: {{if eq .Language "ko"}}English{{else}}한국어{{end}}'>{{if eq .Language "ko"}}English{{else}}한국어{{end}}</button>
           </div>
         </nav>
       </td></tr>

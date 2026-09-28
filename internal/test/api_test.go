@@ -544,8 +544,8 @@ func TestAPIDownloadRemovesExpiredBanBeforeNextRequest(t *testing.T) {
 	}
 }
 
-func TestServerRendersAndPersistsSessionLanguageBeforeJavaScript(t *testing.T) {
-	_, router := newRouter(t)
+func TestEnglishDefaultAndLanguageCookie(t *testing.T) {
+	a, router := newRouter(t)
 	first := httptest.NewRequest(http.MethodGet, "/upload", nil)
 	first.Header.Set("Accept-Language", "ko-KR,ko;q=0.9,en;q=0.8")
 	firstResponse := httptest.NewRecorder()
@@ -553,10 +553,7 @@ func TestServerRendersAndPersistsSessionLanguageBeforeJavaScript(t *testing.T) {
 	if firstResponse.Code != http.StatusOK {
 		t.Fatalf("first page status = %d", firstResponse.Code)
 	}
-	assertBodyContains(t, firstResponse.Body.String(), `<html lang="ko">`, ">업로드</h1>", "필수 암호화 비밀번호")
-	if strings.Contains(firstResponse.Body.String(), ">Upload</h1>") {
-		t.Fatal("initial translated HTML still contains English upload heading")
-	}
+	assertBodyContains(t, firstResponse.Body.String(), `<html lang="en">`, ">Upload</h1>", `data-language-toggle`, ">한국어</button>")
 	cookies := firstResponse.Result().Cookies()
 	if len(cookies) == 0 {
 		t.Fatal("session cookie missing")
@@ -565,9 +562,39 @@ func TestServerRendersAndPersistsSessionLanguageBeforeJavaScript(t *testing.T) {
 	second := httptest.NewRequest(http.MethodGet, "/upload", nil)
 	second.Header.Set("Accept-Language", "en")
 	second.AddCookie(cookies[0])
+	second.AddCookie(&http.Cookie{Name: "shareserver_lang", Value: "ko"})
 	secondResponse := httptest.NewRecorder()
 	router.ServeHTTP(secondResponse, second)
-	assertBodyContains(t, secondResponse.Body.String(), `<html lang="ko">`, ">업로드</h1>", "필수 암호화 비밀번호")
+	assertBodyContains(t, secondResponse.Body.String(), `<html lang="ko">`, ">업로드</h1>", "필수 암호화 비밀번호", ">English</button>")
+
+	api := httptest.NewRequest(http.MethodGet, "/api/", nil)
+	api.AddCookie(&http.Cookie{Name: "shareserver_lang", Value: "ko"})
+	apiResponse := httptest.NewRecorder()
+	router.ServeHTTP(apiResponse, api)
+	assertBodyContains(t, apiResponse.Body.String(), `<html lang="ko">`, "사용 안내")
+	if len(apiResponse.Result().Cookies()) != 0 {
+		t.Fatal("language cookie must not create an API session")
+	}
+	if err := a.DB.Session.UpdateOneID(cookies[0].Value).SetLanguage("ko").Exec(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	noPreference := httptest.NewRequest(http.MethodGet, "/upload", nil)
+	noPreference.AddCookie(cookies[0])
+	noPreferenceResponse := httptest.NewRecorder()
+	router.ServeHTTP(noPreferenceResponse, noPreference)
+	assertBodyContains(t, noPreferenceResponse.Body.String(), `<html lang="en">`, ">Upload</h1>")
+	english := httptest.NewRequest(http.MethodGet, "/upload", nil)
+	english.AddCookie(cookies[0])
+	english.AddCookie(&http.Cookie{Name: "shareserver_lang", Value: "en"})
+	englishResponse := httptest.NewRecorder()
+	router.ServeHTTP(englishResponse, english)
+	assertBodyContains(t, englishResponse.Body.String(), `<html lang="en">`, ">Upload</h1>")
+
+	invalid := httptest.NewRequest(http.MethodGet, "/upload", nil)
+	invalid.AddCookie(&http.Cookie{Name: "shareserver_lang", Value: "zh"})
+	invalidResponse := httptest.NewRecorder()
+	router.ServeHTTP(invalidResponse, invalid)
+	assertBodyContains(t, invalidResponse.Body.String(), `<html lang="en">`, ">Upload</h1>")
 }
 
 func TestUnsupportedChineseLanguageFallsBackToEnglish(t *testing.T) {

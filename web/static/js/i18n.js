@@ -4,7 +4,7 @@ const LANGS = ["en", "ko"];
 let lang = DEFAULT_LANG;
 let messages = {};
 let ready = null;
-let listeners = new Set();
+const listeners = new Set();
 
 function sessionLang() {
 	const code = (document.documentElement.lang || "")
@@ -82,6 +82,32 @@ export async function initI18n() {
 }
 
 if (typeof document !== "undefined") {
+	const languageToggle = document.querySelector("[data-language-toggle]");
+	const updateLanguageToggle = () => {
+		if (!languageToggle) return;
+		const next = lang === "en" ? "한국어" : "English";
+		languageToggle.textContent = next;
+		languageToggle.setAttribute(
+			"aria-label",
+			`${translate("nav.language")}: ${next}`,
+		);
+	};
+	languageToggle?.addEventListener("click", async () => {
+		languageToggle.disabled = true;
+		try {
+			await initI18n();
+			await loadMessages(lang === "en" ? "ko" : "en");
+			// biome-ignore lint/suspicious/noDocumentCookie: Cookie Store is not available in every supported browser; this value is a validated UI preference.
+			document.cookie = `shareserver_lang=${lang}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
+			applyI18n();
+			for (const listener of listeners) listener(lang);
+			updateLanguageToggle();
+		} catch (error) {
+			console.error("language change failed", error);
+		} finally {
+			languageToggle.disabled = false;
+		}
+	});
 	const path = location.pathname;
 	const destination = path.startsWith("/admin")
 		? "/admin"
@@ -102,5 +128,5 @@ if (typeof document !== "undefined") {
 			.querySelector(`.api-index-row[href="${path}"]`)
 			?.setAttribute("aria-current", "page");
 	}
-	initI18n();
+	initI18n().then(updateLanguageToggle);
 }

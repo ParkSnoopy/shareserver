@@ -128,6 +128,13 @@ textarea:focus-visible,
 .tab-links form {
 	margin: 0;
 }
+.tab-links .language-toggle {
+	float: right;
+}
+.tab-links .language-toggle:disabled {
+	background: #000;
+	color: #fff;
+}
 .shell {
 	padding: 12px;
 	background: var(--cream);

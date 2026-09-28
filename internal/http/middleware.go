@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/text/language"
 	"shareserver/internal/auth"
 )
 
@@ -93,17 +92,12 @@ func (h *Handler) getOrCreateSession(w http.ResponseWriter, r *http.Request) Ses
 	if c, err := r.Cookie("sid"); err == nil {
 		sid = c.Value
 	}
-	s, created := h.sessions().GetOrCreate(r.Context(), sid, preferredLanguage(r.Header.Get("Accept-Language")))
+	s, created := h.sessions().GetOrCreate(r.Context(), sid, "en")
 	if created {
 		h.setCookie(w, s.ID)
 	}
 	return s
 }
-
-var languageMatcher = language.NewMatcher([]language.Tag{
-	language.English,
-	language.Korean,
-})
 
 var languageCodes = []string{"en", "ko"}
 
@@ -112,12 +106,6 @@ func supportedLanguage(code string) string {
 		return "ko"
 	}
 	return "en"
-}
-
-// preferredLanguage chooses one supported language for a new browser session.
-func preferredLanguage(acceptLanguage string) string {
-	_, index := language.MatchStrings(languageMatcher, acceptLanguage)
-	return languageCodes[index]
 }
 
 // setCookie issues the HTTP-only session cookie for the HTTPS-only deployment.
