@@ -514,6 +514,7 @@ func TestReaderPagesUseBeveledFrame(t *testing.T) {
 			assertBodyContains(t, w.Body.String(),
 				`class="site-frame"`,
 				`bordercolorlight="#dcdcdc"`,
+				`<meta name="color-scheme" content="only light">`,
 				`href="/static/css/app.css"`,
 			)
 			if path == "/" || path == "/api/" {
@@ -564,6 +565,7 @@ func TestStaticFilesHaveRevalidateCacheControl(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected static CSS 200, got %d", w.Code)
 	}
+	assertBodyContains(t, w.Body.String(), "color-scheme: only light;")
 	if cc := w.Header().Get("Cache-Control"); cc != "no-cache, must-revalidate" {
 		t.Fatalf("static Cache-Control = %q, want no-cache, must-revalidate", cc)
 	}
