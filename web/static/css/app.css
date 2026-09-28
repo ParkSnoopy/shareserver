@@ -58,9 +58,10 @@ textarea:focus-visible,
 	outline-offset: 2px;
 }
 .site-frame {
-	width: 955px;
+	width: min(955px, 100%);
 	margin: 16px auto 48px;
 	border-spacing: 0;
+	table-layout: fixed;
 	background: var(--cream);
 }
 .site-frame > tbody > tr > td {
@@ -73,6 +74,7 @@ textarea:focus-visible,
 .site-head nav {
 	display: table;
 	width: 100%;
+	table-layout: fixed;
 	border-spacing: 0;
 }
 .site-head .logo,
@@ -166,6 +168,7 @@ h3 {
 p {
 	margin: 5px 0 10px;
 	line-height: 1.5;
+	overflow-wrap: anywhere;
 }
 .section-rule {
 	height: 1px;
@@ -200,6 +203,9 @@ p {
 	width: 49%;
 	vertical-align: top;
 }
+.field-grid > .field-row[hidden] {
+	display: none;
+}
 .field-label,
 label {
 	display: block;
@@ -211,6 +217,7 @@ select,
 textarea,
 .textarea-input {
 	width: 100%;
+	min-width: 0;
 	min-height: 30px;
 	padding: 5px 7px;
 	border: 1px solid #ababab;
@@ -497,14 +504,43 @@ button.visually-disabled {
 	width: 100%;
 	height: 70vh;
 }
-@media (max-width: 955px) {
-	.site-frame {
-		margin: 0 0 24px;
-	}
-}
 @media (max-width: 760px) {
+	.site-frame {
+		margin: 0 auto 24px;
+	}
+	.site-head nav,
+	.site-head .logo,
+	.site-head .tab-links {
+		display: block;
+		width: 100%;
+	}
+	.site-head .logo {
+		padding: 6px 12px;
+	}
+	.tab-links a,
+	.tab-links button {
+		min-height: 44px;
+		padding: 12px;
+	}
+	.shell {
+		padding: 8px;
+	}
+	.api-doc-layout,
+	.api-doc-layout > tbody,
+	.api-doc-layout > tbody > tr,
+	.api-doc-layout > tbody > tr > td {
+		display: block;
+		width: 100%;
+	}
+	.api-doc-layout > tbody > tr > td {
+		padding: 8px 0;
+	}
+	.api-doc-layout .sidebar-cell {
+		border-right: 0;
+		border-bottom: 1px solid #808080;
+	}
 	.sidebar-toggle-row {
-		display: table-row;
+		display: block;
 	}
 	.sidebar-toggle {
 		display: inline-block;
@@ -512,10 +548,19 @@ button.visually-disabled {
 	.api-doc-layout:has(.api-sidebar.is-collapsed) .sidebar-cell {
 		display: none;
 	}
-	.api-doc-layout.is-mobile-sidebar-open
-		> tbody
-		> tr:not(.sidebar-toggle-row)
-		> td:last-child {
+}
+@media (max-width: 520px) {
+	h1 {
+		font-size: 16pt;
+	}
+	.field-grid > .field-row {
+		display: block;
+		width: 100%;
+	}
+	.field-grid > .field-row[hidden] {
 		display: none;
+	}
+	.dropzone {
+		padding: 16px;
 	}
 }

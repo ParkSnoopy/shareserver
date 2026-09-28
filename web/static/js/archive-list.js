@@ -48,7 +48,8 @@ function renderArchiveLinks(list, links) {
 			const link = document.createElement("a");
 			link.className = "api-index-row";
 			link.href = item.href;
-			if (item.href === location.pathname) link.setAttribute("aria-current", "page");
+			if (item.href === location.pathname)
+				link.setAttribute("aria-current", "page");
 			const title = document.createElement("span");
 			title.className = "archive-name";
 			title.textContent = item.title;
@@ -79,10 +80,6 @@ function setupSidebarToggle() {
 	const mobile = window.matchMedia("(max-width: 760px)");
 	const setCollapsed = (collapsed) => {
 		sidebar.classList.toggle("is-collapsed", collapsed);
-		layout?.classList.toggle(
-			"is-mobile-sidebar-open",
-			mobile.matches && !collapsed,
-		);
 		toggle.setAttribute("aria-expanded", String(!collapsed));
 		toggle.textContent = collapsed
 			? translate("share.showSearch")
