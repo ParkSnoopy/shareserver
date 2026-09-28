@@ -81,4 +81,26 @@ export async function initI18n() {
 	return ready;
 }
 
-if (typeof document !== "undefined") initI18n();
+if (typeof document !== "undefined") {
+	const path = location.pathname;
+	const destination = path.startsWith("/admin")
+		? "/admin"
+		: path.startsWith("/api/")
+			? "/api/"
+			: path === "/upload"
+				? "/upload"
+				: path === "/" || path.startsWith("/s/")
+					? "/"
+					: null;
+	if (destination) {
+		document
+			.querySelector(`.tabs a[href="${destination}"]`)
+			?.setAttribute("aria-current", "page");
+	}
+	if (path.startsWith("/s/")) {
+		document
+			.querySelector(`.api-index-row[href="${path}"]`)
+			?.setAttribute("aria-current", "page");
+	}
+	initI18n();
+}

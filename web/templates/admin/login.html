@@ -17,11 +17,15 @@
 			<input type="hidden" name="csrf" value="{{.CSRF}}">
 			<input type="hidden" name="password_hash" id="adminPasswordHash">
 
-			<label data-i18n="admin.user">{{ .T "admin.user" }}</label>
-			<input class="field-md" name="username">
+			<div class="field-row">
+				<label for="adminUsername" data-i18n="admin.user">{{ .T "admin.user" }}</label>
+				<input class="field-md" id="adminUsername" name="username" autocomplete="username">
+			</div>
 
-			<label data-i18n="admin.password">{{ .T "admin.password" }}</label>
-			<input class="field-md" id="adminPassword" type="password" autocomplete="current-password">
+			<div class="field-row">
+				<label for="adminPassword" data-i18n="admin.password">{{ .T "admin.password" }}</label>
+				<input class="field-md" id="adminPassword" type="password" autocomplete="current-password">
+			</div>
 
 			<button class="field-md" data-i18n="admin.login">
 				{{ .T "admin.login" }}

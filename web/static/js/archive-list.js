@@ -48,6 +48,7 @@ function renderArchiveLinks(list, links) {
 			const link = document.createElement("a");
 			link.className = "api-index-row";
 			link.href = item.href;
+			if (item.href === location.pathname) link.setAttribute("aria-current", "page");
 			const title = document.createElement("span");
 			title.className = "archive-name";
 			title.textContent = item.title;

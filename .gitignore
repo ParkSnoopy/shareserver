@@ -8,3 +8,4 @@ CONTEXT.md
 # ignore binary
 /shareserver
 /setexpiry
+/main

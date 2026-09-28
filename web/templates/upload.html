@@ -21,12 +21,12 @@
 			<input type="hidden" name="csrf" value="{{.CSRF}}">
 
 			<div class="field-row">
-				<label class="field-label" data-i18n="upload.titleLabel">{{.T "upload.titleLabel"}}</label>
-				<input class="text-input field-md" name="title" autocomplete="off">
+				<label class="field-label" for="uploadTitle" data-i18n="upload.titleLabel">{{.T "upload.titleLabel"}}</label>
+				<input class="text-input field-md" id="uploadTitle" name="title" autocomplete="off">
 			</div>
 
 			<div class="field-row">
-				<label class="field-label" data-i18n="upload.sourceLabel"
+				<label class="field-label" for="source" data-i18n="upload.sourceLabel"
 					>{{.T "upload.sourceLabel"}}</label
 				>
 				<select class="select-input field-md" id="source">
@@ -38,19 +38,19 @@
 			</div>
 
 			<section id="fileSource" class="field-row">
-				<label class="field-label" data-i18n="upload.filesLabel">{{.T "upload.filesLabel"}}</label>
+				<label class="field-label" id="filesLabel" data-i18n="upload.filesLabel">{{.T "upload.filesLabel"}}</label>
 				<label id="dropzone" class="dropzone field-full" for="files">
 					<span class="command-text" data-i18n="upload.dropFiles"
 						>{{.T "upload.dropFiles"}}</span
 					>
 				</label>
-				<input class="native-file" id="files" type="file" multiple>
+				<input class="native-file" id="files" type="file" multiple aria-labelledby="filesLabel">
 				<div id="fileSize" class="muted status-line"></div>
 				<div id="fileList" class="selected-file-list" aria-live="polite"></div>
 			</section>
 
 			<section id="clipSource" class="field-row" hidden>
-				<label class="field-label" data-i18n="upload.clipboardLabel"
+				<label class="field-label" id="clipboxLabel" data-i18n="upload.clipboardLabel"
 					>{{.T "upload.clipboardLabel"}}</label
 				>
 				<button type="button" id="clip" class="primary-action-button field-md">
@@ -59,6 +59,9 @@
 				<div
 					id="clipbox"
 					tabindex="0"
+					role="textbox"
+					aria-multiline="true"
+					aria-labelledby="clipboxLabel"
 					class="textarea-input field-full"
 					contenteditable="true"
 					data-placeholder='{{.T "upload.clipboardPlaceholder"}}'
@@ -76,7 +79,7 @@
 
 			<div class="field-grid">
 				<div class="field-row compact">
-					<label class="field-label" data-i18n="upload.visibilityLabel"
+					<label class="field-label" for="visibility" data-i18n="upload.visibilityLabel"
 						>{{.T "upload.visibilityLabel"}}</label
 					>
 					<select
@@ -93,6 +96,7 @@
 					<label
 						class="field-label"
 						id="privateKeyLabel"
+						for="privateKey"
 						data-i18n="upload.privateKeyLabel"
 						>{{.T "upload.privateKeyLabel"}}</label
 					>
@@ -108,7 +112,7 @@
 			</div>
 
 			<div class="field-row compact">
-				<label class="field-label" data-i18n="upload.passwordLabel"
+				<label class="field-label" for="uploadPassword" data-i18n="upload.passwordLabel"
 					>{{.T "upload.passwordLabel"}}</label
 				>
 				<input
@@ -126,10 +130,10 @@
 			</div>
 
 			<div class="field-row compact">
-				<label class="field-label" data-i18n="upload.expiryLabel"
+				<label class="field-label" for="expiryHours" data-i18n="upload.expiryLabel"
 					>{{.T "upload.expiryLabel"}}</label
 				>
-				<select class="select-input field-md" name="expiry_hours">
+				<select class="select-input field-md" name="expiry_hours" id="expiryHours">
 					<option value="1">1h</option>
 					<option value="6" selected>6h</option>
 					<option value="12">12h</option>
