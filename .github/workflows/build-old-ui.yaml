@@ -1,0 +1,56 @@
+name: Create and publish the old UI Docker image
+
+on:
+  push:
+    branches: ['old-ui']
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: parksnoopy/shareserver
+
+jobs:
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Read and validate application version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(go run ./cmd/shareserver --version)"
+          if [[ ! "${VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf 'invalid application version: %s\n' "${VERSION}" >&2
+            exit 1
+          fi
+          printf 'tag=%s-old\n' "${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.tag }}
+
+      - name: Generate artifact attestation
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
