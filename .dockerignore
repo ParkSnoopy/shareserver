@@ -4,5 +4,19 @@
 
 # Local
 data/
+**/data/
+**/.env
+**/.env.*
+!**/.env.example
+_tmp/
+CONTEXT.md
 **/*.db*
 **/*.sqlite*
+
+# Deployment definitions are not application runtime assets.
+deploy/
+
+# Local binaries must not overwrite the binary built in the image.
+shareserver
+setexpiry
+main

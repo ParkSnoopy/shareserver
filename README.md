@@ -66,8 +66,9 @@ reverse proxy in front of the HTTP listener for API operations.
 
 ### Run Docker Compose with self-signed HTTPS
 
-The [Compose deployment](./docker-compose.yaml) uses the same production `.env`
-configuration as above. It publishes only HTTPS on port 8443; the
+The [Compose deployment](./deploy/docker-compose.yaml) uses the same production
+`.env` configuration as above. Run the commands below from the repository root.
+It publishes only HTTPS on port 8443; the
 [Caddy proxy](./deploy/Caddyfile) shares the app's network namespace so the HTTP
 listener remains on loopback and forwarded HTTPS/client-IP headers are trusted.
 Docker Compose 2.17+ and OpenSSL are required.
@@ -90,7 +91,7 @@ openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:secp521r1 \
   -out data/tls/server.crt
 
 export HTTPS_UID="$(id -u)" HTTPS_GID="$(id -g)"
-docker compose up -d
+docker compose --env-file .env -f deploy/docker-compose.yaml up -d
 curl --cacert data/tls/server.crt "https://${TLS_HOST}:${HTTPS_PORT:-8443}/api/"
 ```
 
@@ -106,7 +107,8 @@ certificate verification as a deployment solution.
 Set `HTTPS_PORT` to change the published port. Database and blobs persist in a
 named volume, and certificates persist under the ignored `data/tls` directory.
 Before the certificate expires, regenerate it and run
-`docker compose restart https`; distribute the new certificate to clients and
+`docker compose --env-file .env -f deploy/docker-compose.yaml restart https`;
+distribute the new certificate to clients and
 preserve `APP_SECRET` and the data volume.
 
 ### Run Go binary directly

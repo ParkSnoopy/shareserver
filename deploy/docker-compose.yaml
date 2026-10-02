@@ -1,9 +1,11 @@
+name: shareserver
+
 services:
   shareserver:
     image: ghcr.io/parksnoopy/shareserver:v0.2.6
     entrypoint: ["/app/shareserver"]
     restart: unless-stopped
-    env_file: .env
+    env_file: ../.env
     environment:
       DEBUG: "false"
       APP_SECRET: "${APP_SECRET:?Set APP_SECRET in .env}"
@@ -40,13 +42,13 @@ services:
         restart: true
     volumes:
       - type: bind
-        source: ./deploy/Caddyfile
+        source: ./Caddyfile
         target: /etc/caddy/Caddyfile
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ./data/tls
+        source: ../data/tls
         target: /certs
         read_only: true
         bind:
