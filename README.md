@@ -71,9 +71,31 @@ The [Compose deployment](./deploy/docker-compose.yaml) uses the same production
 It publishes only HTTPS on port 8443; the
 [Caddy proxy](./deploy/Caddyfile) shares the app's network namespace so the HTTP
 listener remains on loopback and forwarded HTTPS/client-IP headers are trusted.
-Docker Compose 2.17+ and OpenSSL are required.
+Docker Compose 2.17+, Bash, OpenSSL, and curl are required.
 
-Generate a self-signed P-521 certificate for the hostname clients will use
+Run the [interactive deployment script](./deploy/deploy.sh) to choose the
+certificate domain/IP, published HTTPS port (default 8443), and certificate
+lifetime (default 365 days):
+
+```sh
+bash deploy/deploy.sh
+```
+
+The script requires the configured application `.env`, asks before applying
+settings or replacing an existing certificate, and saves only public deployment
+settings in the ignored `deploy/.env`. It preserves application credentials and
+stored data, recreates the Compose containers to apply port/certificate changes,
+and verifies HTTPS using the selected certificate before reporting success.
+To prepare certificates/settings without Docker, use `--prepare-only`.
+Subsequent manual Compose commands should load both environment files:
+
+```sh
+docker compose --env-file .env --env-file deploy/.env \
+  -f deploy/docker-compose.yaml up -d
+```
+
+Alternatively, prepare everything manually. Generate a self-signed P-521
+certificate for the hostname clients will use
 (`localhost` below; replace it with your deployment hostname):
 
 ```sh
@@ -106,7 +128,9 @@ certificate verification as a deployment solution.
 
 Set `HTTPS_PORT` to change the published port. Database and blobs persist in a
 named volume, and certificates persist under the ignored `data/tls` directory.
-Before the certificate expires, regenerate it and run
+For script-managed deployments, rerun `bash deploy/deploy.sh` and confirm
+certificate replacement before expiry; saved port/hostname defaults are retained.
+For manual deployments, regenerate the certificate and run
 `docker compose --env-file .env -f deploy/docker-compose.yaml restart https`;
 distribute the new certificate to clients and
 preserve `APP_SECRET` and the data volume.
