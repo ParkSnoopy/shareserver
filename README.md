@@ -64,6 +64,51 @@ override runs the binary directly instead of regenerating `APP_SECRET` at each
 startup; keep the configured secret stable across restarts. Place a trusted HTTPS
 reverse proxy in front of the HTTP listener for API operations.
 
+### Run Docker Compose with self-signed HTTPS
+
+The [Compose deployment](./docker-compose.yaml) uses the same production `.env`
+configuration as above. It publishes only HTTPS on port 8443; the
+[Caddy proxy](./deploy/Caddyfile) shares the app's network namespace so the HTTP
+listener remains on loopback and forwarded HTTPS/client-IP headers are trusted.
+Docker Compose 2.17+ and OpenSSL are required.
+
+Generate a self-signed P-521 certificate for the hostname clients will use
+(`localhost` below; replace it with your deployment hostname):
+
+```sh
+umask 077
+mkdir -p data/tls
+TLS_HOST=localhost
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:secp521r1 \
+  -sha512 -nodes -days 365 \
+  -subj "/CN=${TLS_HOST}" \
+  -addext "subjectAltName=DNS:${TLS_HOST},IP:127.0.0.1,IP:::1" \
+  -addext "basicConstraints=critical,CA:FALSE" \
+  -addext "keyUsage=critical,digitalSignature" \
+  -addext "extendedKeyUsage=serverAuth" \
+  -keyout data/tls/server.key \
+  -out data/tls/server.crt
+
+export HTTPS_UID="$(id -u)" HTTPS_GID="$(id -g)"
+docker compose up -d
+curl --cacert data/tls/server.crt "https://${TLS_HOST}:${HTTPS_PORT:-8443}/api/"
+```
+
+Use `IP:<address>` in the certificate's Subject Alternative Name if clients
+connect by a non-loopback IP address. Keep the private key private; the proxy
+runs with the certificate owner's UID/GID and mounts certificates read-only.
+Export `HTTPS_UID` and `HTTPS_GID` as shown for every Compose invocation, or
+persist their values in `.env`.
+Trust the certificate explicitly on each client: a self-signed certificate
+encrypts traffic but is not automatically trusted by browsers. Do not disable
+certificate verification as a deployment solution.
+
+Set `HTTPS_PORT` to change the published port. Database and blobs persist in a
+named volume, and certificates persist under the ignored `data/tls` directory.
+Before the certificate expires, regenerate it and run
+`docker compose restart https`; distribute the new certificate to clients and
+preserve `APP_SECRET` and the data volume.
+
 ### Run Go binary directly
 
 Needs Go 1.26+ (cgo, for `go-sqlite3`), Bun, and a C toolchain.

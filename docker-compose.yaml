@@ -1,0 +1,62 @@
+services:
+  shareserver:
+    image: ghcr.io/parksnoopy/shareserver:v0.2.6
+    entrypoint: ["/app/shareserver"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DEBUG: "false"
+      APP_SECRET: "${APP_SECRET:?Set APP_SECRET in .env}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}"
+      ADDR: "127.0.0.1:8080"
+      DB_PATH: /app/data/shareserver.db
+      BLOB_DIR: /app/data/blobs
+      TRUST_PROXY_HEADERS: "true"
+    # The HTTPS sidecar shares this namespace; HTTP stays on loopback only.
+    ports:
+      - "${HTTPS_PORT:-8443}:8443"
+    volumes:
+      - shareserver-data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,noexec,nosuid
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  https:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    user: "${HTTPS_UID:-1000}:${HTTPS_GID:-1000}"
+    network_mode: "service:shareserver"
+    depends_on:
+      shareserver:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - type: bind
+        source: ./deploy/Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/tls
+        target: /certs
+        read_only: true
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /data:mode=1777,noexec,nosuid
+      - /config:mode=1777,noexec,nosuid
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+volumes:
+  shareserver-data:

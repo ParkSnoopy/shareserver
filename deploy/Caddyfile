@@ -1,0 +1,12 @@
+{
+	admin off
+	auto_https off
+	servers {
+		protocols h1 h2
+	}
+}
+
+https://:8443 {
+	tls {$TLS_CERT_FILE:/certs/server.crt} {$TLS_KEY_FILE:/certs/server.key}
+	reverse_proxy 127.0.0.1:8080
+}
