@@ -39,6 +39,33 @@ These are baked in and not negotiable without changing what this is:
 
 ## Quick start
 
+### Run with Docker
+
+Use a configured `.env` file based on [`.env.example`](./.env.example), with
+`APP_SECRET` and `ADMIN_PASSWORD` set for production.
+
+```sh
+docker run --detach \
+  --name shareserver \
+  --restart unless-stopped \
+  --env-file .env \
+  --env DEBUG=false \
+  --env ADDR=0.0.0.0:8080 \
+  --env DB_PATH=/app/data/shareserver.db \
+  --env BLOB_DIR=/app/data/blobs \
+  --publish 8080:8080 \
+  --mount type=volume,source=shareserver-data,target=/app/data \
+  --entrypoint /app/shareserver \
+  ghcr.io/parksnoopy/shareserver:latest
+```
+
+The named volume persists the SQLite database and uploaded blobs. The entrypoint
+override runs the binary directly instead of regenerating `APP_SECRET` at each
+startup; keep the configured secret stable across restarts. Place a trusted HTTPS
+reverse proxy in front of the HTTP listener for API operations.
+
+### Run Go binary directly
+
 Needs Go 1.26+ (cgo, for `go-sqlite3`), Bun, and a C toolchain.
 
 ```sh
