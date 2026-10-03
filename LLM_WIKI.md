@@ -25,32 +25,25 @@ the project is startup administration configuration through `ADMIN_PASSWORD`;
 HTTP authentication still sends a derived hash, as implemented by the
 [authentication module](./internal/auth/auth.go).
 
-## Non-negotiable client rules
+Security takes priority over speed, convenience, UI polish, and cleanup. Keep
+tradeoffs explicit. This guide owns agent instructions and the detailed API
+contract; the README owns build, configuration, and deployment procedures.
 
-An AI agent using the API must follow all of these rules:
+## Navigation
 
-1. Use a verified HTTPS origin. Do not disable certificate verification.
-2. Never send an archive password in a URL, query string, header, JSON property,
-   form field, multipart field, log message, tool transcript, or error report.
-3. Send only the canonical password authorization hash described below.
-4. Encrypt the ZIP locally before upload. The server does not offer plaintext
-   upload or server-side archive encryption.
-5. Keep the plaintext password local and use it independently for encryption
-   and decryption. The authorization hash is not the AES key.
-6. Generate a fresh cryptographically random salt and nonce for every upload.
-7. Put all multipart metadata before `blob`, and make `blob` the final part.
-8. Treat `password_hash`, the plaintext password, and a private lookup key as
-   sensitive. Never emit their values in normal diagnostics.
-9. Preserve the upload response, especially `id`, `url`, `download_url`,
-   `expires_at`, and `cipher_meta`. The download response contains ciphertext,
-   not decryption metadata.
-10. Do not blindly retry an upload after an ambiguous network failure. Uploads
-    have no idempotency key, so a retry can create a second Share.
-11. Do not probe passwords. Failed download authorization is persisted per IP,
-    and the eleventh failure inside a strict rolling minute creates a durable ban.
-12. Treat a decrypted ZIP as untrusted input. Enforce extraction limits, reject
-    path traversal and unsafe links, avoid overwriting files, and never execute
-    extracted content automatically.
+- [Architecture and ownership](#project-identity)
+- [Transport, sessions, and proxy trust](#transport-proxy-and-session-model)
+- [Credential derivation](#password-authorization-contract)
+- [Example prerequisites and workspace](#example-prerequisites-and-workspace)
+- [ZIP and encryption preparation](#client-side-payload-format)
+- [Public and private uploads](#upload-endpoint)
+- [Private archive discovery](#private-archive-list-endpoint)
+- [Downloads, byte ranges, and decryption](#download-endpoint)
+- [HTTP errors and safe retries](#http-errors-and-retry-policy)
+- [Persistent download bans](#failed-download-persistence-and-bans)
+- [Persistence and cleanup](#data-persistence)
+- [Logging and audit boundaries](#audit-and-safe-observability)
+- [AI coding-agent instructions](#modifying-the-project-safely)
 
 ## Project identity
 
@@ -74,7 +67,11 @@ browser JavaScript modules. Its main components are:
 
 The module and dependency versions are declared in [the Go module](./go.mod).
 The container build is described by [the Dockerfile](./Dockerfile), and the
-container starts through [the entrypoint](./entrypoint.sh).
+container starts through [the entrypoint](./entrypoint.sh). For process and
+HTTPS deployment commands, use the [README deployment sections](./README.md#quick-start),
+[Compose definition](./deploy/docker-compose.yaml),
+[Caddy configuration](./deploy/Caddyfile), and
+[interactive deployment script](./deploy/deploy.sh).
 
 ## Public route inventory
 
@@ -93,14 +90,16 @@ The current routes are registered in the [route table](./internal/http/router.go
 | `GET`/`POST` | `/admin/...` | Administrative login, inspection, and deletion | Browser session and CSRF protected |
 
 `GET /api/` is HTML and lists at most the 100 newest active public Shares.
-`POST /api/v0/list` is the machine-readable private-key lookup and returns at
-most the 100 newest active private Shares matching that key. Both queries are
+It is not a public JSON lookup endpoint. Listing queries are
 defined by the [Share store](./internal/share/store.go), while the public page is
 rendered by the [API template](./web/templates/api.html). The crawler policy is
 the [robots file](./web/robots.txt).
 
-Unknown paths return `404`. The API operation routes are registered only for
-`POST`; another method receives the router's `405 Method Not Allowed` response.
+The API operation routes are registered only for `POST`; another method receives
+`405 Method Not Allowed`. Router-level unknown paths return `404`, but middleware
+can reject an unsafe request before routing. Do not assume every path beginning
+with `/api/` is sessionless: only the routes recognized by `isAPIPath` and
+`isSessionlessPath` receive that treatment.
 
 ## Transport, proxy, and session model
 
@@ -125,7 +124,7 @@ with proxy regression coverage in [API route tests](./internal/test/api_test.go)
 
 The IP used for upload audit events and download bans is resolved in this order:
 
-1. first valid address in `X-Forwarded-For`, but only from a trusted proxy;
+1. the first `X-Forwarded-For` entry, if it is a valid IP and the proxy is trusted;
 2. `X-Real-IP`, under the same trust condition; or
 3. the direct remote address with its port removed.
 
@@ -161,6 +160,31 @@ The application intentionally does not add HSTS. TLS termination and HSTS, if
 desired, belong to deployment infrastructure. Header behavior is implemented in
 [HTTP middleware](./internal/http/middleware.go) and covered by
 [HTTP tests](./internal/test/http_test.go).
+
+## Body-only JSON and form envelopes
+
+Private listing and download authorization share `requestBodyValue` in the
+[HTTP handlers](./internal/http/handlers.go). Their body contract is defined
+here once; the endpoint sections below provide complete curl examples.
+
+| Endpoint | Only accepted property/form key | Maximum decoded UTF-8 bytes | Invalid-body outcome |
+| --- | --- | --- | --- |
+| `POST /api/v0/list` | `private_key` | 64 KiB | `400`, no download failure event |
+| `POST /api/v0/download/{uuid}` | `password_hash` | 4 KiB | Download denial, including a persisted failure event |
+
+- Accept `application/json` or `application/x-www-form-urlencoded`; parameters
+  such as `charset=utf-8` are parsed, but unrelated/vendor media types are not
+  aliases. Multipart, `text/plain`, and missing content types are rejected.
+- JSON must be one object with exactly the named property and one non-empty
+  string value. Reject unknown properties, duplicate properties, arrays,
+  non-string values, malformed JSON, and a second JSON value after the object.
+- Form data must have exactly one key and exactly one non-empty value. Reject
+  unknown keys and duplicate values. Percent-encode values with a real encoder.
+- Non-empty URL query data is rejected, including unrelated query keys.
+  Sensitive values belong in the body, not URLs, headers, or request diagnostics.
+- The parser bounds JSON at `maximum * 6 + 256` bytes and encoded form data at
+  `maximum * 3 + 256`, then checks the decoded value length. Non-upload API
+  request bodies also have a 1 MiB HTTP limit.
 
 ## Password authorization contract
 
@@ -200,7 +224,78 @@ that verifier. The metadata field retains the historical name
 The authorization hash does not encrypt or decrypt the archive. Encryption uses
 the locally held plaintext password through PBKDF2. An agent must therefore keep
 the plaintext password only in ephemeral local state when it needs to encrypt or
-decrypt, while transmitting only `password_hash`.
+decrypt, while transmitting only `password_hash`. Canonical validation checks
+the digest encoding, not how a client derived it; the domain and NFC rules above
+are required for interoperating with the first-party client.
+
+### Distinct credentials and identifiers
+
+| Value | Purpose | Crosses the HTTP boundary? | Persistence |
+| --- | --- | --- | --- |
+| Archive password | Local PBKDF2 encryption/decryption and authorization-hash derivation | Never | Only a caller-controlled secure reference; not logs, source, or agent memory |
+| `password_hash` | Authorize encrypted-payload upload/download | Body only | Server stores a bcrypt verifier of the decoded digest, not the supplied value |
+| Private lookup key | Discover unlisted Shares | Upload/list body only | Server stores its secret-scoped HMAC, not the raw key |
+| Share UUID | Address a Share and its payload endpoint | Route and response | Share primary key; it is not a password or decryption key |
+| `cipher_meta` | Supply public KDF/cipher parameters for local decryption | Upload body and upload/list responses | Stored alongside ciphertext; must be retained per Share |
+
+Private means unlisted, not inaccessible by UUID. A direct `/s/{uuid}` link may
+render a private Share, but payload access still requires its authorization
+hash. The private lookup key is not an AES password, does not authorize payload
+bytes, and is not an alternative credential for the download endpoint.
+
+## Example prerequisites and workspace
+
+The shell examples run in Bash from the repository root. They use curl 7.84+
+for response-header write-outs, jq for JSON construction/validation, and Bun
+for the existing client crypto module. ZIP preparation also uses `zip` and
+`unzip`. Run against a small, disposable integration fixture, not unknown
+production archives. Start an HTTPS deployment using the
+[README](./README.md#run-docker-compose-with-self-signed-https) first.
+
+For a new Share, follow workspace setup, ZIP/encryption preparation, one upload
+recipe, optional private lookup, target resolution/download, and decryption.
+The form and range blocks are optional alternative checks, not extra required
+operations. API sections are references; private lookup needs an existing Share
+if the optional ID-selection check is to find a result.
+
+Initialize this context once. Replace the three input paths with caller-provided
+local paths; do not put actual credential values into the commands or this guide.
+Secret source files must contain exactly the intended UTF-8 strings: a trailing
+newline is part of a password or private key, not automatically stripped.
+
+```bash
+set -euo pipefail
+set +x
+umask 077
+
+BASE_URL='https://localhost:8443'
+CA_CERT='data/tls/server.crt'
+SOURCE_DIR='<absolute path to a small trusted fixture directory>'
+PASSWORD_INPUT='<protected local archive-password source>'
+PRIVATE_KEY_FILE='<protected local private-lookup-key source>'
+
+# Keep generated test artifacts out of the repository and other users' reach.
+: "${TMPDIR:?Set TMPDIR to a private local scratch directory}"
+WORK_DIR="$(mktemp -d "${TMPDIR}/shareserver-api.XXXXXXXX")"
+PLAIN_ZIP="${WORK_DIR}/source.zip"
+PAYLOAD_FILE="${WORK_DIR}/archive.encrypted"
+CIPHER_META_FILE="${WORK_DIR}/cipher-meta.json"
+PASSWORD_HASH_FILE="${WORK_DIR}/password-hash"
+export PLAIN_ZIP PAYLOAD_FILE CIPHER_META_FILE PASSWORD_HASH_FILE
+```
+
+These examples use the local self-signed certificate with `--cacert`. For an
+origin certified by a trusted public CA, omit that option and use the system
+trust store. Never substitute `--insecure`. `--proto '=https'` rejects a plain
+HTTP origin; `--max-redirs 0` prevents the `-L` in `-fsSL` from forwarding a
+credential-bearing body to another location. Do not add cookies, CSRF headers,
+proxy-forwarding headers, HTTP traces, or automatic POST retries.
+
+The shown 10-second connection and 300-second total timeouts are example client
+choices, not server policy. Adjust for the actual bounded payload and deployment.
+The examples read sensitive multipart values from files and JSON bodies from
+stdin/files so credentials are not placed in curl's process arguments. Files
+under the private workspace still require secret-safe handling and cleanup.
 
 ## Client-side payload format
 
@@ -219,6 +314,20 @@ Before encryption, an AI client should:
 - avoid placing credentials in filenames or ZIP comments;
 - verify that the resulting ZIP opens locally; and
 - ensure the encrypted result will fit the configured upload limit.
+
+For the explicitly trusted, bounded fixture from the example context:
+
+```bash
+test ! -e "$PLAIN_ZIP"
+(
+  cd "$SOURCE_DIR"
+  zip -q -r "$PLAIN_ZIP" .
+)
+unzip -tq "$PLAIN_ZIP"
+```
+
+This is a fixture constructor, not a safe crawler of arbitrary directories.
+Choose its inputs deliberately; exclude secrets and unsafe symlinks.
 
 ### Step 2: derive the encryption key
 
@@ -262,16 +371,55 @@ upload can therefore still be undecryptable if the client encrypted incorrectly.
 The client must perform a local round-trip or equivalent cryptographic
 verification before upload when reliability matters.
 
-### `zip_manifest`
+### Executable encryption and hash preparation
 
-`zip_manifest` is currently accepted for wire compatibility and size-checked,
-but new Share rows store `[]`. Do not depend on it for archive recovery or MIME
-metadata. Clients must inspect ZIP entries after decryption. This behavior is
-visible in the [upload module](./internal/upload/upload.go).
+Curl transports bytes; it does not create ZIPs or perform this AES-GCM format.
+Use the repository's existing client implementation rather than inventing an
+OpenSSL `enc` command: that command does not implement this authenticated wire
+format. This Bun adapter imports `encryptBlob`, `decryptBlob`, and
+`downloadPasswordHash` from the [crypto client](./web/static/js/crypto.js).
+It performs a local authenticated round-trip before writing the upload inputs.
+
+```bash
+bun --eval '
+import {
+  encryptBlob,
+  decryptBlob,
+  downloadPasswordHash,
+} from "./web/static/js/crypto.js";
+
+const password = await Bun.stdin.text();
+const plaintext = new Uint8Array(
+  await Bun.file(process.env.PLAIN_ZIP).arrayBuffer(),
+);
+const encrypted = await encryptBlob(new Blob([plaintext]), password);
+const ciphertext = new Uint8Array(await encrypted.blob.arrayBuffer());
+const opened = await decryptBlob(ciphertext, password, encrypted.meta, {
+  returnBytes: true,
+});
+if (!Buffer.from(opened).equals(Buffer.from(plaintext))) {
+  throw new Error("local encrypted ZIP round-trip failed");
+}
+
+await Bun.write(process.env.PAYLOAD_FILE, ciphertext);
+await Bun.write(process.env.CIPHER_META_FILE, JSON.stringify(encrypted.meta));
+await Bun.write(
+  process.env.PASSWORD_HASH_FILE,
+  await downloadPasswordHash(password),
+);
+' < "$PASSWORD_INPUT"
+```
+
+The password is read from stdin, never sent to the server, and never printed.
+The hash file has no trailing newline; its complete contents are the canonical
+authorization value. Each invocation generates new salt/nonce values. Invoke
+this block again before each new upload, including when switching from the
+public example to the private example below. This adapter reads the fixture
+into memory; apply resource limits before using it with large or untrusted data.
 
 ## Private archive-list endpoint
 
-### Request
+### Private-list request
 
 ```text
 POST /api/v0/list
@@ -281,37 +429,61 @@ The lookup endpoint requires verified HTTPS and accepts exactly one non-empty
 `private_key` string in either JSON or URL-encoded form data. It is sessionless,
 does not require CSRF state, and does not create a browser session.
 
-#### JSON
+### JSON lookup with curl
 
-```http
-Content-Type: application/json
+Construct JSON with jq so quotes, Unicode, and newlines in the key are encoded
+correctly. The key stays out of the URL and process arguments.
 
-{"private_key":"<private lookup key>"}
+```bash
+LIST_JSON_RESPONSE="${WORK_DIR}/private-list-json.json"
+jq -n --rawfile private_key "$PRIVATE_KEY_FILE" \
+  '{private_key: $private_key}' |
+  curl -fsSL \
+    --proto '=https' \
+    --max-redirs 0 \
+    --connect-timeout 10 \
+    --max-time 300 \
+    --cacert "$CA_CERT" \
+    --request POST \
+    --header 'Accept: application/json' \
+    --header 'Content-Type: application/json' \
+    --data-binary @- \
+    --dump-header "${WORK_DIR}/private-list-json.headers" \
+    --output "$LIST_JSON_RESPONSE" \
+    --write-out 'private_list_json_status=%{http_code}\n' \
+    "${BASE_URL}/api/v0/list"
+
+jq -e '(.archives | type == "array")' "$LIST_JSON_RESPONSE" > /dev/null
 ```
 
-#### URL-encoded form
+### URL-encoded lookup with curl
 
-```http
-Content-Type: application/x-www-form-urlencoded
+Use curl's file-input URL encoder; never interpolate the raw key into a form
+string. This alternate request has the same response contract as JSON.
 
-private_key=<percent-encoded private lookup key>
+```bash
+LIST_FORM_RESPONSE="${WORK_DIR}/private-list-form.json"
+curl -fsSL \
+  --proto '=https' \
+  --max-redirs 0 \
+  --connect-timeout 10 \
+  --max-time 300 \
+  --cacert "$CA_CERT" \
+  --request POST \
+  --header 'Accept: application/json' \
+  --data-urlencode "private_key@${PRIVATE_KEY_FILE}" \
+  --dump-header "${WORK_DIR}/private-list-form.headers" \
+  --output "$LIST_FORM_RESPONSE" \
+  --write-out 'private_list_form_status=%{http_code}\n' \
+  "${BASE_URL}/api/v0/list"
+
+jq -e '(.archives | type == "array")' "$LIST_FORM_RESPONSE" > /dev/null
 ```
 
-The endpoint rejects:
-
-- any query string;
-- an empty or missing key;
-- more than one JSON property;
-- an unknown JSON property;
-- duplicate JSON or form values;
-- a second JSON value after the request object;
-- unsupported content types; and
-- a key larger than 64 KiB.
-
-The strict body parser is shared with download authorization and lives in the
-[HTTP handlers](./internal/http/handlers.go). A private key belongs only in the
-request body. Never place it in a URL, because URLs commonly enter browser
-history, reverse-proxy logs, analytics, and referrer data.
+The [shared body contract](#body-only-json-and-form-envelopes) defines accepted
+encodings, strict cardinality, query rejection, and size bounds. A private key
+belongs only in the request body: URLs commonly enter browser history,
+reverse-proxy logs, analytics, and referrer data.
 
 ### Lookup and filtering
 
@@ -330,7 +502,7 @@ Share row, audit log, or response. Lookup hashing is implemented by the
 [authentication module](./internal/auth/auth.go); filtering is implemented by
 the [Share store](./internal/share/store.go).
 
-### Success response
+### Private-list success response
 
 Both a matching key and a key with no matches return `200 OK`,
 `Content-Type: application/json`, and `Cache-Control: no-store`. An empty result
@@ -366,26 +538,39 @@ metadata. Relative URLs must be resolved against the same verified HTTPS origin.
 The included `cipher_meta` lets an API client decrypt a matching private Share
 after separately authorizing and downloading its payload.
 
-The private key lists Shares; it does not authorize payload bytes. Each returned
-archive still requires the corresponding archive password hash at
-`POST /api/v0/download/{uuid}` and the plaintext password locally for AES-GCM
-decryption.
+The endpoint has no wrong-key error and no pagination token. An empty list is a
+normal terminal result, not `401`. The download failure-ban policy does not
+apply to this endpoint; that is not permission to enumerate lookup keys.
+For request errors, use the [shared HTTP error policy](#http-errors-and-retry-policy).
 
-### Errors and retry behavior
+### Select an uploaded private Share without scraping HTML
 
-| Status | Meaning | Agent action |
-| --- | --- | --- |
-| `400 Bad Request` | The body, key count, key size, query string, or content type violates the strict request contract | Fix the request; do not retry unchanged |
-| `426 Upgrade Required` | The request lacked direct TLS or trusted forwarded HTTPS | Correct TLS or proxy configuration |
+After the [private upload example](#private-upload-with-curl) succeeds, its
+`UPLOAD_RECEIPT` supplies the stable ID to select. Titles are not unique. The
+following optional check demonstrates discovery and preserves the matching
+entry without printing the key or complete response:
 
-The endpoint has no wrong-key error and no pagination token. A successful empty
-list is terminal for that exact key at that instant. Do not brute-force private
-keys or send concurrent key guesses. The persistent failure-ban policy applies
-to payload authorization, not archive lookup.
+```bash
+SHARE_ID="$(jq -er '.id' "$UPLOAD_RECEIPT")"
+jq -e --arg id "$SHARE_ID" \
+  '.archives[] | select(.id == $id)' \
+  "$LIST_JSON_RESPONSE" > "${WORK_DIR}/selected-private-share.json"
+
+jq -e '
+  .encryption == "client" and
+  (.cipher_meta | type == "object") and
+  .download_url == ("/api/v0/download/" + .id)
+' "${WORK_DIR}/selected-private-share.json" > /dev/null
+```
+
+When choosing an existing rather than newly uploaded Share, select an intended
+returned UUID explicitly and retain that entry's metadata. Do not assume the
+first array element is the desired Share, and do not invent an ID for an empty
+result.
 
 ## Upload endpoint
 
-### Request
+### Upload request
 
 ```text
 POST /api/v0/upload
@@ -405,10 +590,10 @@ after `blob`. Parsing is implemented by `uploadParts` in the
 | `title` | No | Empty becomes `untitled share`; maximum 512 bytes |
 | `visibility` | No | Exact `private` stays private; every other value becomes public. A correct client must send exact `public` or `private` rather than relying on fallback |
 | `private_key` | For private Shares | Lookup key sent to the server; the server stores only an HMAC derived with `APP_SECRET`. This key is not the archive password and does not encrypt the payload |
-| `password_hash` | Yes | Canonical authorization value described above; plaintext `password` is an unknown field and is rejected |
+| `password_hash` | Yes | Canonical authorization value described above; maximum input 4 KiB; plaintext `password` is an unknown field and is rejected |
 | `encrypted` | Yes | Must be `1` or `true`; any other value is rejected |
-| `cipher_meta` | Yes | JSON metadata for PBKDF2-SHA-384 and AES-256-GCM |
-| `zip_manifest` | No | Maximum 64 KiB; currently normalized to `[]` in storage |
+| `cipher_meta` | Yes | JSON metadata for PBKDF2-SHA-384 and AES-256-GCM; maximum 4 KiB |
+| `zip_manifest` | No | Maximum 64 KiB; accepted for compatibility but stored as `[]`, so it cannot recover filenames or MIME metadata |
 | `expiry_hours` | No | Base-10 integer hours. Missing, invalid, or non-positive becomes 6. Anonymous maximum is 24; authenticated administrator maximum is 2160 |
 | `csrf` | No | Accepted as multipart metadata for browser compatibility, but API admin elevation is authorized by the `X-CSRF-Token` header and existing session |
 | `blob` | Yes | Final multipart part, must have a filename, must contain client-encrypted ZIP bytes, and must be at least 16 bytes |
@@ -421,76 +606,138 @@ of multipart overhead. The authoritative code is in
 [HTTP handlers](./internal/http/handlers.go), and the
 [upload module](./internal/upload/upload.go).
 
-### Recommended construction order
+### Public upload with curl
 
-An agent should append parts in this order:
+Run [client preparation](#executable-encryption-and-hash-preparation) first.
+The literal public visibility and six-hour expiry are actual valid values,
+not slash-delimited alternatives. Curl generates the multipart boundary.
+`--form-string` protects literal text from curl's special form syntax;
+`field=<file` loads field contents without sending a file part; `blob=@file`
+sends the final file part with a filename.
 
-1. `title`
-2. `visibility`
-3. `private_key` when visibility is private
-4. `password_hash`
-5. `encrypted=1`
-6. `cipher_meta`
-7. `expiry_hours`
-8. optional `zip_manifest=[]`
-9. `blob` with an application/octet-stream content type and a non-empty filename
+```bash
+UPLOAD_RECEIPT="${WORK_DIR}/public-upload.json"
+UPLOAD_STATUS="$(
+  curl -fsSL \
+    --proto '=https' \
+    --max-redirs 0 \
+    --connect-timeout 10 \
+    --max-time 300 \
+    --cacert "$CA_CERT" \
+    --request POST \
+    --header 'Accept: application/json' \
+    --form-string 'title=public integration fixture' \
+    --form-string 'visibility=public' \
+    --form "password_hash=<${PASSWORD_HASH_FILE}" \
+    --form-string 'encrypted=1' \
+    --form "cipher_meta=<${CIPHER_META_FILE}" \
+    --form-string 'expiry_hours=6' \
+    --form-string 'zip_manifest=[]' \
+    --form "blob=@${PAYLOAD_FILE};type=application/octet-stream" \
+    --dump-header "${WORK_DIR}/public-upload.headers" \
+    --output "${WORK_DIR}/upload-response.part" \
+    --write-out '%{http_code}' \
+    "${BASE_URL}/api/v0/upload"
+)"
+test "$UPLOAD_STATUS" = 201
 
-Multipart libraries often preserve append order, but an agent must verify that
-its chosen library does so. Do not use a map whose iteration order is undefined
-to serialize the request.
-
-### Minimal request shape
-
-```sh
-curl -fsS \
-  --request POST \
-  --form-string 'title=<safe title>' \
-  --form 'visibility=public' \
-  --form-string 'password_hash=<canonical Base64 SHA-256 value>' \
-  --form 'encrypted=1' \
-  --form-string 'cipher_meta=<compact JSON object>' \
-  --form 'expiry_hours=6' \
-  --form 'blob=@<local encrypted ZIP>;type=application/octet-stream' \
-  'https://<host>/api/v0/upload'
+jq -e '
+  (.id | test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")) and
+  .url == ("/s/" + .id) and
+  .download_url == ("/api/v0/download/" + .id) and
+  .encryption == "client" and
+  (.cipher_meta | type == "object") and
+  (.size | type == "number") and .size >= 16 and
+  (.expires_at | type == "string")
+' "${WORK_DIR}/upload-response.part" > /dev/null
+mv "${WORK_DIR}/upload-response.part" "$UPLOAD_RECEIPT"
+printf 'public_upload_status=%s\n' "$UPLOAD_STATUS"
 ```
 
-This example deliberately uses placeholders. Never materialize a real password,
-authorization hash, private key, or secret in repository files or agent output.
-For diagnostics, capture status, headers, and a redacted body rather than using
-verbose HTTP traces that expose multipart values.
+Keep `blob` last even when adding optional metadata. Libraries must preserve
+multipart append order; do not serialize parts from an unordered map.
+There is no browser-session or plaintext-password field in this request.
+
+### Private upload with curl
+
+Invoke [client preparation](#executable-encryption-and-hash-preparation) again
+to get a fresh salt/nonce and corresponding ciphertext, even if the ZIP and
+password are unchanged. The private key is separate from that password and is
+read from its protected source file.
+
+```bash
+UPLOAD_RECEIPT="${WORK_DIR}/private-upload.json"
+UPLOAD_STATUS="$(
+  curl -fsSL \
+    --proto '=https' \
+    --max-redirs 0 \
+    --connect-timeout 10 \
+    --max-time 300 \
+    --cacert "$CA_CERT" \
+    --request POST \
+    --header 'Accept: application/json' \
+    --form-string 'title=private integration fixture' \
+    --form-string 'visibility=private' \
+    --form "private_key=<${PRIVATE_KEY_FILE}" \
+    --form "password_hash=<${PASSWORD_HASH_FILE}" \
+    --form-string 'encrypted=1' \
+    --form "cipher_meta=<${CIPHER_META_FILE}" \
+    --form-string 'expiry_hours=6' \
+    --form-string 'zip_manifest=[]' \
+    --form "blob=@${PAYLOAD_FILE};type=application/octet-stream" \
+    --dump-header "${WORK_DIR}/private-upload.headers" \
+    --output "${WORK_DIR}/upload-response.part" \
+    --write-out '%{http_code}' \
+    "${BASE_URL}/api/v0/upload"
+)"
+test "$UPLOAD_STATUS" = 201
+
+jq -e '
+  (.id | test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")) and
+  .url == ("/s/" + .id) and
+  .download_url == ("/api/v0/download/" + .id) and
+  .encryption == "client" and
+  (.cipher_meta | type == "object") and
+  (.size | type == "number") and .size >= 16 and
+  (.expires_at | type == "string")
+' "${WORK_DIR}/upload-response.part" > /dev/null
+mv "${WORK_DIR}/upload-response.part" "$UPLOAD_RECEIPT"
+printf 'private_upload_status=%s\n' "$UPLOAD_STATUS"
+```
+
+Each recipe keeps a separate receipt; retain the matching metadata for each
+Share, not just the most recently generated local metadata file. A local
+validation or filesystem failure after `201` does not undo the server upload.
+Use the [HTTP error/retry policy](#http-errors-and-retry-policy) rather than
+rerunning the command blindly.
 
 ### Server processing sequence
 
 The upload path is deliberately staged:
 
-1. Verify HTTPS.
-2. Resolve the trusted client IP.
-3. If `X-CSRF-Token` exists, compare it with the attached session and determine
-   whether the requester has administrator expiry privileges.
-4. Require multipart content.
-5. Parse unique allowed metadata fields before the blob and expose the blob as a
-   stream; require the blob to be final.
-6. Validate title size, password-hash shape, encryption mode, cipher metadata,
-   visibility, private-key requirement, and expiry policy before writing bytes.
-7. Purge unprotected legacy Shares and expired Shares before capacity
+After the transport/session checks and ordered multipart parsing described
+above, the owning upload module performs these storage transitions:
+
+1. Validate metadata before writing bytes.
+2. Purge unprotected legacy Shares and expired Shares before capacity
    calculation.
-8. Reserve at most the configured per-upload maximum and remaining global
+3. Reserve at most the configured per-upload maximum and remaining global
    capacity. Reservations prevent concurrent uploads from overcommitting space.
-9. Decode the authorization hash and compute a salted bcrypt verifier. Verifier
+4. Decode the authorization hash and compute a salted bcrypt verifier. Verifier
    work is serialized to bound anonymous CPU usage.
-10. Stream the ciphertext into a private `.staging` file, enforce the reserved
-    byte limit, and compute the ciphertext SHA-256 while writing.
-11. Recheck actual storage usage under the integrity lock.
-12. Atomically rename the staged file to `<uuid>.blob`.
-13. Insert the Share metadata row. If insertion fails, remove the committed blob.
-14. Write a safe upload audit event.
-15. Return `201 Created` JSON.
+5. Stream the ciphertext into `.staging/<uuid>.tmp` with mode `0600`, enforce
+   the reserved byte limit, and compute ciphertext SHA-256. Slow uploads do not
+   hold the capacity or integrity locks while streaming.
+6. Recheck actual storage usage under the capacity and integrity locks,
+   atomically rename to `<uuid>.blob`, and insert the Share row. Row insertion
+   failure removes the committed blob; earlier failures remove staged bytes.
+7. Write a safe audit event and return `201 Created` JSON.
 
 The orchestration is in the [upload module](./internal/upload/upload.go), staging
 and atomic rename are in the [blob store](./internal/storage/blobstore.go), and
 metadata insertion is in the [Share store](./internal/share/store.go).
 
-### Success response
+### Upload success response
 
 The server returns `201 Created`, `Content-Type: application/json`, and
 `Cache-Control: no-store`.
@@ -524,29 +771,13 @@ decryption. At minimum retain the Share ID, HTTPS origin, cipher metadata, and a
 secure reference to the password. The endpoint does not provide recovery for a
 lost password.
 
-### Upload errors
-
-Error bodies produced directly by the application are plain text and normally
-end with a newline. Do not expect a JSON error envelope.
-
-| Status | Meaning | Agent action |
-| --- | --- | --- |
-| `400 Bad Request` | Malformed multipart body, unknown/duplicate/trailing field, missing blob, missing filename, missing private key, missing/invalid hash, invalid encryption mode, invalid cipher metadata, or payload shorter than an AES-GCM tag | Fix the request; do not retry unchanged |
-| `403 Forbidden` | A supplied CSRF header did not match the attached session | Remove browser-only auth state or acquire a valid session through the browser flow |
-| `413 Request Entity Too Large` | Metadata, HTTP body, or ciphertext exceeded a limit | Reduce archive size or metadata; do not chunk into multiple requests unless separate Shares are intended |
-| `415 Unsupported Media Type` | Request is not multipart/form-data | Rebuild the body with a multipart library and its generated boundary |
-| `426 Upgrade Required` | Direct TLS or trusted forwarded HTTPS was absent | Correct the origin or proxy deployment; never bypass TLS checks |
-| `500 Internal Server Error` | Staging, verifier, database, or filesystem storage failed | Retry only with bounded backoff and only when duplicate creation risk is acceptable |
-| `507 Insufficient Storage` | Global capacity could not admit the upload | Stop and notify the operator; repeated retries cannot create capacity |
-
-Because the endpoint has no idempotency token, a connection failure after the
-request body was sent is ambiguous. Before retrying, check any captured complete
-response. There is no reliable API lookup by title, checksum, or client request
-ID, so automatic retries can duplicate data.
+Response JSON above is a schema illustration with placeholders, not a captured
+server result. Error statuses and upload ambiguity are defined once in the
+[HTTP error/retry policy](#http-errors-and-retry-policy).
 
 ## Download endpoint
 
-### Request
+### Download request
 
 ```text
 POST /api/v0/download/{uuid}
@@ -556,35 +787,167 @@ POST /api/v0/download/{uuid}
 unprotected, and wrong-password targets deliberately collapse into the same
 authorization failure path.
 
-The endpoint accepts exactly one of these body encodings:
+Use the [shared body contract](#body-only-json-and-form-envelopes) with only
+`password_hash`. Parsing denials count toward download bans just like a wrong
+credential; they are not harmless validation probes.
 
-#### JSON
+### Resolve the target and construct the request body
 
-```http
-Content-Type: application/json
+Use either a successful upload receipt or the selected private-list entry.
+The uploaded fixture already has a hash file. For an existing Share, derive
+only its authorization hash from the matching local password; do not rerun
+encryption merely to download it:
 
-{"password_hash":"<canonical Base64 SHA-256 value>"}
+```bash
+bun --eval '
+import { downloadPasswordHash } from "./web/static/js/crypto.js";
+process.stdout.write(await downloadPasswordHash(await Bun.stdin.text()));
+' < "$PASSWORD_INPUT" > "$PASSWORD_HASH_FILE"
 ```
 
-The decoder rejects unknown JSON fields, missing or empty `password_hash`, an
-oversized value, malformed JSON, and any second JSON value after the object.
+To use a discovered existing private Share, set `UPLOAD_RECEIPT` to the selected
+private-entry JSON from the lookup recipe; it contains the required ID, path,
+size, and cipher metadata. For a newly uploaded Share, keep its original receipt.
 
-#### URL-encoded form
+```bash
+SHARE_ID="$(jq -er '.id' "$UPLOAD_RECEIPT")"
+DOWNLOAD_PATH="$(jq -er '.download_url' "$UPLOAD_RECEIPT")"
+test "$DOWNLOAD_PATH" = "/api/v0/download/${SHARE_ID}"
+DOWNLOAD_REQUEST="${WORK_DIR}/download-request.json"
+DOWNLOADED_PAYLOAD="${WORK_DIR}/downloaded.encrypted"
 
-```http
-Content-Type: application/x-www-form-urlencoded
-
-password_hash=<percent-encoded canonical Base64 SHA-256 value>
+jq -n --rawfile password_hash "$PASSWORD_HASH_FILE" \
+  '{password_hash: $password_hash}' > "$DOWNLOAD_REQUEST"
 ```
 
-The form must contain exactly one key and exactly one value. Duplicate values or
-additional form keys are rejected.
+Validate the returned path rather than blindly requesting an absolute URL from
+response data. The credentials must stay on the same verified HTTPS origin.
 
-Any query string is rejected, even if it contains unrelated data. Plaintext
-`password`, multipart bodies, `text/plain`, absent content type, and other media
-types are rejected. Rejections use the same denial flow as a wrong credential
-and therefore count toward the IP failure limit. Parsing is implemented by
-`downloadPasswordHash` in the [HTTP handlers](./internal/http/handlers.go).
+### JSON download with curl
+
+The output remains ciphertext. Check both the response status and byte count
+before promoting a completed local file; do not save an error page as an archive.
+
+```bash
+DOWNLOAD_STATUS="$(
+  curl -fsSL \
+    --proto '=https' \
+    --max-redirs 0 \
+    --connect-timeout 10 \
+    --max-time 300 \
+    --cacert "$CA_CERT" \
+    --request POST \
+    --header 'Accept: application/octet-stream' \
+    --header 'Content-Type: application/json' \
+    --data-binary "@${DOWNLOAD_REQUEST}" \
+    --dump-header "${WORK_DIR}/download-json.headers" \
+    --output "${WORK_DIR}/download.part" \
+    --write-out '%{http_code}' \
+    "${BASE_URL}${DOWNLOAD_PATH}"
+)"
+test "$DOWNLOAD_STATUS" = 200
+test "$(wc -c < "${WORK_DIR}/download.part")" -eq \
+  "$(jq -er '.size' "$UPLOAD_RECEIPT")"
+mv "${WORK_DIR}/download.part" "$DOWNLOADED_PAYLOAD"
+printf 'download_json_status=%s\n' "$DOWNLOAD_STATUS"
+```
+
+### URL-encoded download with curl
+
+Use the same target with the alternate accepted body format. Curl URL-encodes
+the complete hash read from the file, including `+`, `/`, and `=` correctly.
+
+```bash
+DOWNLOAD_STATUS="$(
+  curl -fsSL \
+    --proto '=https' \
+    --max-redirs 0 \
+    --connect-timeout 10 \
+    --max-time 300 \
+    --cacert "$CA_CERT" \
+    --request POST \
+    --header 'Accept: application/octet-stream' \
+    --data-urlencode "password_hash@${PASSWORD_HASH_FILE}" \
+    --dump-header "${WORK_DIR}/download-form.headers" \
+    --output "${WORK_DIR}/download-form.part" \
+    --write-out '%{http_code}' \
+    "${BASE_URL}${DOWNLOAD_PATH}"
+)"
+test "$DOWNLOAD_STATUS" = 200
+cmp "$DOWNLOADED_PAYLOAD" "${WORK_DIR}/download-form.part"
+printf 'download_form_status=%s\n' "$DOWNLOAD_STATUS"
+```
+
+The `cmp` check is useful in this fixture exercise: both encodings must return
+identical ciphertext, not independently transformed or re-encrypted bytes.
+
+### Byte ranges and exact reassembly with curl
+
+Every range request is still an authenticated POST. For this small fixture,
+split the retained ciphertext size into two adjacent, non-overlapping ranges.
+Both responses must be `206`; a server that ignores `Range` and returns `200`
+must not be treated as a valid resumed segment.
+Send an explicit `Range` header for authenticated POSTs rather than relying on
+curl's `--range` transfer option.
+
+```bash
+TOTAL_BYTES="$(jq -er '.size | select(. >= 16)' "$UPLOAD_RECEIPT")"
+SPLIT_AT="$((TOTAL_BYTES / 2))"
+FIRST_END="$((SPLIT_AT - 1))"
+
+RANGE_STATUS="$(
+  curl -fsSL \
+    --proto '=https' \
+    --max-redirs 0 \
+    --connect-timeout 10 \
+    --max-time 300 \
+    --cacert "$CA_CERT" \
+    --request POST \
+    --header 'Content-Type: application/json' \
+    --header "Range: bytes=0-${FIRST_END}" \
+    --data-binary "@${DOWNLOAD_REQUEST}" \
+    --dump-header "${WORK_DIR}/range-first.headers" \
+    --output "${WORK_DIR}/range-first.part" \
+    --write-out '%{http_code}' \
+    "${BASE_URL}${DOWNLOAD_PATH}"
+)"
+test "$RANGE_STATUS" = 206
+test "$(wc -c < "${WORK_DIR}/range-first.part")" -eq "$SPLIT_AT"
+printf 'first_range_status=%s\n' "$RANGE_STATUS"
+
+RANGE_STATUS="$(
+  curl -fsSL \
+    --proto '=https' \
+    --max-redirs 0 \
+    --connect-timeout 10 \
+    --max-time 300 \
+    --cacert "$CA_CERT" \
+    --request POST \
+    --header 'Content-Type: application/json' \
+    --header "Range: bytes=${SPLIT_AT}-" \
+    --data-binary "@${DOWNLOAD_REQUEST}" \
+    --dump-header "${WORK_DIR}/range-last.headers" \
+    --output "${WORK_DIR}/range-last.part" \
+    --write-out '%{http_code}' \
+    "${BASE_URL}${DOWNLOAD_PATH}"
+)"
+test "$RANGE_STATUS" = 206
+test "$(wc -c < "${WORK_DIR}/range-last.part")" -eq \
+  "$((TOTAL_BYTES - SPLIT_AT))"
+
+cp "${WORK_DIR}/range-first.part" "${WORK_DIR}/reassembled.encrypted"
+dd if="${WORK_DIR}/range-last.part" \
+  of="${WORK_DIR}/reassembled.encrypted" \
+  bs=1 seek="$SPLIT_AT" conv=notrunc
+cmp "$DOWNLOADED_PAYLOAD" "${WORK_DIR}/reassembled.encrypted"
+printf 'last_range_status=%s\n' "$RANGE_STATUS"
+```
+
+Byte-sized `dd` makes the offset explicit and portable for a small test fixture;
+use a buffered byte-aware reassembler for large payloads. In production, also
+validate `Content-Range` against the requested offset and retained total length.
+AES-GCM authentication must cover the complete reassembled ciphertext; never
+decrypt a single range as if it were an independently authenticated frame.
 
 ### Server decision sequence
 
@@ -605,7 +968,7 @@ The server handles a download in this order:
 The handler lives in [HTTP handlers](./internal/http/handlers.go), and persistent
 failure/ban policy lives in [download protection](./internal/http/download.go).
 
-### Success response
+### Download success response
 
 A full successful response is normally:
 
@@ -629,20 +992,11 @@ The download POST handler adds no artificial response delay. Success, denial,
 expiry, insecure-transport, and active-ban responses return after their required
 authorization and persistence checks; network transfer time remains variable.
 
-### Download errors
-
-| Status | Meaning | Agent action |
-| --- | --- | --- |
-| `401 Unauthorized` | Body was malformed, hash was missing/invalid/incorrect, UUID was invalid/unknown, or Share lacked required protection | Do not distinguish targets; check local inputs once, then stop rather than probing |
-| `404 Not Found` | Authorization succeeded but the blob disappeared before file serving | Treat as server integrity failure; do not repeatedly submit credentials |
-| `410 Gone` | Credential matched, but the Share is expired | Stop; expiry is terminal |
-| `416 Range Not Satisfiable` | Requested byte range is outside the ciphertext | Correct or remove the Range header |
-| `426 Upgrade Required` | HTTPS trust requirement failed | Correct TLS or proxy configuration |
-| `429 Too Many Requests` | IP is banned, ban-state lookup failed closed, or failure persistence failed | Parse `Retry-After`, stop all attempts from that IP, and wait at least that many seconds |
-
 The text `download denied` intentionally does not reveal which authorization
 condition failed. Response times are not intentionally equalized and may vary
 with password verification, storage access, and network conditions.
+Use the [shared HTTP error policy](#http-errors-and-retry-policy) for terminal
+errors, range correction, and bans.
 
 ## Failed-download persistence and bans
 
@@ -680,22 +1034,59 @@ Persistence is defined by the
 
 ## Decrypting a downloaded payload
 
-To recover the ZIP:
+Use the [payload format](#client-side-payload-format) in reverse with the exact
+metadata retained for this Share. The download response does not supply it.
+Validate metadata before expensive KDF/buffer work, authenticate the complete
+ciphertext, and only then treat plaintext as ZIP. Authentication failure is one
+generic wrong-password-or-corruption result, not permission to try guesses.
 
-1. Obtain the exact `cipher_meta` associated with the upload. The download
-   response does not include it.
-2. Validate the metadata before allocating expensive KDF or buffer work.
-3. Normalize the plaintext password to NFC and encode it as UTF-8.
-4. Decode the 16-byte salt and 12-byte nonce from standard Base64.
-5. Run PBKDF2-HMAC-SHA-384 for the recorded iteration count to derive a 256-bit
-   key.
-6. AES-GCM-decrypt the complete ciphertext with the nonce, no additional data,
-   and the final 16 bytes as the authentication tag.
-7. If authentication fails, report one generic wrong-password-or-corruption
-   result. Do not retry variants automatically.
-8. Parse the plaintext as ZIP only after GCM authentication succeeds.
-9. Apply archive-bomb, path, link, overwrite, and execution protections before
-   extraction.
+This example accepts the current unframed format and calls the existing client
+decoder. It does not enable legacy framed formats as a new upload option.
+
+```bash
+DECRYPTED_ZIP="${WORK_DIR}/decrypted.zip"
+export UPLOAD_RECEIPT DOWNLOADED_PAYLOAD DECRYPTED_ZIP
+
+bun --eval '
+import { cipherIterations, decryptBlob } from "./web/static/js/crypto.js";
+
+const receipt = await Bun.file(process.env.UPLOAD_RECEIPT).json();
+const meta = receipt.cipher_meta;
+if (!meta || meta.kdf !== "PBKDF2-SHA-384" || meta.cipher !== "AES-256-GCM") {
+  throw new Error("unsupported encryption metadata");
+}
+cipherIterations(meta);
+const salt = Buffer.from(meta.salt, "base64");
+const nonce = Buffer.from(meta.nonce, "base64");
+if (salt.length !== 16 || nonce.length !== 12 ||
+    salt.toString("base64") !== meta.salt ||
+    nonce.toString("base64") !== meta.nonce) {
+  throw new Error("invalid salt or nonce metadata");
+}
+
+const ciphertext = new Uint8Array(
+  await Bun.file(process.env.DOWNLOADED_PAYLOAD).arrayBuffer(),
+);
+if (ciphertext.byteLength !== receipt.size) {
+  throw new Error("downloaded ciphertext size does not match receipt");
+}
+const password = await Bun.stdin.text();
+const plaintext = await decryptBlob(ciphertext, password, meta, {
+  returnBytes: true,
+});
+await Bun.write(process.env.DECRYPTED_ZIP, plaintext);
+' < "$PASSWORD_INPUT"
+
+# These checks are for the small known fixture, not arbitrary remote ZIPs.
+unzip -tq "$DECRYPTED_ZIP"
+cmp "$PLAIN_ZIP" "$DECRYPTED_ZIP"
+```
+
+For an existing remote Share, omit the final `cmp` unless an original ZIP is
+available. Treat unknown decrypted archives as untrusted: cap entry counts,
+decompressed size and compression ratios; reject traversal, absolute paths,
+unsafe links and collisions; prevent overwrites; never execute extracted files
+automatically. Do not blindly extract or ZIP-test an unbounded archive.
 
 The first-party flow downloads to a pre-sized byte buffer, decrypts directly to
 bytes, then unzips in-browser to reduce duplicate memory pressure. See the
@@ -710,25 +1101,194 @@ implementation detail rather than a stable machine API. A robust automation
 workflow should retain metadata at upload time or obtain it through the private
 list endpoint rather than scraping HTML.
 
-## Public and private Shares
+## HTTP errors and retry policy
 
-Encryption and visibility are separate controls:
+Parse the HTTP status before deciding whether the body is JSON, ciphertext, or
+an error. Errors generated directly by application handlers are plain text,
+normally newline-terminated; there is no JSON error envelope. A file-serving
+precondition failure may have an empty body. Curl `-f` returns exit code 22 for
+HTTP errors and suppresses their bodies. Inspect captured status/headers, not a supposedly
+complete JSON file left by a failed command.
 
-- Every current Share is encrypted and password-authorized.
-- A public Share appears in public archive listings while active.
-- A private Share is omitted from public listings.
-- `POST /api/v0/list` returns active private Shares matching the submitted key.
-- The private lookup key is submitted to the server and converted to
-  `HMAC-SHA-256(APP_SECRET, private_key)` for matching.
-- The raw private lookup key is not stored in the Share row.
-- The private key is not used by PBKDF2, AES-GCM, or download authorization.
-- A direct `/s/{uuid}` link can render a private Share; "private" means unlisted,
-  not inaccessible by UUID.
+| Status | Endpoint or scope | Meaning | Required next action |
+| --- | --- | --- | --- |
+| `400` | Upload | Malformed/duplicate/unknown/trailing multipart fields; missing blob/filename/private key/hash; invalid hash, encryption metadata/mode; ciphertext shorter than 16 bytes | Correct the request without an unchanged retry |
+| `400` | Private list | Violated the strict body, encoding, query, cardinality, or size contract | Fix the envelope; do not enumerate keys |
+| `401` | Download | Malformed body, missing/invalid/incorrect hash, invalid/unknown UUID, missing blob during precheck, or unprotected Share | Check local inputs once, then stop; denial persists a failure event |
+| `403` | Upload | Supplied CSRF header mismatched the attached session | Omit browser-only auth state or use a valid existing session/token pair |
+| `404` | Routing; download race | Unknown routed path, or an authorized blob disappeared after its precheck | Correct routing or report an integrity race; do not repeatedly submit credentials |
+| `405` | Known operation route | Method was not `POST` | Correct the method |
+| `410` | Download | Credential matched but the Share expired | Treat expiry as terminal |
+| `412` | Authorized download | A file-serving precondition such as `If-Unmodified-Since` failed | Correct/remove the conditional header; it does not replace authorization |
+| `413` | Upload | Metadata, request body, or ciphertext exceeded a size bound | Reduce input; splitting requests creates separate Shares, not upload chunks |
+| `415` | Upload | Body is not multipart/form-data | Use ordered multipart with curl's generated boundary |
+| `416` | Download | Range lies outside ciphertext bounds | Correct/remove `Range`; do not splice an error body into a download |
+| `426` | All operation endpoints | Direct TLS or trusted forwarded HTTPS was absent | Correct transport/proxy deployment; never bypass verification |
+| `429` | Download | Persistent IP ban or fail-closed ban/failure-storage error | Honor positive `Retry-After` and stop all parallel attempts from that IP |
+| `500` | Upload | Verifier, staging, database, or filesystem storage failed | Require an explicit bounded-retry/duplicate-risk decision |
+| `507` | Upload | Remaining global storage could not admit the payload | Stop and notify the operator; unchanged retries cannot create capacity |
 
-The listing and lookup queries live in the [Share store](./internal/share/store.go),
-and private-key hashing lives in the [authentication module](./internal/auth/auth.go).
-An agent creating a private Share must retain both the private lookup key and the
-archive password for their distinct purposes.
+An upload has no idempotency key and no lookup by client request ID, title, or
+checksum. A timeout or connection failure after sending the body may mean the
+Share was stored but its response was lost. Do not add `--retry`, rerun the
+upload automatically, or assume that curl failure proves rollback. Preserve
+any complete `201` receipt; decide explicitly whether duplicate creation is
+acceptable before another upload attempt.
+
+Download POST is read-only for the Share, but denials mutate failure/ban state.
+Do not probe passwords or run invalid-body cases on a production client IP.
+List failures have no password-ban counter, but key enumeration is still
+prohibited. Connection and total timeouts must account for normal verification,
+storage, and transfer latency, not an artificial wait floor.
+
+### Capture a status and `Retry-After` without exposing credentials
+
+This recipe uses the selected download target and protected JSON body. It
+discards ciphertext intentionally because it demonstrates response handling,
+not a second archive acquisition. It does not sleep/retry or print headers that
+could contain cookies. Curl's exit code and HTTP status are different values.
+
+```bash
+CURL_EXIT=0
+if RESULT="$(
+  curl -fsSL \
+    --proto '=https' \
+    --max-redirs 0 \
+    --connect-timeout 10 \
+    --max-time 300 \
+    --cacert "$CA_CERT" \
+    --request POST \
+    --header 'Content-Type: application/json' \
+    --data-binary "@${DOWNLOAD_REQUEST}" \
+    --output /dev/null \
+    --write-out '%{http_code} %header{retry-after}' \
+    "${BASE_URL}${DOWNLOAD_PATH}"
+)"; then
+  CURL_EXIT=0
+else
+  CURL_EXIT=$?
+fi
+read -r HTTP_STATUS RETRY_AFTER <<< "$RESULT"
+
+case "$HTTP_STATUS" in
+  200|206)
+    printf 'download_status=%s\n' "$HTTP_STATUS"
+    ;;
+  429)
+    if [[ ! "$RETRY_AFTER" =~ ^[1-9][0-9]*$ ]]; then
+      printf 'Invalid ban response; stop and inspect deployment.\n' >&2
+      exit 1
+    fi
+    printf 'Pause all requests from this IP for at least %s seconds.\n' \
+      "$RETRY_AFTER"
+    ;;
+  401|410)
+    printf 'Terminal download response: HTTP %s; do not retry unchanged.\n' \
+      "$HTTP_STATUS" >&2
+    ;;
+  *)
+    printf 'Request stopped: curl exit %s, HTTP %s.\n' \
+      "$CURL_EXIT" "${HTTP_STATUS:-unknown}" >&2
+    ;;
+esac
+```
+
+### Invalid-request integration examples
+
+Run these only against the disposable fixture. Each makes one deliberately
+invalid request, expects curl exit 22, and asserts the specific HTTP status.
+They do not send plaintext passwords or retain credentials in request literals.
+
+For private listing, an extra JSON property violates strict cardinality:
+
+```bash
+jq -n --rawfile private_key "$PRIVATE_KEY_FILE" \
+  '{private_key: $private_key, unexpected: true}' > "${WORK_DIR}/invalid-list.json"
+CURL_EXIT=0
+if HTTP_STATUS="$(
+  curl -fsSL \
+    --proto '=https' \
+    --max-redirs 0 \
+    --connect-timeout 10 \
+    --max-time 300 \
+    --cacert "$CA_CERT" \
+    --request POST \
+    --header 'Content-Type: application/json' \
+    --data-binary "@${WORK_DIR}/invalid-list.json" \
+    --output /dev/null \
+    --write-out '%{http_code}' \
+    "${BASE_URL}/api/v0/list"
+)"; then
+  printf 'Invalid list body was unexpectedly accepted.\n' >&2
+  exit 1
+else
+  CURL_EXIT=$?
+fi
+test "$CURL_EXIT" -eq 22
+test "$HTTP_STATUS" = 400
+printf 'invalid_list_status=%s\n' "$HTTP_STATUS"
+```
+
+For upload, JSON is not an accepted substitute for multipart:
+
+```bash
+CURL_EXIT=0
+if HTTP_STATUS="$(
+  curl -fsSL \
+    --proto '=https' \
+    --max-redirs 0 \
+    --connect-timeout 10 \
+    --max-time 300 \
+    --cacert "$CA_CERT" \
+    --request POST \
+    --header 'Content-Type: application/json' \
+    --data-binary '{}' \
+    --output /dev/null \
+    --write-out '%{http_code}' \
+    "${BASE_URL}/api/v0/upload"
+)"; then
+  printf 'Non-multipart upload was unexpectedly accepted.\n' >&2
+  exit 1
+else
+  CURL_EXIT=$?
+fi
+test "$CURL_EXIT" -eq 22
+test "$HTTP_STATUS" = 415
+printf 'invalid_upload_status=%s\n' "$HTTP_STATUS"
+```
+
+For download, an unrecognized property follows the credential-denial path and
+adds one persisted failure event, unlike the private-list `400` above:
+
+```bash
+CURL_EXIT=0
+if HTTP_STATUS="$(
+  curl -fsSL \
+    --proto '=https' \
+    --max-redirs 0 \
+    --connect-timeout 10 \
+    --max-time 300 \
+    --cacert "$CA_CERT" \
+    --request POST \
+    --header 'Content-Type: application/json' \
+    --data-binary '{"unexpected":true}' \
+    --output /dev/null \
+    --write-out '%{http_code}' \
+    "${BASE_URL}${DOWNLOAD_PATH}"
+)"; then
+  printf 'Invalid download body was unexpectedly accepted.\n' >&2
+  exit 1
+else
+  CURL_EXIT=$?
+fi
+test "$CURL_EXIT" -eq 22
+test "$HTTP_STATUS" = 401
+printf 'invalid_download_status=%s\n' "$HTTP_STATUS"
+```
+
+Do not run a shell loop to reach the ban threshold. Its restart, expiry,
+namespacing, and boundary behavior are exercised by the
+[API route tests](./internal/test/api_test.go), not by attacking a shared server.
 
 ## Data persistence
 
@@ -765,16 +1325,10 @@ are the [administrator schema](./internal/ent/schema/admin.go),
 
 ### Blob filesystem
 
-Ciphertext is written under the configured blob directory:
-
-1. a fresh UUID identifies the Share;
-2. staging creates `.staging/<uuid>.tmp` with mode `0600`;
-3. streaming computes ciphertext SHA-256 and enforces the reservation;
-4. commit atomically renames the file to `<uuid>.blob`; and
-5. metadata insertion completes the logical Share.
-
-Late failures remove staged or committed bytes. The implementation is in the
-[blob store](./internal/storage/blobstore.go) and [upload module](./internal/upload/upload.go).
+The configured blob directory contains committed `<uuid>.blob` files and a
+private `.staging` directory. The [upload processing sequence](#server-processing-sequence)
+defines file creation, hashing, commit, and rollback; the
+[blob store](./internal/storage/blobstore.go) implements them.
 
 ### Capacity and concurrency
 
@@ -805,79 +1359,21 @@ Cleanup removes abandoned staging files at startup, unprotected legacy Shares,
 expired Share blob/row pairs, metadata whose blob is missing, orphan blob files,
 and expired browser sessions. Removal deletes a regular blob before deleting its
 metadata row; unexpected filesystem errors preserve metadata for a later retry.
+Legacy Shares without a download verifier cannot be migrated by recovering a
+password: the server never retained their passwords. Startup removes those
+unprotected blob/row pairs rather than exposing an unauthenticated payload path.
 See the [cleanup scheduler](./internal/http/cleanup.go) and
 [integrity service](./internal/storage/integrity.go).
 
-## Audit behavior
+## Audit and safe observability
 
 Uploads and selected administrator actions produce audit rows containing actor,
 IP, action, target, safe metadata, and timestamp. Audit write failure does not
-fail the primary operation. Audit metadata must never include password values,
-authorization hashes, private lookup keys, plaintext archive contents, or other
-browser-only secrets. The implementation is the [audit logger](./internal/audit/audit.go)
-and [audit-event schema](./internal/ent/schema/auditevent.go).
-
-## AI-agent request algorithm
-
-For a new upload, use this decision procedure:
-
-1. Confirm the exact HTTPS base origin.
-2. Read the local files without executing them.
-3. Build and locally validate a safe ZIP.
-4. Obtain the password through a secret-safe channel; never print it.
-5. Normalize the password to NFC.
-6. Generate a fresh 16-byte salt and 12-byte nonce.
-7. Derive the AES key with PBKDF2-HMAC-SHA-384.
-8. Encrypt the full ZIP with AES-256-GCM.
-9. Derive the separate domain-scoped SHA-256 authorization hash.
-10. Validate locally that this hash is canonical padded Base64 of 32 bytes.
-11. Construct multipart metadata in deterministic order.
-12. Append the encrypted blob last.
-13. Send once over verified HTTPS.
-14. Parse status before parsing a body as JSON.
-15. On `201`, validate required response fields and atomically retain decryption
-    metadata.
-16. On an ambiguous transport failure, do not automatically retry.
-17. Redact all credential-equivalent values from the task report.
-
-For an existing Share download:
-
-1. Confirm the HTTPS origin, UUID, retained cipher metadata, and password source.
-2. Derive one authorization hash locally.
-3. Send one JSON POST with exactly `password_hash` and no query string.
-4. Read the response with a timeout appropriate for authorization, storage,
-   and network latency.
-5. On `200` or `206`, stream ciphertext to bounded local storage or memory.
-6. On `401`, check local formatting once and stop; do not guess.
-7. On `429`, honor `Retry-After` and stop concurrent attempts from the same IP.
-8. On `410`, mark the Share terminally expired.
-9. Verify complete ciphertext length before decryption.
-10. Decrypt and authenticate locally, then inspect/extract the ZIP safely.
-
-For private-key discovery before download:
-
-1. Send one body-only private key to `POST /api/v0/list` over verified HTTPS.
-2. Treat `200 OK` with an empty `archives` array as a normal no-match result.
-3. Select a returned Share by stable `id`, not by potentially duplicated title.
-4. Retain its `cipher_meta` and use its `download_url` for separate password-hash
-   authorization.
-5. Do not log the private key or attempt key enumeration.
-
-## Retry and timeout guidance
-
-- Set download timeouts for password verification, storage access, and expected
-  payload transfer duration.
-- Do not use aggressive generic HTTP retry middleware on upload.
-- A `400`, `401`, `403`, `410`, `413`, `415`, `416`, `426`, or `507` response
-  requires input, state, deployment, or capacity correction rather than an
-  unchanged retry.
-- A `429` must use `Retry-After`; do not add parallel retries.
-- A `500` may be transient, but upload outcome can be ambiguous. Require an
-  operator decision or an application-level deduplication plan before retry.
-- Download POST is read-only with respect to the Share, but denied attempts
-  mutate persistent rate-limit state.
-
-## Safe observability
+fail the primary operation. The implementation is the
+[audit logger](./internal/audit/audit.go) and
+[audit-event schema](./internal/ent/schema/auditevent.go).
+The following boundaries apply equally to server audit records, browser
+diagnostics, agent reports, prompts, traces, tickets, and persisted memory.
 
 Permitted diagnostics include:
 
@@ -909,25 +1405,68 @@ The browser's expected high-level sequence is visible in the
 
 An AI coding agent changing this repository should preserve these boundaries:
 
-1. Keep HTTP parsing and response selection in the
-   [HTTP handlers](./internal/http/handlers.go).
-2. Keep upload validation, capacity, and rollback policy in the
-   [upload module](./internal/upload/upload.go).
-3. Keep password, private-key, and admin-login rules in the
-   [authentication module](./internal/auth/auth.go).
-4. Keep active/expired classification in the
-   [Share model](./internal/share/model.go).
-5. Keep database query composition in the [Share store](./internal/share/store.go)
-   or Ent-generated accessors rather than adding ad hoc SQL.
-6. Keep blob/row consistency under the
-   [integrity service](./internal/storage/integrity.go).
-7. Preserve the stateless API boundary and trusted-proxy checks in
-   [HTTP middleware](./internal/http/middleware.go).
-8. Update browser and server contracts together when changing encryption or
-   password derivation.
-9. Preserve generic anonymous error behavior.
-10. Add route-level tests for request/response changes and client-side tests for
-    browser-only cryptography or archive behavior.
+### Architecture and ownership
+
+- Keep one Go server, server-rendered pages, SQLite metadata, filesystem blobs,
+  and locally served assets. Do not add a SPA, CDN, external service dependency,
+  unnecessary framework layer, or server dependency on decrypted archive data.
+- Respect the owning modules in the [architecture table](#project-identity).
+  HTTP handlers parse, call the owning module, and choose a status/redirect;
+  storage, authentication, query, and upload policy stay behind cohesive APIs.
+- Use Ent for first-party database access. Raw SQL belongs only to generated or
+  migration-owned code. Keep schema constraints, foreign keys, connection
+  behavior, and migrations deliberate; choose SQLite safety over throughput.
+- Migrate every affected caller in a clean cutover, remove obsolete helpers,
+  and avoid aliases unless a real compatibility requirement justifies them.
+- Prefer domain names and branches that reflect behavior. Module boundaries
+  must reduce what a cold reader needs to know rather than add shallow plumbing.
+
+### Security and durable state
+
+- Review security end to end, not as a middleware checkbox: transport, cookies,
+  CSP, sessions, CSRF, IP identity, bans, metadata disclosure, and storage must
+  agree. Preserve generic anonymous errors on ambiguous access and cap/disk
+  failures; do not leak private state or weaken one layer for convenience.
+- Admin access must fail closed for unknown users, password-check errors,
+  rotation errors, CSRF failures, and ban checks. No failed branch may create
+  or preserve administrator access. Keep operational inspection/deletion useful
+  without introducing an unsafe mutation path.
+- Treat every Share as one durable blob/row pair throughout create, delete,
+  purge, repair, and failure handling. Cleanup remains idempotent; filesystem
+  errors must not be reported as successful metadata cleanup.
+- Preserve the single active/expired rule across lists, detail, payload access,
+  cleanup, admin inspection, and tests. Store durable timestamps in UTC and use
+  configured `TZ` only for display or scheduled-maintenance boundaries.
+- Keep public listing and private-key discovery distinct without turning the
+  UUID route into a new private-key gate. Follow the
+  [credential-role contract](#distinct-credentials-and-identifiers).
+- Keep secrets in runtime configuration and examples symbolic. Invalid or
+  missing required configuration must be obvious; never include real secrets
+  in source, documentation, diagnostics, or persisted agent state.
+- Change browser and server encryption/authorization contracts together.
+  Stored metadata for opaque payloads must be intentionally safe to disclose;
+  never require plaintext archive contents to validate server policy.
+
+### Browser behavior and maintainability
+
+- Preserve client ownership of ZIP construction, encryption, decryption,
+  previews, and visible download names. Preserve uploaded basenames when
+  possible, sanitize dangerous filename characters, and do not use internal
+  UUID/blob names as normal end-user filenames.
+- Keep templates legible, CSS sizing/layout classes shared, and native
+  JavaScript modules small enough to inspect without extra build machinery.
+  Preserve the current local design and make mobile behavior first-class,
+  including Android downloads, sidebar state, touch navigation, and filenames.
+- Preserve explanatory comments; update inaccurate comments rather than
+  deleting context. Remove commented-out dead code instead of retaining it.
+  Function/struct comments should explain purpose and non-obvious invariants
+  concisely for human maintainers first and future agents second.
+- Test real core flows and real failure branches, not mocks substituting for
+  upload, store, route, cleanup, or browser-helper behavior. Go tests own server
+  policy/persistence/session behavior; Bun tests own client-only text, crypto,
+  progress, and download behavior.
+
+### Validation references
 
 The strongest executable references are:
 
@@ -947,63 +1486,3 @@ go test ./...
 go vet ./...
 bun test
 ```
-
-## Linked file index
-
-Every project file referenced by this guide is linked below for direct agent
-navigation.
-
-### Project and build
-
-- [README](./README.md)
-- [CHANGELOG](./CHANGELOG.md)
-- [Go module](./go.mod)
-- [environment example](./.env.example)
-- [Dockerfile](./Dockerfile)
-- [container entrypoint](./entrypoint.sh)
-
-### Server wiring and HTTP
-
-- [server entry point](./cmd/shareserver/main.go)
-- [application container](./internal/app/app.go)
-- [configuration loader](./internal/config/config.go)
-- [route table](./internal/http/router.go)
-- [HTTP middleware](./internal/http/middleware.go)
-- [HTTP handlers](./internal/http/handlers.go)
-- [download protection](./internal/http/download.go)
-- [cleanup scheduler](./internal/http/cleanup.go)
-
-### Domain, persistence, and security
-
-- [authentication module](./internal/auth/auth.go)
-- [audit logger](./internal/audit/audit.go)
-- [database bootstrap](./internal/db/db.go)
-- [Share model](./internal/share/model.go)
-- [Share store](./internal/share/store.go)
-- [upload module](./internal/upload/upload.go)
-- [blob store](./internal/storage/blobstore.go)
-- [integrity service](./internal/storage/integrity.go)
-- [Share schema](./internal/ent/schema/share.go)
-- [administrator schema](./internal/ent/schema/admin.go)
-- [session schema](./internal/ent/schema/session.go)
-- [audit-event schema](./internal/ent/schema/auditevent.go)
-- [failure-event schema](./internal/ent/schema/loginfailureevent.go)
-- [IP-ban schema](./internal/ent/schema/ipban.go)
-
-### Browser implementation and templates
-
-- [API template](./web/templates/api.html)
-- [Share template](./web/templates/share.html)
-- [upload client](./web/static/js/upload.js)
-- [crypto client](./web/static/js/crypto.js)
-- [Share client](./web/static/js/share.js)
-- [archive client](./web/static/js/archive.js)
-- [ZIP helpers](./web/static/js/zip.js)
-- [robots file](./web/robots.txt)
-
-### Executable contract tests
-
-- [API route tests](./internal/test/api_test.go)
-- [HTTP tests](./internal/test/http_test.go)
-- [upload tests](./internal/test/upload_test.go)
-- [crypto tests](./web/test/crypto.test.mjs)
