@@ -26,7 +26,7 @@ These are baked in and not negotiable without changing what this is:
   decryption happens only in the browser.
 - **Payload access requires the password hash.** The server compares each
   canonical SHA-256 value against its separate verifier before returning bytes.
-- **Every download is a POST.** Payload responses wait at least 2 seconds.
+- **Every download is a POST.** Responses have no artificial delay.
   More than 10 failed password requests from one IP in one minute create a
   persistent 24-hour ban with random `-3600..18000` second jitter.
 - **Every upload is zip-backed**, even a single file.
@@ -276,9 +276,9 @@ derive its secret-scoped lookup hash and never returns or stores the raw value.
 data. It is the Base64-encoded SHA-256 digest described above; plaintext archive
 passwords are rejected. A correct credential returns the raw encrypted payload
 as `application/octet-stream`; clients own decryption.
-Wrong passwords return `401` without payload bytes. Every response waits at
-least 2 seconds. The eleventh failed password request from one IP within a
-rolling minute creates a persistent `24h + random(-3600s..18000s)` ban;
+Wrong passwords return `401` without payload bytes. The eleventh failed
+password request from one IP within a rolling minute creates a persistent
+`24h + random(-3600s..18000s)` ban;
 subsequent responses return `429` with `Retry-After`.
 
 ### Download with curl

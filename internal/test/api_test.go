@@ -618,20 +618,50 @@ func TestUnsupportedChineseLanguageFallsBackToEnglish(t *testing.T) {
 	assertBodyContains(t, response.Body.String(), `<html lang="en">`, ">Upload</h1>")
 }
 
-func TestAPIDownloadTwoSecondDelayAppliesToDeniedRequests(t *testing.T) {
-	a := newTestApp(t)
-	router := httpx.New(a)
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/download/not-a-uuid", strings.NewReader(downloadPasswordJSON("wrong")))
-	req.TLS = &tls.ConnectionState{}
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	started := time.Now()
-	router.ServeHTTP(w, req)
-	if elapsed := time.Since(started); elapsed < 2*time.Second {
-		t.Fatalf("denied download delay = %v, want at least 2s", elapsed)
-	}
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("denied download status = %d, want 401", w.Code)
+func TestAPIDownloadErrorsDoNotWait(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+	}{
+		{"insecure", http.StatusUpgradeRequired},
+		{"denied", http.StatusUnauthorized},
+		{"banned", http.StatusTooManyRequests},
+		{"expired", http.StatusGone},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, router := newRouter(t)
+			ip := "203.0.113.25"
+			id := "not-a-uuid"
+			if tc.name == "banned" {
+				if _, err := a.DB.IpBan.Create().SetID("download:" + ip).
+					SetBannedUntil(time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano)).
+					Save(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.name == "expired" {
+				id = "00000000-0000-0000-0000-000000000127"
+				insertProtectedShare(t, a, id, "expired", time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano), "correct")
+			}
+			req := httptest.NewRequest(http.MethodPost, "/api/v0/download/"+id, strings.NewReader(downloadPasswordJSON("correct")))
+			if tc.name != "insecure" {
+				req.TLS = &tls.ConnectionState{}
+			}
+			req.RemoteAddr = ip + ":4321"
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			started := time.Now()
+			router.ServeHTTP(w, req)
+			if elapsed := time.Since(started); elapsed >= time.Second {
+				t.Fatalf("download error response took %v, want less than 1s", elapsed)
+			}
+			if w.Code != tc.status {
+				t.Fatalf("download status = %d, want %d", w.Code, tc.status)
+			}
+			if tc.name == "banned" && w.Header().Get("Retry-After") == "" {
+				t.Fatal("banned response is missing Retry-After")
+			}
+		})
 	}
 }
 

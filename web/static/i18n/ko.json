@@ -17,7 +17,7 @@
 		"passwordHashTitle": "비밀번호 해시",
 		"passwordHashSummary": "업로드와 다운로드는 아래 Base64 인코딩 SHA-256 비밀번호 해시만 허용합니다.",
 		"downloadSummary": "password_hash를 JSON 또는 폼 데이터로 전송합니다. 성공 응답은 암호화된 아카이브를 반환합니다.",
-		"downloadPolicy": "모든 응답은 최소 2초 지연됩니다. 한 IP에서 1분 안에 비밀번호 요청이 10회 넘게 실패하면 23–29시간 동안 차단됩니다."
+		"downloadPolicy": "한 IP에서 1분 안에 비밀번호 요청이 10회 넘게 실패하면 23–29시간 동안 차단됩니다."
 	},
 	"time": { "secondsSuffix": "초." },
 	"upload": {

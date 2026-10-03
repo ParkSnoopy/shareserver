@@ -238,14 +238,8 @@ func (p *uploadPart) Read(buffer []byte) (int, error) {
 // apiDownloadPost verifies the separately stored password hash before exposing
 // any encrypted payload bytes. It never decrypts the client ciphertext.
 func (h *Handler) apiDownloadPost(w http.ResponseWriter, r *http.Request) {
-	started := time.Now()
-	wait := func() {
-		if remaining := downloadResponseDelay - time.Since(started); remaining > 0 {
-			time.Sleep(remaining)
-		}
-	}
+	now := time.Now()
 	if !h.secureRequest(r) {
-		wait()
 		http.Error(w, "HTTPS required", http.StatusUpgradeRequired)
 		return
 	}
@@ -253,23 +247,21 @@ func (h *Handler) apiDownloadPost(w http.ResponseWriter, r *http.Request) {
 	if h.Downloads == nil {
 		h.Downloads = newDownloadProtection(h.A.DB)
 	}
-	if until, banned := h.Downloads.bannedUntil(r.Context(), ip, started); banned {
-		wait()
-		w.Header().Set("Retry-After", retryAfterSeconds(until, started))
+	if until, banned := h.Downloads.bannedUntil(r.Context(), ip, now); banned {
+		w.Header().Set("Retry-After", retryAfterSeconds(until, now))
 		http.Error(w, "too many download attempts", http.StatusTooManyRequests)
 		return
 	}
 	target := chi.URLParam(r, "id")
 	deny := func() {
-		until, banned, err := h.Downloads.recordFailure(r.Context(), ip, started)
-		wait()
+		until, banned, err := h.Downloads.recordFailure(r.Context(), ip, now)
 		if err != nil {
 			w.Header().Set("Retry-After", "60")
 			http.Error(w, "too many download attempts", http.StatusTooManyRequests)
 			return
 		}
 		if banned {
-			w.Header().Set("Retry-After", retryAfterSeconds(until, started))
+			w.Header().Set("Retry-After", retryAfterSeconds(until, now))
 			http.Error(w, "too many download attempts", http.StatusTooManyRequests)
 			return
 		}
@@ -287,11 +279,9 @@ func (h *Handler) apiDownloadPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !share.ActiveAt(requestTime(r)).IsActive(s) {
-		wait()
 		http.Error(w, "expired", http.StatusGone)
 		return
 	}
-	wait()
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+s.ID+`.payload"`)
 	w.Header().Set("Cache-Control", "no-store")

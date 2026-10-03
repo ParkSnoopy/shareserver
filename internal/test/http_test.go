@@ -364,7 +364,7 @@ func TestAPIDownloadExpiredReturns410AfterPasswordCheck(t *testing.T) {
 	}
 }
 
-func TestAPIDownloadCorrectPasswordReturnsEncryptedPayloadAfterDelay(t *testing.T) {
+func TestAPIDownloadCorrectPasswordReturnsEncryptedPayloadWithoutWaiting(t *testing.T) {
 	a, router := newRouter(t)
 	id := "00000000-0000-0000-0000-000000000002"
 	insertProtectedShare(t, a, id, "encrypted-payload", time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano), "correct")
@@ -382,8 +382,8 @@ func TestAPIDownloadCorrectPasswordReturnsEncryptedPayloadAfterDelay(t *testing.
 	if w.Body.String() != "encrypted-payload" {
 		t.Fatalf("expected encrypted payload, got %q", w.Body.String())
 	}
-	if elapsed := time.Since(started); elapsed < 2*time.Second {
-		t.Fatalf("download delay = %v, want at least 2s", elapsed)
+	if elapsed := time.Since(started); elapsed >= time.Second {
+		t.Fatalf("authorized download took %v, want less than 1s", elapsed)
 	}
 }
 
@@ -493,7 +493,6 @@ func TestAPIIndexShowsArchiveListAndUsageGuide(t *testing.T) {
 		"matching active private archives",
 		"/api/v0/download/{uuid}",
 		"SHA-256",
-		"at least 2 seconds",
 		"23–29 hour ban",
 	)
 }

@@ -15,7 +15,6 @@ const (
 	downloadFailurePrefix = "download:"
 	downloadFailureLimit  = 10
 	downloadFailureWindow = time.Minute
-	downloadResponseDelay = 2 * time.Second
 	downloadTimestamp     = "2006-01-02T15:04:05.000000000Z07:00"
 	downloadBanBase       = 24 * time.Hour
 	downloadBanJitterMin  = -3600 * time.Second

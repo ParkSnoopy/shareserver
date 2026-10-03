@@ -1,5 +1,11 @@
 # Change Log
 
+## 2026-10-03
+
+### Update
+- Remove the artificial delay before download responses while preserving persistent failed-password tracking, IP bans, and `Retry-After`.
+- Set the installed version and Compose image tag to `v0.2.7`.
+
 ## 2026-09-07
 
 ### Add

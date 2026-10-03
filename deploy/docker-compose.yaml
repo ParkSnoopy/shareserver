@@ -2,7 +2,7 @@ name: shareserver
 
 services:
   shareserver:
-    image: ghcr.io/parksnoopy/shareserver:v0.2.6
+    image: ghcr.io/parksnoopy/shareserver:v0.2.7
     entrypoint: ["/app/shareserver"]
     restart: unless-stopped
     env_file: ../.env

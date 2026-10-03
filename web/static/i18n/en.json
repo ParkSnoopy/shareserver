@@ -17,7 +17,7 @@
 		"passwordHashTitle": "Password Hash",
 		"passwordHashSummary": "Uploads and downloads accept only the Base64-encoded SHA-256 password hash below.",
 		"downloadSummary": "Send password_hash as JSON or form data. A successful response returns the encrypted archive payload.",
-		"downloadPolicy": "Every response waits at least 2 seconds. More than 10 failed password requests from one IP in one minute trigger a persistent 23–29 hour ban."
+		"downloadPolicy": "More than 10 failed password requests from one IP in one minute trigger a persistent 23–29 hour ban."
 	},
 	"time": { "secondsSuffix": "s." },
 	"upload": {
