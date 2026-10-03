@@ -36,6 +36,7 @@ export class Progress {
 		this.pulses = new Map();
 		this.t0 = performance.now();
 		this.el.textContent = "";
+		this.el.hidden = true;
 	}
 
 	// bar renders a fixed-width text progress bar.
@@ -47,16 +48,24 @@ export class Progress {
 
 	// render writes phase lines in first-seen order.
 	render() {
+		this.el.hidden = false;
 		this.el.textContent = this.order
 			.map((phase) => this.lines.get(phase))
-			.join("\n");
+			.join("\n\n");
+	}
+
+	// paint lets the current phase reach the screen before the next work starts.
+	async paint() {
+		await new Promise((resolve) => {
+			requestAnimationFrame(() => requestAnimationFrame(resolve));
+		});
 	}
 
 	// line formats one transfer phase with percent, bytes, and state.
 	line(phase, done, total, state) {
 		const p = total ? done / total : 0;
 		const label = translate(`phase.${phase}`);
-		return `${label.padEnd(9)} ${this.bar(p)} ${String(Math.round(p * 100)).padStart(3)}% ${fmtBytes(done)} / ${fmtBytes(total)} ${state}`;
+		return `${label} ${Math.round(p * 100)}% ${state}\n${this.bar(p)}\n${fmtBytes(done)} / ${fmtBytes(total)}`;
 	}
 
 	// cancelPending removes a delayed update for a completed or failed phase.
@@ -128,10 +137,6 @@ export class Progress {
 
 	// pulse shows bounded synthetic progress for work without byte callbacks.
 	pulse(phase, total, state = "working") {
-		if (!this.seen.has(phase)) {
-			this.seen.add(phase);
-			this.order.push(phase);
-		}
 		const start = performance.now();
 		this.pulses.set(phase, { total, start, state });
 		const tick = () => {

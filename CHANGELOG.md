@@ -2,6 +2,11 @@
 
 ## 2026-10-03
 
+### Fix
+- Show completed upload links instead of hiding their rows because of empty decorative gutters.
+- Render transfer phases immediately, let decrypt/unzip status paint before work, and retain completed mobile-readable progress.
+- Reset failed-upload state on retry, prevent overlapping operations, and use stored ciphertext size when download headers omit the length.
+
 ### Update
 - Remove the artificial delay before download responses while preserving persistent failed-password tracking, IP bans, and `Retry-After`.
 - Set the installed version and Compose image tag to `v0.2.7`.

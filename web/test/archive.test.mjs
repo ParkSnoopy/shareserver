@@ -29,6 +29,46 @@ async function expectArchiveError(promise, code) {
 }
 
 describe("openArchive", () => {
+	test("awaits phase-start rendering before crypto work", async () => {
+		const { blob } = await zippedFixture();
+		const encrypted = await encryptBlob(blob, "hunter2");
+		const events = [];
+		await openArchive(new Uint8Array(await encrypted.blob.arrayBuffer()), {
+			encrypted: true,
+			password: "hunter2",
+			cipher: encrypted.meta,
+			onDecryptStart: async () => {
+				await Promise.resolve();
+				events.push("painted");
+			},
+			onDecryptDebug: (event) => {
+				if (event === "crypto-input") events.push("crypto");
+			},
+		});
+		expect(events).toEqual(["painted", "crypto"]);
+	});
+
+	test("waits for unzip phase readiness before completing extraction", async () => {
+		const { blob } = await zippedFixture();
+		let release;
+		let finished = false;
+		const ready = new Promise((resolve) => {
+			release = resolve;
+		});
+		const opening = openArchive(blob, {
+			onUnzipStart: () => ready,
+			onUnzipDone: () => {
+				finished = true;
+			},
+		});
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		const completedBeforeReady = finished;
+		release();
+		await opening;
+		expect(completedBeforeReady).toBe(false);
+		expect(finished).toBe(true);
+	});
+
 	test("opens a plain archive with uploaded filename and type", async () => {
 		const { blob, manifest } = await zippedFixture(
 			fileFixture("notes.note", "hello", "application/x-note"),

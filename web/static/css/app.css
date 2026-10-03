@@ -196,7 +196,6 @@ p {
 	padding: 12px;
 	background: var(--panel);
 }
-.source-buffer > .editor-line:last-child:has(:empty),
 .source-buffer > .editor-line:has(.progress-output:empty),
 .source-buffer > .editor-line:has(.result-output:empty) {
 	display: none;

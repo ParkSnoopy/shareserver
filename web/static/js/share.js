@@ -64,6 +64,8 @@ let downloadCleanup = () => {};
 // progress. Returns a Uint8Array read directly into a single pre-sized buffer
 // to avoid the memory spike of accumulating chunk arrays and copying them.
 async function fetchBlobWithProgress(id, password, fallbackTotal) {
+	progress.set("download", 0, fallbackTotal, translate("state.fetching"));
+	await progress.paint();
 	const passwordHash = await downloadPasswordHash(password);
 	const res = await fetch(`/api/v0/download/${id}`, {
 		method: "POST",
@@ -111,7 +113,7 @@ async function load() {
 		return entries;
 	}
 	const id = root.dataset.id;
-	const fallbackTotal = manifest.find(Boolean)?.size || 0;
+	const fallbackTotal = Number(root.dataset.size) || 0;
 	const passwordValue = pass?.value || "";
 	if (encrypted && !passwordValue) {
 		throw new ArchiveError(
@@ -152,12 +154,13 @@ async function load() {
 			password: passwordValue,
 			cipher,
 			manifest,
-			onDecryptStart: (blob) => {
+			onDecryptStart: async (blob) => {
 				stopDecrypt = progress.pulse(
 					"decrypt",
 					blob.size || blob.byteLength,
 					translate("state.working"),
 				);
+				await progress.paint();
 			},
 			onDecryptDone: (plain) => {
 				stopDecrypt();
@@ -167,12 +170,13 @@ async function load() {
 			onDecryptDebug: (event, data) => {
 				debugLog(event, data);
 			},
-			onUnzipStart: (plain) => {
+			onUnzipStart: async (plain) => {
 				stopUnzip = progress.pulse(
 					"unzip",
 					plain.size || plain.byteLength,
 					translate("state.working"),
 				);
+				await progress.paint();
 			},
 			onUnzipDone: (plain) => {
 				stopUnzip();
@@ -193,8 +197,6 @@ async function load() {
 
 	renderList();
 	root.hidden = true;
-	progress.reset();
-	progress.el.hidden = true;
 	return entries;
 }
 
@@ -475,12 +477,14 @@ function previewFor(entry) {
 
 // loadEntries resets progress and reports list/decrypt errors without stale output.
 async function loadEntries() {
-	await settlePasswordInput(pass, () => passwordComposing, {
-		onDebug: debugLog,
-	});
-	progress.reset();
-	entries = null;
+	if (loadBtn.disabled) return;
+	loadBtn.disabled = true;
 	try {
+		await settlePasswordInput(pass, () => passwordComposing, {
+			onDebug: debugLog,
+		});
+		progress.reset();
+		entries = null;
 		await load();
 	} catch (err) {
 		debugLog("load-failed", {
@@ -495,10 +499,12 @@ async function loadEntries() {
 			failurePhase(err),
 			err.message || translate("share.archiveOpenFailed"),
 		);
+	} finally {
+		loadBtn.disabled = false;
 	}
 }
 
-// failurePhase keeps password errors under decrypt and archive errors under list.
+// failurePhase keeps password errors under decrypt and extraction errors under unzip.
 function failurePhase(err) {
 	if (
 		err?.code === ArchiveErrorCode.PasswordRequired ||
@@ -507,8 +513,8 @@ function failurePhase(err) {
 	) {
 		return "decrypt";
 	}
-	if (err?.code === ArchiveErrorCode.CorruptArchive) return "list";
-	return encrypted ? "decrypt" : "list";
+	if (err?.code === ArchiveErrorCode.CorruptArchive) return "unzip";
+	return progress.order.at(-1) || "download";
 }
 
 loadBtn.onclick = loadEntries;

@@ -18,10 +18,43 @@ function progressHarness() {
 		},
 	};
 	globalThis.performance = { now: () => Date.now() };
-	return { el, progress: new Progress(el), text: () => text, reveals: () => reveals };
+	return {
+		el,
+		progress: new Progress(el),
+		text: () => text,
+		reveals: () => reveals,
+	};
 }
 
 describe("Progress", () => {
+	test("phase label, bar, and byte counts use separate narrow-screen lines", () => {
+		const { progress, text } = progressHarness();
+		progress.done("download", 1024);
+		expect(text().split("\n")).toEqual([
+			"download 100% done",
+			"[####################]",
+			"1.0 KiB / 1.0 KiB",
+		]);
+	});
+
+	test("pulse renders the first working state immediately", () => {
+		const { progress, text, reveals } = progressHarness();
+		const stop = progress.pulse("decrypt", 1024, "working");
+		try {
+			expect(text()).toMatch(/decrypt.*0%.*working/);
+			expect(reveals()).toBe(1);
+		} finally {
+			stop();
+		}
+	});
+
+	test("new phase reveals a previously hidden progress output", () => {
+		const { el, progress } = progressHarness();
+		el.hidden = true;
+		progress.set("download", 0, 1024, "fetching");
+		expect(el.hidden).toBe(false);
+	});
+
 	test("first phase update renders immediately", () => {
 		const { progress, text, reveals } = progressHarness();
 

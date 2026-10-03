@@ -1,8 +1,8 @@
 import { downloadPasswordHash, encryptBlob } from "./crypto.js";
-import { fmtBytes, Progress } from "./progress.js";
 import { initI18n, onLanguageChange, translate } from "./i18n.js";
-import { canPreview, filesToZip } from "./zip.js";
 import { settlePasswordInput } from "./ime.js";
+import { fmtBytes, Progress } from "./progress.js";
+import { canPreview, filesToZip } from "./zip.js";
 
 await initI18n();
 
@@ -392,9 +392,13 @@ function uploadFormData(out, size) {
 
 form.onsubmit = async (event) => {
 	event.preventDefault();
+	const submit = form.querySelector('button[type="submit"]');
+	if (submit.disabled) return;
+	submit.disabled = true;
 	result.textContent = "";
-	await settlePasswordInput(passwordEl, () => passwordComposing);
+	progress.reset();
 	try {
+		await settlePasswordInput(passwordEl, () => passwordComposing);
 		const fd = new FormData(form);
 		const password = passwordEl.value;
 		if (!password) throw Error(translate("archiveError.passwordRequired"));
@@ -427,6 +431,7 @@ form.onsubmit = async (event) => {
 		);
 		let blob;
 		try {
+			await progress.paint();
 			({ blob } = await filesToZip(files));
 		} finally {
 			stopZip();
@@ -441,6 +446,7 @@ form.onsubmit = async (event) => {
 			translate("state.working"),
 		);
 		try {
+			await progress.paint();
 			const enc = await encryptBlob(blob, password);
 			blob = enc.blob;
 			cipherMeta = JSON.stringify(enc.meta);
@@ -457,7 +463,8 @@ form.onsubmit = async (event) => {
 			progress.fail("upload", msg, blob.size, maxBytes);
 			throw Error(msg);
 		}
-		progress.set("upload", 0, zipSize, translate("state.sending"));
+		progress.set("upload", 0, blob.size, translate("state.sending"));
+		await progress.paint();
 		const out = new FormData();
 		for (const key of [
 			"csrf",
@@ -472,8 +479,8 @@ form.onsubmit = async (event) => {
 		out.append("cipher_meta", cipherMeta);
 		out.append("zip_manifest", "[]");
 		out.append("blob", blob, "share.blob");
-		const json = await uploadFormData(out, zipSize);
-		progress.done("upload", zipSize);
+		const json = await uploadFormData(out, blob.size);
+		progress.done("upload", blob.size);
 		result.innerHTML = `<a class="cmd" href="${json.url}">${location.origin}${json.url}</a>`;
 	} catch (err) {
 		const msg = err.message || String(err);
@@ -484,6 +491,8 @@ form.onsubmit = async (event) => {
 			progress.fail("upload", msg);
 		}
 		result.textContent = msg;
+	} finally {
+		submit.disabled = false;
 	}
 };
 

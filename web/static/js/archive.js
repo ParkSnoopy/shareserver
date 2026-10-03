@@ -66,7 +66,7 @@ export async function openArchive(source, options = {}) {
 				translate("archiveError.passwordRequired"),
 			);
 		}
-		onDecryptStart?.(source);
+		await onDecryptStart?.(source);
 		try {
 			archiveBytes = await decryptBlob(source, password, cipher, {
 				onDebug: onDecryptDebug,
@@ -93,7 +93,7 @@ export async function openArchive(source, options = {}) {
 		archiveBytes = new Uint8Array(await source.arrayBuffer());
 	}
 
-	onUnzipStart?.(archiveBytes);
+	await onUnzipStart?.(archiveBytes);
 	let raw;
 	try {
 		raw = await unzipBytes(archiveBytes);
