@@ -73,6 +73,15 @@ HTTPS deployment commands, use the [README deployment sections](./README.md#quic
 [Caddy configuration](./deploy/Caddyfile), and
 [interactive deployment script](./deploy/deploy.sh).
 
+The container entrypoint supervises Anubis on port `8080` and Shareserver on
+`127.0.0.1:8081`. The [gateway policy](./anubis-policy.yaml) challenges every
+application route except nonempty `/api/` subpaths. `/api/` is HTML and is
+challenged; machine operations under `/api/v0/` do not need an Anubis cookie.
+Anubis's own challenge assets/verification routes remain accessible. Native
+execution starts only Shareserver, with default address `127.0.0.1:8081`.
+Container configuration and proxy-trust requirements are owned by the
+[README](./README.md#run-with-docker).
+
 ## Public route inventory
 
 The current routes are registered in the [route table](./internal/http/router.go).
@@ -116,6 +125,10 @@ A request is secure when either:
 
 Trusted proxy peers are loopback addresses. In a Railway environment, a peer in
 `100.0.0.0/8` is also trusted only when `RAILWAY_ENVIRONMENT_ID` is present.
+In the container, Anubis is the loopback peer. Its supervisor enables application
+proxy trust only in trusted-proxy mode (`ANUBIS_USE_REMOTE_ADDRESS=false`);
+the HTTPS Compose sidecar supplies verified client-IP and HTTPS headers. Direct
+mode ignores forwarded security claims, even though Anubis connects over loopback.
 Untrusted clients cannot make a request secure merely by adding forwarding
 headers. The exact rules live in [HTTP middleware](./internal/http/middleware.go),
 with proxy regression coverage in [API route tests](./internal/test/api_test.go).

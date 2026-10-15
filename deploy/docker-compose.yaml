@@ -2,19 +2,20 @@ name: shareserver
 
 services:
   shareserver:
-    image: ghcr.io/parksnoopy/shareserver:v0.2.7
-    entrypoint: ["/app/shareserver"]
+    image: ghcr.io/parksnoopy/shareserver:v0.2.8
     restart: unless-stopped
     env_file: ../.env
     environment:
       DEBUG: "false"
       APP_SECRET: "${APP_SECRET:?Set APP_SECRET in .env}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}"
-      ADDR: "127.0.0.1:8080"
+      ANUBIS_BIND: "127.0.0.1:8080"
+      ANUBIS_USE_REMOTE_ADDRESS: "false"
+      ANUBIS_DIFFICULTY: "${ANUBIS_DIFFICULTY:-4}"
       DB_PATH: /app/data/shareserver.db
       BLOB_DIR: /app/data/blobs
       TRUST_PROXY_HEADERS: "true"
-    # The HTTPS sidecar shares this namespace; HTTP stays on loopback only.
+    # Caddy -> Anubis :8080 -> Shareserver :8081, all on shared loopback.
     ports:
       - "${HTTPS_PORT:-8443}:8443"
     volumes:
@@ -25,7 +26,7 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9090/healthz && wget -q -O /dev/null http://127.0.0.1:8081/api/"]
       interval: 10s
       timeout: 5s
       retries: 3

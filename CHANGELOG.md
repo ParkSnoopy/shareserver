@@ -1,5 +1,14 @@
 # Change Log
 
+## 2026-10-15
+
+### Update
+- Bundle Anubis v1.27.0 on container port 8080 and supervise it with the loopback-only Shareserver backend on port 8081.
+- Challenge all application routes except nonempty `/api/` subpaths; `/api/`, static assets, and browser/admin pages require proof-of-work.
+- Configure proof-of-work with `ANUBIS_DIFFICULTY` (default 4); retain trusted TLS/client-IP forwarding through the HTTPS sidecar.
+- Preserve configured application secrets across container restarts and stop both processes if either exits.
+- Set the installed version and Compose image tag to `v0.2.8`.
+
 ## 2026-10-03
 
 ### Fix

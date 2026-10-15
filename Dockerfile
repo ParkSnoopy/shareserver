@@ -13,6 +13,10 @@ RUN CGO_ENABLED=1 go build -o shareserver ./cmd/shareserver
 # Runner
 FROM alpine:3.24
 
+RUN apk add --no-cache bash ca-certificates
+COPY --from=ghcr.io/techarohq/anubis:v1.27.0 /ko-app/anubis /usr/local/bin/anubis
+ADD --chmod=644 https://raw.githubusercontent.com/TecharoHQ/anubis/v1.27.0/LICENSE /usr/share/licenses/anubis/LICENSE
+
 # Add user `shareserver`
 USER root
 RUN \
@@ -35,7 +39,12 @@ RUN \
 USER shareserver
 WORKDIR /app
 
+ENV ANUBIS_DIFFICULTY=4
 EXPOSE 8080
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=3 \
+	CMD wget -q -O /dev/null http://127.0.0.1:9090/healthz && \
+	    wget -q -O /dev/null http://127.0.0.1:8081/api/
 
 # Run initial script
 ENTRYPOINT ["/app/entrypoint.sh"]

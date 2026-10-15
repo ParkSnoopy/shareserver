@@ -183,10 +183,13 @@ url_host=$TLS_HOST
 if [[ "$san_type" == IP && "$TLS_HOST" == *:* ]]; then url_host="[$TLS_HOST]"; fi
 url="https://$url_host:$HTTPS_PORT"
 # Connect locally while checking the chosen certificate identity, not an insecure override.
-status=$(curl -fsS --noproxy '*' --cacert "$cert" \
+probe=(curl -fsS --noproxy '*' --cacert "$cert" \
 	--connect-to "$url_host:$HTTPS_PORT:127.0.0.1:$HTTPS_PORT" \
-	--retry 10 --retry-connrefused --retry-delay 1 --retry-max-time 30 --max-time 5 \
-	--output /dev/null --write-out '%{http_code}' "$url/api/")
-[[ "$status" == 200 ]] || die "HTTPS verification returned HTTP $status."
+	--retry 10 --retry-connrefused --retry-delay 1 --retry-max-time 30 --max-time 5)
+response=$("${probe[@]}" "$url/api/")
+[[ "$response" == *'id="anubis_challenge"'* ]] || die "HTTPS page did not return an Anubis challenge."
+response=$("${probe[@]}" --header 'Content-Type: application/json' \
+	--data '{"private_key":"deployment-healthcheck"}' "$url/api/v0/list")
+[[ "$response" == *'"archives":'* ]] || die "HTTPS API did not return an unchallenged archive response."
 echo "Deployed and verified: $url"
 echo "Trust data/tls/server.crt on each client; keep server.key private."

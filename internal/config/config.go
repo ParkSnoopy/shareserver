@@ -56,7 +56,7 @@ func Load() Config {
 		log.Fatal(err)
 	}
 	return Config{
-		Addr: env("ADDR", ":8080"), DBPath: env("DB_PATH", "data/shareserver.db"), BlobDir: env("BLOB_DIR", "data/blobs"),
+		Addr: env("ADDR", "127.0.0.1:8081"), DBPath: env("DB_PATH", "data/shareserver.db"), BlobDir: env("BLOB_DIR", "data/blobs"),
 		AppSecret: []byte(secret), AdminUser: env("ADMIN_USER", "admin"), AdminPassword: adminPassword,
 		MaxUploadBytes: int64(envInt("MAX_UPLOAD_BYTES", 200*1024*1024)), StorageCapBytes: int64(envInt("STORAGE_CAP_BYTES", 400*1024*1024)),
 		TrustProxyHeaders: envBool("TRUST_PROXY_HEADERS", false), TZ: loc, Dev: dev,

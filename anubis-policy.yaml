@@ -1,0 +1,15 @@
+# Keep /api/ challenged: only a nonempty API subpath bypasses proof-of-work.
+bots:
+  - name: api-operations
+    path_regex: '^/api/.+'
+    action: ALLOW
+  - name: application
+    path_regex: '^'
+    action: CHALLENGE
+    # Omit per-rule settings so --difficulty controls the fast PoW challenge.
+
+dnsbl: false
+honeypot:
+  enabled: false
+openGraph:
+  enabled: false

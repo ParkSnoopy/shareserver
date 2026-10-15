@@ -53,19 +53,44 @@ docker run --detach \
   --restart unless-stopped \
   --env-file .env \
   --env DEBUG=false \
-  --env ADDR=0.0.0.0:8080 \
+  --env ANUBIS_DIFFICULTY=4 \
+  --env ANUBIS_USE_REMOTE_ADDRESS=false \
   --env DB_PATH=/app/data/shareserver.db \
   --env BLOB_DIR=/app/data/blobs \
   --publish 8080:8080 \
   --mount type=volume,source=shareserver-data,target=/app/data \
-  --entrypoint /app/shareserver \
   ghcr.io/parksnoopy/shareserver:latest
 ```
 
 The named volume persists the SQLite database and uploaded blobs. The entrypoint
-override runs the binary directly instead of regenerating `APP_SECRET` at each
-startup; keep the configured secret stable across restarts. Place a trusted HTTPS
-reverse proxy in front of the HTTP listener for API operations.
+preserves configured secrets and supervises both processes:
+
+```text
+TLS proxy -> Anubis :8080 -> Shareserver 127.0.0.1:8081
+```
+
+The image bundles Anubis `v1.27.0`. Its [policy](./anubis-policy.yaml) bypasses
+only nonempty `/api/` subpaths, such as `/api/v0/upload`. `/api/` itself,
+all browser/admin pages, static assets, and unknown non-API routes require a
+successful proof-of-work challenge, regardless of user agent. Anubis serves its
+own challenge assets and verification endpoints without that challenge so clients
+can complete it. Passing the challenge issues a cookie; it does not replace
+Shareserver authentication, CSRF, HTTPS checks, body limits, or IP bans.
+
+`ANUBIS_DIFFICULTY` controls the fast SHA-256 challenge (default `4`, integer
+`1..64`; larger values rapidly increase client work). The backend is fixed to
+loopback port `8081` in the container even if `.env` contains an old `ADDR`.
+Only port `8080` is exposed; Anubis health/metrics stay on `127.0.0.1:9090`.
+Either process exiting stops the pair. Challenge state/signing keys are ephemeral,
+so restarting the container requires clients to solve a new challenge.
+
+The command above selects trusted-proxy mode. Restrict access to port `8080`
+to the HTTPS proxy, which must replace incoming `X-Forwarded-For`, `X-Real-IP`,
+and `X-Forwarded-Proto` headers with verified values. Without a trusted proxy,
+leave `ANUBIS_USE_REMOTE_ADDRESS=true` (the image default): the socket supplies
+the client IP and Shareserver ignores forwarded HTTPS/IP claims. API operations
+then reject plain HTTP, including spoofed `X-Forwarded-Proto: https` requests.
+Do not override the entrypoint with `/app/shareserver`; that bypasses Anubis.
 
 ### Run Docker Compose with self-signed HTTPS
 
@@ -73,7 +98,8 @@ The [Compose deployment](./deploy/docker-compose.yaml) uses the same production
 `.env` configuration as above. Run the commands below from the repository root.
 It publishes only HTTPS on port 8443; the
 [Caddy proxy](./deploy/Caddyfile) shares the app's network namespace so the HTTP
-listener remains on loopback and forwarded HTTPS/client-IP headers are trusted.
+gateway remains on loopback and forwarded HTTPS/client-IP headers are trusted.
+It routes through Anubis on port `8080`, never directly to Shareserver on `8081`.
 Docker Compose 2.17+, Bash, OpenSSL, and curl are required.
 
 Run the [interactive deployment script](./deploy/deploy.sh) to choose the
@@ -153,7 +179,7 @@ mkdir -p data/blobs    # directory for DB_PATH and BLOB_DIR
 
 # 3. run
 ./shareserver
-# -> listening on :8080 (or ADDR from .env)
+# -> listening on 127.0.0.1:8081 (or ADDR from .env)
 ```
 
 Show installed version without starting the server:
@@ -175,7 +201,10 @@ The table below corresponds to the [environment example](./.env.example):
 | Var | Example/default | Purpose |
 | --- | --- | --- |
 | `DEBUG` | `true` | `1`/`true` allows an ephemeral secret + default admin; `0`/`false` requires `APP_SECRET` + `ADMIN_PASSWORD` |
-| `ADDR` | `0.0.0.0:8080` | listen address |
+| `ADDR` | `127.0.0.1:8081` | native backend listen address; container startup fixes it to this loopback address |
+| `ANUBIS_DIFFICULTY` | `4` | container proof-of-work difficulty, integer `1..64` |
+| `ANUBIS_BIND` | `0.0.0.0:8080` | container gateway listener; Compose uses `127.0.0.1:8080` |
+| `ANUBIS_USE_REMOTE_ADDRESS` | `true` | container direct mode uses socket IP and ignores proxy claims; `false` trusts a restricted TLS proxy; Compose sets `false` |
 | `DB_PATH` | `data/shareserver.db` | SQLite path |
 | `BLOB_DIR` | `data/blobs` | where uploaded blobs are stored |
 | `APP_SECRET` | `[REDACTED]` | HMAC key for private-key hashing; **required in prod** |
@@ -185,6 +214,12 @@ The table below corresponds to the [environment example](./.env.example):
 | `STORAGE_CAP_BYTES` | `419430400` | global stored-blob cap |
 | `TRUST_PROXY_HEADERS` | `true` | trust `X-Forwarded-For`/`X-Real-IP`/`X-Forwarded-Proto` from a verified local or Railway proxy |
 | `TZ` | `Asia/Shanghai` | timezone for purge scheduling and display |
+
+The `ANUBIS_*` variables are read by the container entrypoint from its process
+environment (Docker `--env-file` or Compose), not by the Go dotenv loader.
+Native binary execution does not start Anubis. The entrypoint derives
+`TRUST_PROXY_HEADERS` from `ANUBIS_USE_REMOTE_ADDRESS`; do not use the native
+proxy-trust variable to select container gateway mode.
 
 The browser derives the admin authorization value before login submission;
 plaintext `ADMIN_PASSWORD` remains accepted only from runtime configuration.
@@ -212,6 +247,20 @@ Tests are split by runtime; no shell test runner is required.
 go test ./...
 bun test
 ```
+
+For the native integration of the container supervisor/policy, provide absolute
+paths to a built Shareserver binary and the Anubis `v1.27.0` executable:
+
+```sh
+ANUBIS_BINARY=/absolute/path/to/anubis \
+SHARESERVER_BINARY=/absolute/path/to/shareserver \
+  go test ./internal/test -run '^TestContainerGateway$' -count=1
+```
+
+This opt-in test owns ports `8080`, `8081`, and `9090`. It checks challenge
+coverage, API bypass, difficulty, a solved proof-of-work/cookie flow, proxy
+security, and supervisor shutdown with real processes. It is not an image-build
+test; container-engine build/start verification is a separate deployment gate.
 
 This runs:
 
