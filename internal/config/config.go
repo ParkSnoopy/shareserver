@@ -4,8 +4,11 @@ import (
 	"bufio"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -32,18 +35,7 @@ type Config struct {
 func Load() Config {
 	loadDotEnv(".env")
 	dev := envBool("DEBUG", true)
-	secret := os.Getenv("APP_SECRET")
-	if secret == "" {
-		if !dev {
-			log.Fatal("APP_SECRET required when DEBUG is not 1/true")
-		}
-		b := make([]byte, 32)
-		if _, err := rand.Read(b); err != nil {
-			log.Fatal(err)
-		}
-		secret = hex.EncodeToString(b)
-		log.Println("warning: using ephemeral dev APP_SECRET")
-	}
+	dbPath := env("DB_PATH", "data/shareserver.db")
 	adminPassword, hasAdminPassword := os.LookupEnv("ADMIN_PASSWORD")
 	if adminPassword == "" {
 		adminPassword = "admin-change-me"
@@ -51,16 +43,94 @@ func Load() Config {
 	if !dev && (!hasAdminPassword || adminPassword == "admin-change-me") {
 		log.Fatal("ADMIN_PASSWORD required when DEBUG is not 1/true")
 	}
+	secret := os.Getenv("APP_SECRET")
+	if secret == "" {
+		if !dev {
+			var err error
+			secret, err = persistentAppSecret(dbPath + ".secret")
+			if err != nil {
+				log.Fatal("initialize APP_SECRET: ", err)
+			}
+		} else {
+			b := make([]byte, 32)
+			if _, err := rand.Read(b); err != nil {
+				log.Fatal(err)
+			}
+			secret = hex.EncodeToString(b)
+			log.Println("warning: using ephemeral dev APP_SECRET")
+		}
+	}
 	loc, err := time.LoadLocation(env("TZ", "Asia/Shanghai"))
 	if err != nil {
 		log.Fatal(err)
 	}
 	return Config{
-		Addr: env("ADDR", "127.0.0.1:8081"), DBPath: env("DB_PATH", "data/shareserver.db"), BlobDir: env("BLOB_DIR", "data/blobs"),
+		Addr: env("ADDR", "127.0.0.1:8081"), DBPath: dbPath, BlobDir: env("BLOB_DIR", "data/blobs"),
 		AppSecret: []byte(secret), AdminUser: env("ADMIN_USER", "admin"), AdminPassword: adminPassword,
 		MaxUploadBytes: int64(envInt("MAX_UPLOAD_BYTES", 200*1024*1024)), StorageCapBytes: int64(envInt("STORAGE_CAP_BYTES", 400*1024*1024)),
 		TrustProxyHeaders: envBool("TRUST_PROXY_HEADERS", false), TZ: loc, Dev: dev,
 	}
+}
+
+// persistentAppSecret publishes a complete private key file without replacing one
+// created by another startup. Invalid or inaccessible state must never rotate it.
+func persistentAppSecret(path string) (string, error) {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			return "", err
+		}
+		file, createErr := os.CreateTemp(filepath.Dir(path), ".app-secret-*")
+		if createErr != nil {
+			return "", createErr
+		}
+		defer os.Remove(file.Name())
+		defer file.Close()
+		key := make([]byte, 32)
+		if _, err := rand.Read(key); err != nil {
+			return "", err
+		}
+		if _, err := file.WriteString(hex.EncodeToString(key)); err != nil {
+			return "", err
+		}
+		if err := file.Sync(); err != nil {
+			return "", err
+		}
+		if err := file.Close(); err != nil {
+			return "", err
+		}
+		if err := os.Link(file.Name(), path); err != nil && !errors.Is(err, os.ErrExist) {
+			return "", err
+		}
+		dir, openErr := os.Open(filepath.Dir(path))
+		if openErr != nil {
+			return "", openErr
+		}
+		syncErr := dir.Sync()
+		closeErr := dir.Close()
+		if err := errors.Join(syncErr, closeErr); err != nil {
+			return "", err
+		}
+		info, err = os.Lstat(path)
+	}
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
+		return "", fmt.Errorf("%s must be a regular owner-only file (mode 0600)", path)
+	}
+	if info.Size() != 64 {
+		return "", fmt.Errorf("%s contains an invalid persisted APP_SECRET; restore it from backup", path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	key, err := hex.DecodeString(string(data))
+	if err != nil || len(key) != 32 {
+		return "", fmt.Errorf("%s contains an invalid persisted APP_SECRET; restore it from backup", path)
+	}
+	return string(data), nil
 }
 
 // loadDotEnv imports simple KEY=value pairs without overriding real environment values.

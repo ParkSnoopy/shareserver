@@ -2,6 +2,15 @@
 
 ## 2026-10-15
 
+### Fix
+- Restore production startup without a supplied `APP_SECRET` by atomically generating a private `DB_PATH.secret` file and reusing it across restarts.
+- Preserve explicit secrets, reject invalid or exposed persisted keys, and retain the production admin-password requirement.
+- Remove the required `APP_SECRET` Compose interpolation and the insecure secret in the environment example.
+- Sync generated secret files and their directory, bound key-file reads, and exclude generated keys from source and image contexts.
+- Derive a separate stable Anubis signing seed from the application secret, preserving explicit signing keys and solved cookies across restarts.
+- Default Railway ingress to verified forwarded-client-IP mode while preserving explicit settings and JWT IP binding, preventing re-challenge loops as proxy peers change.
+- Set the installed version and Compose image tag to `v0.2.9`.
+
 ### Update
 - Bundle Anubis v1.27.0 on container port 8080 and supervise it with the loopback-only Shareserver backend on port 8081.
 - Challenge all application routes except nonempty `/api/` subpaths; `/api/`, static assets, and browser/admin pages require proof-of-work.

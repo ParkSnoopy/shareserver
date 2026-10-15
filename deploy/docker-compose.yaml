@@ -2,12 +2,11 @@ name: shareserver
 
 services:
   shareserver:
-    image: ghcr.io/parksnoopy/shareserver:v0.2.8
+    image: ghcr.io/parksnoopy/shareserver:v0.2.9
     restart: unless-stopped
     env_file: ../.env
     environment:
       DEBUG: "false"
-      APP_SECRET: "${APP_SECRET:?Set APP_SECRET in .env}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}"
       ANUBIS_BIND: "127.0.0.1:8080"
       ANUBIS_USE_REMOTE_ADDRESS: "false"

@@ -1,6 +1,8 @@
 package internaltest
 
 import (
+	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -17,6 +19,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -33,8 +36,9 @@ func TestContainerGateway(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, mode := range []string{"direct", "proxy"} {
+	for _, mode := range []string{"direct", "proxy", "railway", "railway-direct", "custom-key"} {
 		t.Run(mode, func(t *testing.T) {
+			direct := mode == "direct" || mode == "railway-direct"
 			dir := t.TempDir()
 			for _, name := range []string{"entrypoint.sh", "anubis-policy.yaml"} {
 				data, err := os.ReadFile(filepath.Join(root, name))
@@ -63,10 +67,24 @@ func TestContainerGateway(t *testing.T) {
 			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 			t.Setenv("DB_PATH", filepath.Join(dir, "test.db"))
 			t.Setenv("BLOB_DIR", filepath.Join(dir, "blobs"))
-			t.Setenv("DEBUG", "true")
+			t.Setenv("DEBUG", "false")
+			t.Setenv("ADMIN_PASSWORD", "test-only-admin-not-a-deployment-credential")
 			t.Setenv("APP_SECRET", "")
+			for _, key := range []string{"HS512_SECRET", "ED25519_PRIVATE_KEY_HEX", "ED25519_PRIVATE_KEY_HEX_FILE"} {
+				t.Setenv(key, "")
+			}
+			if mode == "custom-key" {
+				t.Setenv("HS512_SECRET", rand.Text())
+			}
 			t.Setenv("ANUBIS_BIND", "127.0.0.1:8080")
-			t.Setenv("ANUBIS_USE_REMOTE_ADDRESS", strconv.FormatBool(mode == "direct"))
+			t.Setenv("ANUBIS_USE_REMOTE_ADDRESS", strconv.FormatBool(direct))
+			t.Setenv("RAILWAY_ENVIRONMENT_ID", "")
+			if mode == "railway" || mode == "railway-direct" {
+				t.Setenv("RAILWAY_ENVIRONMENT_ID", "test-only-environment")
+			}
+			if mode == "direct" || mode == "railway" {
+				t.Setenv("ANUBIS_USE_REMOTE_ADDRESS", "")
+			}
 			difficulty := 2
 			if mode == "direct" {
 				difficulty = 4
@@ -81,7 +99,8 @@ func TestContainerGateway(t *testing.T) {
 			}
 			done := make(chan error, 1)
 			go func() { done <- cmd.Wait() }()
-			t.Cleanup(func() {
+			stop := func() {
+				t.Helper()
 				_ = cmd.Process.Signal(os.Interrupt)
 				select {
 				case err := <-done:
@@ -99,7 +118,8 @@ func TestContainerGateway(t *testing.T) {
 						t.Errorf("listener survived supervisor shutdown: %s", address)
 					}
 				}
-			})
+			}
+			t.Cleanup(func() { stop() })
 			client := &http.Client{Timeout: 2 * time.Second}
 			ready := false
 			for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); {
@@ -121,11 +141,28 @@ func TestContainerGateway(t *testing.T) {
 				data, _ := os.ReadFile(log.Name())
 				t.Fatalf("gateway not ready: %s", data)
 			}
+			if info, err := os.Stat(filepath.Join(dir, "test.db.secret")); err != nil || info.Mode().Perm() != 0600 {
+				t.Fatal("production gateway did not persist an owner-only application secret")
+			}
 			upstream, _ := url.Parse("http://127.0.0.1:8080")
 			proxy := httputil.NewSingleHostReverseProxy(upstream)
+			if mode == "railway" {
+				// Each connection uses a different ingress peer for the same browser.
+				var connections atomic.Uint32
+				transport := &http.Transport{DisableKeepAlives: true}
+				transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+					ip := net.IPv4(127, 0, 0, byte(2+connections.Add(1)%2))
+					dialer := net.Dialer{LocalAddr: &net.TCPAddr{IP: ip}}
+					return dialer.DialContext(ctx, network, address)
+				}
+				proxy.Transport = transport
+				defer transport.CloseIdleConnections()
+			}
+			var clientIP atomic.Value
+			clientIP.Store("198.51.100.42")
 			edge := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				r.Header.Set("X-Real-IP", "198.51.100.42")
-				r.Header.Set("X-Forwarded-For", "198.51.100.42")
+				r.Header.Set("X-Real-IP", clientIP.Load().(string))
+				r.Header.Set("X-Forwarded-For", clientIP.Load().(string))
 				r.Header.Set("X-Forwarded-Proto", "https")
 				proxy.ServeHTTP(w, r)
 			}))
@@ -160,7 +197,7 @@ func TestContainerGateway(t *testing.T) {
 				}
 			}
 			for path, status := range map[string]int{"/api/v0/list": 400, "/api/v0/upload": 415, "/api/v0/download/nope": 401} {
-				if mode == "direct" {
+				if direct {
 					status = 426 // Spoofed HTTPS claims cannot authorize direct-mode requests.
 				}
 				got, body := request("POST", path, "curl/8", "{}")
@@ -168,7 +205,7 @@ func TestContainerGateway(t *testing.T) {
 					t.Fatalf("API bypass %s: got %d %q, want %d", path, got, body, status)
 				}
 			}
-			if mode == "proxy" {
+			if !direct {
 				status, body := request("POST", "/api/v0/list", "curl/8", `{"private_key":"gateway-test-only"}`)
 				if status != 200 || !strings.Contains(body, `"archives":[]`) {
 					t.Fatalf("valid sessionless API request: %d %s", status, body)
@@ -200,7 +237,7 @@ func TestContainerGateway(t *testing.T) {
 				t.Fatalf("difficulty = %d, want %d", challenge.Rules.Difficulty, difficulty)
 			}
 			ip := "127.0.0.1"
-			if mode == "proxy" {
+			if !direct {
 				ip = "198.51.100.42"
 			}
 			if got := challenge.Challenge.Metadata["X-Real-Ip"]; got != ip {
@@ -226,9 +263,57 @@ func TestContainerGateway(t *testing.T) {
 			if status, body := request("GET", "/static/css/app.css", "Mozilla/5.0", ""); status != 200 || strings.Contains(body, `id="anubis_challenge"`) {
 				t.Fatal("passed cookie did not authorize application CSS")
 			}
+			secret, err := os.ReadFile(filepath.Join(dir, "test.db.secret"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			stop()
+			cmd = exec.Command("bash", filepath.Join(dir, "entrypoint.sh"))
+			cmd.Stdout, cmd.Stderr = log, log
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			done = make(chan error, 1)
+			go func() { done <- cmd.Wait() }()
+			ready = false
+			for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); {
+				resp, err := http.Get("http://127.0.0.1:8081/api/")
+				if err == nil {
+					resp.Body.Close()
+					health, err := http.Get("http://127.0.0.1:9090/healthz")
+					if err == nil {
+						health.Body.Close()
+						ready = resp.StatusCode == 200 && health.StatusCode == 200
+					}
+				}
+				if ready {
+					break
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+			if !ready {
+				t.Fatal("gateway did not restart")
+			}
+			stored, err := os.ReadFile(filepath.Join(dir, "test.db.secret"))
+			if err != nil || string(stored) != string(secret) {
+				t.Fatal("application secret changed across supervisor restart")
+			}
+			if status, body := request("GET", "/api/", "Mozilla/5.0", ""); status != 200 || strings.Contains(body, `id="anubis_challenge"`) {
+				t.Fatalf("solved challenge after restart: HTTP %d, rechallenged=%t", status, strings.Contains(body, `id="anubis_challenge"`))
+			}
+			if !direct {
+				clientIP.Store("198.51.100.43")
+				if _, body := request("GET", "/api/", "Mozilla/5.0", ""); !strings.Contains(body, `id="anubis_challenge"`) {
+					t.Fatal("a different client IP must not inherit the solved cookie")
+				}
+			}
 			data, err := os.ReadFile(filepath.Join(dir, ".env"))
 			if err != nil || string(data) != dotenv {
 				t.Fatal("supervisor modified existing dotenv configuration")
+			}
+			data, err = os.ReadFile(log.Name())
+			if err != nil || strings.Contains(string(data), string(secret)) || strings.Contains(string(data), "generating random key") {
+				t.Fatal("gateway logged its secret or used an ephemeral signing key")
 			}
 		})
 	}

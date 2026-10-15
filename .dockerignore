@@ -12,6 +12,8 @@ _tmp/
 CONTEXT.md
 **/*.db*
 **/*.sqlite*
+**/*.secret
+**/.app-secret-*
 
 # Deployment definitions are not application runtime assets.
 deploy/

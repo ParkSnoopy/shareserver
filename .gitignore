@@ -6,6 +6,8 @@ data/
 /_tmp/
 **/*.db*
 **/*.sqlite*
+**/*.secret
+**/.app-secret-*
 CONTEXT.md
 
 # ignore binary

@@ -1305,6 +1305,33 @@ namespacing, and boundary behavior are exercised by the
 
 ## Data persistence
 
+### Application secret
+
+An explicit `APP_SECRET` is authoritative. Without it, production startup
+generates a 256-bit key once in `DB_PATH.secret`, a mode-`0600` file beside the
+database, and reloads that same key on later starts. Creation publishes a complete
+file atomically without overwriting a concurrent winner. Invalid, inaccessible,
+non-regular, or group/world-accessible files fail startup; they are not rotated.
+Back up the key with the database: changing it breaks private-key lookup HMACs.
+Development retains its ephemeral-secret behavior. `ADMIN_PASSWORD` is still
+required in production. See the [configuration loader](./internal/config/config.go).
+
+The container launches Anubis through `shareserver --anubis`, which derives its
+Ed25519 seed with HMAC-SHA-256 and the separate context
+`shareserver/anubis/ed25519/v1`. It passes the seed only in the child environment,
+not arguments, output, or another persisted file. Explicit `HS512_SECRET`,
+`ED25519_PRIVATE_KEY_HEX`, or `ED25519_PRIVATE_KEY_HEX_FILE` settings take precedence.
+The launcher replaces itself with Anubis so supervisor signal handling is retained.
+Solved cookies survive restarts with the same application secret and policy;
+in-flight challenges still require sticky routing or a shared challenge store
+across replicas. Replicas must also share an explicit application/signing secret.
+
+An unset/empty `ANUBIS_USE_REMOTE_ADDRESS` selects forwarded-client-IP mode only
+when `RAILWAY_ENVIRONMENT_ID` is present, otherwise socket-IP mode. Explicit
+settings always win. Keep JWT IP restriction enabled: a rotating proxy peer must
+not change the browser's verified `X-Real-IP`, but a changed client IP must require
+a fresh challenge. Forwarded mode requires the documented restricted proxy ingress.
+
 ### SQLite
 
 The server uses SQLite through Ent and `go-sqlite3`. It enables foreign keys,

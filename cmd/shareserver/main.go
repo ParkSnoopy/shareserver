@@ -22,6 +22,10 @@ func main() {
 		return
 	}
 	c := config.Load()
+	if len(os.Args) >= 2 && os.Args[1] == "--anubis" {
+		execAnubis(c)
+		return
+	}
 	d, err := db.Open(c.DBPath)
 	if err != nil {
 		log.Fatal(err)

@@ -45,7 +45,12 @@ These are baked in and not negotiable without changing what this is:
 ### Run with Docker
 
 Use a configured `.env` file based on [`.env.example`](./.env.example), with
-`APP_SECRET` and `ADMIN_PASSWORD` set for production.
+`ADMIN_PASSWORD` set for production. `APP_SECRET` is an optional override;
+otherwise production startup generates a 256-bit secret once and stores it in
+`DB_PATH.secret` (mode `0600`), beside the database on the persistent volume.
+Keep that file with database backups and preserve it across restarts. Invalid,
+inaccessible, or group/world-accessible key files stop startup instead of
+silently rotating the key. Explicit `APP_SECRET` values always take precedence.
 
 ```sh
 docker run --detach \
@@ -81,15 +86,23 @@ Shareserver authentication, CSRF, HTTPS checks, body limits, or IP bans.
 `1..64`; larger values rapidly increase client work). The backend is fixed to
 loopback port `8081` in the container even if `.env` contains an old `ADDR`.
 Only port `8080` is exposed; Anubis health/metrics stay on `127.0.0.1:9090`.
-Either process exiting stops the pair. Challenge state/signing keys are ephemeral,
-so restarting the container requires clients to solve a new challenge.
+Either process exiting stops the pair. The launcher derives a separate Anubis
+signing seed from `APP_SECRET`, so solved cookies survive restarts while the
+application secret remains unchanged. Explicit Anubis signing-key settings are
+preserved. In-progress challenges remain in memory and must be retried after a
+restart; multiple replicas need sticky routing or a shared challenge store.
 
 The command above selects trusted-proxy mode. Restrict access to port `8080`
 to the HTTPS proxy, which must replace incoming `X-Forwarded-For`, `X-Real-IP`,
 and `X-Forwarded-Proto` headers with verified values. Without a trusted proxy,
-leave `ANUBIS_USE_REMOTE_ADDRESS=true` (the image default): the socket supplies
+use `ANUBIS_USE_REMOTE_ADDRESS=true`: the socket supplies
 the client IP and Shareserver ignores forwarded HTTPS/IP claims. API operations
 then reject plain HTTP, including spoofed `X-Forwarded-Proto: https` requests.
+When this setting is empty/unset, the image selects forwarded-client-IP mode on
+Railway (`RAILWAY_ENVIRONMENT_ID` present), socket-IP mode elsewhere. This avoids
+binding a Railway browser's cookie to a changing ingress proxy address. Explicit
+`true`/`false` always wins; existing Railway deployments with an explicit `true`
+must clear it or set `false`. Railway supplies the verified `X-Real-IP` header.
 Do not override the entrypoint with `/app/shareserver`; that bypasses Anubis.
 
 ### Run Docker Compose with self-signed HTTPS
@@ -174,7 +187,7 @@ for cgo (`go-sqlite3`). Bun is needed for the client test suite, not server runt
 go build -o shareserver ./cmd/shareserver
 
 # 2. configure (copy and edit)
-cp .env.example .env   # then set APP_SECRET, ADMIN_PASSWORD, etc.
+cp .env.example .env   # then set ADMIN_PASSWORD and any explicit overrides
 mkdir -p data/blobs    # directory for DB_PATH and BLOB_DIR
 
 # 3. run
@@ -200,14 +213,14 @@ The table below corresponds to the [environment example](./.env.example):
 
 | Var | Example/default | Purpose |
 | --- | --- | --- |
-| `DEBUG` | `true` | `1`/`true` allows an ephemeral secret + default admin; `0`/`false` requires `APP_SECRET` + `ADMIN_PASSWORD` |
+| `DEBUG` | `true` | `1`/`true` allows an ephemeral secret + default admin; `0`/`false` requires `ADMIN_PASSWORD` and persists a missing application secret |
 | `ADDR` | `127.0.0.1:8081` | native backend listen address; container startup fixes it to this loopback address |
 | `ANUBIS_DIFFICULTY` | `4` | container proof-of-work difficulty, integer `1..64` |
 | `ANUBIS_BIND` | `0.0.0.0:8080` | container gateway listener; Compose uses `127.0.0.1:8080` |
-| `ANUBIS_USE_REMOTE_ADDRESS` | `true` | container direct mode uses socket IP and ignores proxy claims; `false` trusts a restricted TLS proxy; Compose sets `false` |
+| `ANUBIS_USE_REMOTE_ADDRESS` | automatic | unset/empty selects `false` on Railway, `true` elsewhere; explicit `true` uses socket IP, `false` trusts a restricted TLS proxy; Compose sets `false` |
 | `DB_PATH` | `data/shareserver.db` | SQLite path |
 | `BLOB_DIR` | `data/blobs` | where uploaded blobs are stored |
-| `APP_SECRET` | `[REDACTED]` | HMAC key for private-key hashing; **required in prod** |
+| `APP_SECRET` | unset | Optional HMAC key override; production generates/reuses `DB_PATH.secret` when empty |
 | `ADMIN_USER` | commented out | initial admin username |
 | `ADMIN_PASSWORD` | commented out | initial admin password; accepted only from runtime configuration |
 | `MAX_UPLOAD_BYTES` | `314572800` | per-blob upload limit |

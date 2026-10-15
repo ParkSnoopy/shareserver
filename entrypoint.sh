@@ -12,7 +12,11 @@ if [[ ! "$difficulty" =~ ^([1-9]|[1-5][0-9]|6[0-4])$ ]]; then
 	echo "ANUBIS_DIFFICULTY must be an integer between 1 and 64." >&2
 	exit 1
 fi
-remote_address=${ANUBIS_USE_REMOTE_ADDRESS:-true}
+remote_address=${ANUBIS_USE_REMOTE_ADDRESS:-}
+if [[ -z "$remote_address" ]]; then
+	remote_address=true
+	if [[ -n ${RAILWAY_ENVIRONMENT_ID:-} ]]; then remote_address=false; fi
+fi
 case "$remote_address" in
 	true) export TRUST_PROXY_HEADERS=false ;;
 	false) export TRUST_PROXY_HEADERS=true ;;
@@ -36,7 +40,7 @@ trap 'exit 0' TERM INT
 
 ./shareserver &
 children+=("$!")
-anubis \
+./shareserver --anubis \
 	--bind="${ANUBIS_BIND:-0.0.0.0:8080}" \
 	--target=http://127.0.0.1:8081 \
 	--policy-fname="$PWD/anubis-policy.yaml" \
