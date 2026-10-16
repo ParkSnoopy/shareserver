@@ -28,7 +28,7 @@ func TestReconcileDeletesRowsForNonFileBlobPaths(t *testing.T) {
 	h, _ := newTestHandler(t)
 	id := "00000000-0000-0000-0000-000000000114"
 	directory := filepath.Join(h.A.C.BlobDir, "not-a-blob")
-	if err := os.MkdirAll(directory, 0755); err != nil {
+	if err := os.MkdirAll(directory, 0700); err != nil {
 		t.Fatal(err)
 	}
 	sh := sampleShare(id, "public", futureTS(time.Hour))
@@ -46,7 +46,7 @@ func TestReconcileDeletesRowsForNonFileBlobPaths(t *testing.T) {
 
 func TestReconcileRemovesUnregisteredFilesWithoutRows(t *testing.T) {
 	h, _ := newTestHandler(t)
-	if err := os.MkdirAll(h.A.C.BlobDir, 0755); err != nil {
+	if err := os.MkdirAll(h.A.C.BlobDir, 0700); err != nil {
 		t.Fatal(err)
 	}
 	id := "00000000-0000-0000-0000-000000000102"
@@ -54,7 +54,7 @@ func TestReconcileRemovesUnregisteredFilesWithoutRows(t *testing.T) {
 	orphanBlob := filepath.Join(h.A.C.BlobDir, "orphan.blob")
 	orphanText := filepath.Join(h.A.C.BlobDir, "notes.txt")
 	for _, path := range []string{registered, orphanBlob, orphanText} {
-		if err := os.WriteFile(path, []byte("data"), 0644); err != nil {
+		if err := os.WriteFile(path, []byte("data"), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -81,10 +81,10 @@ func TestPurgeExpiredDeletesBlobAndRow(t *testing.T) {
 	h, _ := newTestHandler(t)
 	id := "00000000-0000-0000-0000-000000000103"
 	blob := filepath.Join(h.A.C.BlobDir, id+".blob")
-	if err := os.MkdirAll(h.A.C.BlobDir, 0755); err != nil {
+	if err := os.MkdirAll(h.A.C.BlobDir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(blob, []byte("old"), 0644); err != nil {
+	if err := os.WriteFile(blob, []byte("old"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	sh := sampleShare(id, "public", time.Now().UTC().Add(-time.Second).Format(time.RFC3339Nano))
@@ -99,5 +99,27 @@ func TestPurgeExpiredDeletesBlobAndRow(t *testing.T) {
 	}
 	if _, ok := h.Store.Get(id); ok {
 		t.Fatalf("expired share row survived purge")
+	}
+}
+
+func TestReconcileDoesNotFollowOrphanDirectorySymlinks(t *testing.T) {
+	h, _ := newTestHandler(t)
+	outside := t.TempDir()
+	path := filepath.Join(outside, "keep.blob")
+	if err := os.WriteFile(path, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(h.A.C.BlobDir, "orphan-link")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	if result := h.ReconcileBlobStore(); result.OrphanFiles != 1 {
+		t.Fatalf("orphan symlink cleanup: %+v", result)
+	}
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Fatalf("orphan symlink survived: %v", err)
+	}
+	if info, err := os.Stat(path); err != nil || info.Size() != int64(len("keep")) {
+		t.Fatal("reconciliation changed a file outside the blob directory")
 	}
 }

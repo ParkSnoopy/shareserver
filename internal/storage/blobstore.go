@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -30,18 +31,25 @@ func Stage(dir, id string, r io.Reader, limit int64) (path, sum string, size int
 	if err = os.MkdirAll(staging, 0700); err != nil {
 		return
 	}
+	root, err := os.OpenRoot(staging)
+	if err != nil {
+		return
+	}
+	defer func() { err = errors.Join(err, root.Close()) }()
 	path = filepath.Join(staging, id+".tmp")
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	f, err := root.OpenFile(id+".tmp", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return
 	}
 	committed := false
 	defer func() {
+		if closeErr := f.Close(); closeErr != nil && !errors.Is(closeErr, os.ErrClosed) {
+			err = errors.Join(err, closeErr)
+		}
 		if !committed {
-			_ = os.Remove(path)
+			err = errors.Join(err, root.Remove(id+".tmp"))
 		}
 	}()
-	defer f.Close()
 	h := sha256.New()
 	lr := &io.LimitedReader{R: r, N: limit + 1}
 	size, err = io.Copy(io.MultiWriter(f, h), lr)

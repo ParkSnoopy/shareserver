@@ -33,7 +33,7 @@ type Config struct {
 
 // Load reads environment settings, applies safe defaults, and fails closed in prod.
 func Load() Config {
-	loadDotEnv(".env")
+	loadDotEnv()
 	dev := envBool("DEBUG", true)
 	dbPath := env("DB_PATH", "data/shareserver.db")
 	adminPassword, hasAdminPassword := os.LookupEnv("ADMIN_PASSWORD")
@@ -74,18 +74,28 @@ func Load() Config {
 
 // persistentAppSecret publishes a complete private key file without replacing one
 // created by another startup. Invalid or inaccessible state must never rotate it.
-func persistentAppSecret(path string) (string, error) {
-	info, err := os.Lstat(path)
+func persistentAppSecret(path string) (secret string, err error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return "", err
+	}
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return "", err
+	}
+	defer func() { err = errors.Join(err, root.Close()) }()
+	name := filepath.Base(path)
+	info, err := root.Lstat(name)
 	if errors.Is(err, os.ErrNotExist) {
-		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-			return "", err
-		}
 		file, createErr := os.CreateTemp(filepath.Dir(path), ".app-secret-*")
 		if createErr != nil {
 			return "", createErr
 		}
-		defer os.Remove(file.Name())
-		defer file.Close()
+		defer func() {
+			if closeErr := file.Close(); closeErr != nil && !errors.Is(closeErr, os.ErrClosed) {
+				err = errors.Join(err, closeErr)
+			}
+			err = errors.Join(err, root.Remove(filepath.Base(file.Name())))
+		}()
 		key := make([]byte, 32)
 		if _, err := rand.Read(key); err != nil {
 			return "", err
@@ -99,10 +109,10 @@ func persistentAppSecret(path string) (string, error) {
 		if err := file.Close(); err != nil {
 			return "", err
 		}
-		if err := os.Link(file.Name(), path); err != nil && !errors.Is(err, os.ErrExist) {
+		if err := root.Link(filepath.Base(file.Name()), name); err != nil && !errors.Is(err, os.ErrExist) {
 			return "", err
 		}
-		dir, openErr := os.Open(filepath.Dir(path))
+		dir, openErr := root.Open(".")
 		if openErr != nil {
 			return "", openErr
 		}
@@ -111,7 +121,7 @@ func persistentAppSecret(path string) (string, error) {
 		if err := errors.Join(syncErr, closeErr); err != nil {
 			return "", err
 		}
-		info, err = os.Lstat(path)
+		info, err = root.Lstat(name)
 	}
 	if err != nil {
 		return "", err
@@ -122,7 +132,7 @@ func persistentAppSecret(path string) (string, error) {
 	if info.Size() != 64 {
 		return "", fmt.Errorf("%s contains an invalid persisted APP_SECRET; restore it from backup", path)
 	}
-	data, err := os.ReadFile(path)
+	data, err := root.ReadFile(name)
 	if err != nil {
 		return "", err
 	}
@@ -134,12 +144,16 @@ func persistentAppSecret(path string) (string, error) {
 }
 
 // loadDotEnv imports simple KEY=value pairs without overriding real environment values.
-func loadDotEnv(path string) {
-	f, err := os.Open(path)
+func loadDotEnv() {
+	f, err := os.Open(".env")
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Printf("error: close dotenv: %v", err)
+		}
+	}()
 	s := bufio.NewScanner(f)
 	for s.Scan() {
 		line := strings.TrimSpace(s.Text())

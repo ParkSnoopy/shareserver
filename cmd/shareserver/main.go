@@ -13,26 +13,37 @@ import (
 	httpx "shareserver/internal/http"
 	"shareserver/internal/share"
 	"shareserver/internal/storage"
+	"time"
 )
 
 // main loads runtime config, opens storage, starts cleanup, and serves HTTP.
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
 		fmt.Println(app.Version)
-		return
+		return nil
 	}
 	c := config.Load()
 	if len(os.Args) >= 2 && os.Args[1] == "--anubis" {
 		execAnubis(c)
-		return
+		return nil
 	}
 	d, err := db.Open(c.DBPath)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	defer d.Close()
+	defer func() {
+		if err := d.Close(); err != nil {
+			log.Printf("error: close database: %v", err)
+		}
+	}()
 	if err := auth.EnsureAdmin(d, c.AdminUser, c.AdminPassword, c.Dev); err != nil {
-		log.Fatal(err)
+		return err
 	}
 	store := share.NewStore(d)
 	integrity := storage.NewIntegrity(c.BlobDir, store)
@@ -40,5 +51,10 @@ func main() {
 	h := &httpx.Handler{A: a, Store: store, Integrity: integrity}
 	h.StartCleanup()
 	log.Println("shareserver", app.Version, "listening", c.Addr)
-	log.Fatal(http.ListenAndServe(c.Addr, httpx.New(a)))
+	server := &http.Server{
+		Addr: c.Addr, Handler: httpx.New(a),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       time.Minute,
+	}
+	return server.ListenAndServe()
 }

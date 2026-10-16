@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"shareserver/internal/share"
+	"shareserver/internal/storage"
 	"shareserver/internal/upload"
 )
 
@@ -28,6 +29,23 @@ func countBlobs(t *testing.T, dir string) int {
 		}
 	}
 	return n
+}
+
+func TestStageRejectsPathsOutsideStaging(t *testing.T) {
+	for _, id := range []string{"../escape", "../../escape"} {
+		t.Run(id, func(t *testing.T) {
+			dir := t.TempDir()
+			blobDir := filepath.Join(dir, "blobs")
+			if _, _, _, err := storage.Stage(blobDir, id, strings.NewReader("payload"), 1024); err == nil {
+				t.Fatal("staging accepted an ID outside its root")
+			}
+			for _, path := range []string{filepath.Join(dir, "escape.tmp"), filepath.Join(blobDir, "escape.tmp")} {
+				if _, err := os.Stat(path); !os.IsNotExist(err) {
+					t.Fatalf("staging escaped its directory: %v", err)
+				}
+			}
+		})
+	}
 }
 
 func TestPrivateKeyRequiredWritesNoBlob(t *testing.T) {
@@ -64,7 +82,7 @@ func TestUploadPurgesExpiredShareBeforeCapCheck(t *testing.T) {
 	u, store, dir := newUploader(t, int64(len("encrypted payload")))
 	id := "00000000-0000-0000-0000-000000000201"
 	blob := filepath.Join(dir, id+".blob")
-	if err := os.WriteFile(blob, []byte("stale"), 0644); err != nil {
+	if err := os.WriteFile(blob, []byte("stale"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	sh := sampleShare(id, "public", time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano))

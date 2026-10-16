@@ -36,16 +36,26 @@ func TestContainerGateway(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	source, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeTestResource(t, source)
 	for _, mode := range []string{"direct", "proxy", "railway", "railway-direct", "custom-key"} {
 		t.Run(mode, func(t *testing.T) {
 			direct := mode == "direct" || mode == "railway-direct"
 			dir := t.TempDir()
+			files, err := os.OpenRoot(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer closeTestResource(t, files)
 			for _, name := range []string{"entrypoint.sh", "anubis-policy.yaml"} {
-				data, err := os.ReadFile(filepath.Join(root, name))
+				data, err := source.ReadFile(name)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
+				if err := files.WriteFile(name, data, 0600); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -59,11 +69,11 @@ func TestContainerGateway(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(dotenv), 0600); err != nil {
 				t.Fatal(err)
 			}
-			log, err := os.Create(filepath.Join(dir, "process.log"))
+			log, err := files.OpenFile("process.log", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer log.Close()
+			defer closeTestResource(t, log)
 			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 			t.Setenv("DB_PATH", filepath.Join(dir, "test.db"))
 			t.Setenv("BLOB_DIR", filepath.Join(dir, "blobs"))
@@ -92,7 +102,8 @@ func TestContainerGateway(t *testing.T) {
 			} else {
 				t.Setenv("ANUBIS_DIFFICULTY", strconv.Itoa(difficulty))
 			}
-			cmd := exec.Command("bash", filepath.Join(dir, "entrypoint.sh"))
+			cmd := exec.Command("bash", "./entrypoint.sh")
+			cmd.Dir = dir
 			cmd.Stdout, cmd.Stderr = log, log
 			if err := cmd.Start(); err != nil {
 				t.Fatal(err)
@@ -114,7 +125,7 @@ func TestContainerGateway(t *testing.T) {
 				for _, address := range []string{"127.0.0.1:8080", "127.0.0.1:8081", "127.0.0.1:9090"} {
 					conn, err := net.DialTimeout("tcp", address, time.Second)
 					if err == nil {
-						conn.Close()
+						closeTestResource(t, conn)
 						t.Errorf("listener survived supervisor shutdown: %s", address)
 					}
 				}
@@ -125,10 +136,10 @@ func TestContainerGateway(t *testing.T) {
 			for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); {
 				resp, err := client.Get("http://127.0.0.1:8081/api/")
 				if err == nil {
-					resp.Body.Close()
+					closeTestResource(t, resp.Body)
 					health, err := client.Get("http://127.0.0.1:9090/healthz")
 					if err == nil {
-						health.Body.Close()
+						closeTestResource(t, health.Body)
 						ready = resp.StatusCode == 200 && health.StatusCode == 200
 					}
 				}
@@ -138,7 +149,7 @@ func TestContainerGateway(t *testing.T) {
 				time.Sleep(50 * time.Millisecond)
 			}
 			if !ready {
-				data, _ := os.ReadFile(log.Name())
+				data, _ := files.ReadFile("process.log")
 				t.Fatalf("gateway not ready: %s", data)
 			}
 			if info, err := os.Stat(filepath.Join(dir, "test.db.secret")); err != nil || info.Mode().Perm() != 0600 {
@@ -181,7 +192,7 @@ func TestContainerGateway(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer resp.Body.Close()
+				defer closeTestResource(t, resp.Body)
 				data, err := io.ReadAll(resp.Body)
 				if err != nil {
 					t.Fatal(err)
@@ -263,12 +274,13 @@ func TestContainerGateway(t *testing.T) {
 			if status, body := request("GET", "/static/css/app.css", "Mozilla/5.0", ""); status != 200 || strings.Contains(body, `id="anubis_challenge"`) {
 				t.Fatal("passed cookie did not authorize application CSS")
 			}
-			secret, err := os.ReadFile(filepath.Join(dir, "test.db.secret"))
+			secret, err := files.ReadFile("test.db.secret")
 			if err != nil {
 				t.Fatal(err)
 			}
 			stop()
-			cmd = exec.Command("bash", filepath.Join(dir, "entrypoint.sh"))
+			cmd = exec.Command("bash", "./entrypoint.sh")
+			cmd.Dir = dir
 			cmd.Stdout, cmd.Stderr = log, log
 			if err := cmd.Start(); err != nil {
 				t.Fatal(err)
@@ -279,10 +291,10 @@ func TestContainerGateway(t *testing.T) {
 			for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); {
 				resp, err := http.Get("http://127.0.0.1:8081/api/")
 				if err == nil {
-					resp.Body.Close()
+					closeTestResource(t, resp.Body)
 					health, err := http.Get("http://127.0.0.1:9090/healthz")
 					if err == nil {
-						health.Body.Close()
+						closeTestResource(t, health.Body)
 						ready = resp.StatusCode == 200 && health.StatusCode == 200
 					}
 				}
@@ -294,7 +306,7 @@ func TestContainerGateway(t *testing.T) {
 			if !ready {
 				t.Fatal("gateway did not restart")
 			}
-			stored, err := os.ReadFile(filepath.Join(dir, "test.db.secret"))
+			stored, err := files.ReadFile("test.db.secret")
 			if err != nil || string(stored) != string(secret) {
 				t.Fatal("application secret changed across supervisor restart")
 			}
@@ -307,11 +319,11 @@ func TestContainerGateway(t *testing.T) {
 					t.Fatal("a different client IP must not inherit the solved cookie")
 				}
 			}
-			data, err := os.ReadFile(filepath.Join(dir, ".env"))
+			data, err := files.ReadFile(".env")
 			if err != nil || string(data) != dotenv {
 				t.Fatal("supervisor modified existing dotenv configuration")
 			}
-			data, err = os.ReadFile(log.Name())
+			data, err = files.ReadFile("process.log")
 			if err != nil || strings.Contains(string(data), string(secret)) || strings.Contains(string(data), "generating random key") {
 				t.Fatal("gateway logged its secret or used an ephemeral signing key")
 			}
@@ -320,7 +332,9 @@ func TestContainerGateway(t *testing.T) {
 	for _, value := range []string{"0", "65", "-1", "bad", "1.5", "01"} {
 		t.Run("invalid-difficulty-"+value, func(t *testing.T) {
 			t.Setenv("ANUBIS_DIFFICULTY", value)
-			output, err := exec.Command("bash", filepath.Join(root, "entrypoint.sh")).CombinedOutput()
+			cmd := exec.Command("bash", "./entrypoint.sh")
+			cmd.Dir = root
+			output, err := cmd.CombinedOutput()
 			if err == nil || !strings.Contains(string(output), "ANUBIS_DIFFICULTY must be") {
 				t.Fatalf("invalid difficulty was not rejected: %v %s", err, output)
 			}

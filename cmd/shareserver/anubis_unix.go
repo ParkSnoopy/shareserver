@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"log"
 	"os"
-	"os/exec"
 	"syscall"
 
 	"shareserver/internal/config"
@@ -17,6 +16,9 @@ import (
 // Replace this process so the supervisor still owns Anubis directly. Derive an
 // independent signing seed without printing secrets or adding a second key file.
 func execAnubis(c config.Config) {
+	if len(os.Args) != 2 {
+		log.Fatal("unexpected Anubis arguments")
+	}
 	if os.Getenv("HS512_SECRET") == "" && os.Getenv("ED25519_PRIVATE_KEY_HEX") == "" && os.Getenv("ED25519_PRIVATE_KEY_HEX_FILE") == "" {
 		key := hmac.New(sha256.New, c.AppSecret)
 		_, _ = key.Write([]byte("shareserver/anubis/ed25519/v1"))
@@ -24,9 +26,6 @@ func execAnubis(c config.Config) {
 			log.Fatal(err)
 		}
 	}
-	path, err := exec.LookPath("anubis")
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Fatal(syscall.Exec(path, append([]string{path}, os.Args[2:]...), os.Environ()))
+	// #nosec G204 -- Fixed executable and argv; only the environment contains runtime configuration.
+	log.Fatal(syscall.Exec("./anubis", []string{"./anubis"}, os.Environ()))
 }

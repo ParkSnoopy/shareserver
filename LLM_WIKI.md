@@ -82,6 +82,9 @@ execution starts only Shareserver, with default address `127.0.0.1:8081`.
 Container configuration and proxy-trust requirements are owned by the
 [README](./README.md#run-with-docker).
 
+The launcher replaces itself with the packaged `./anubis` executable and fixed arguments, not a PATH-selected command or caller-supplied arguments.
+The supervisor passes Anubis configuration through its supported environment variables while retaining the same process supervision and signing-key behavior.
+
 ## Public route inventory
 
 The current routes are registered in the [route table](./internal/http/router.go).
@@ -132,6 +135,8 @@ mode ignores forwarded security claims, even though Anubis connects over loopbac
 Untrusted clients cannot make a request secure merely by adding forwarding
 headers. The exact rules live in [HTTP middleware](./internal/http/middleware.go),
 with proxy regression coverage in [API route tests](./internal/test/api_test.go).
+
+The [HTTP server](./cmd/shareserver/main.go) bounds header-read and idle-connection time without imposing a whole-body read or response-write deadline on large transfers.
 
 ### Client IP
 
@@ -1038,6 +1043,8 @@ earlier events remain in the rolling window.
 If reading or parsing durable ban state fails, the server fails closed and
 treats the IP as banned. If recording a failure fails, the response is `429`
 with a conservative `Retry-After: 60`.
+This includes errors from creating or updating the durable ban, not only failure-event writes.
+Both login and download ban jitter use cryptographic randomness without changing their duration ranges.
 
 The policy is implemented in [download protection](./internal/http/download.go).
 Persistence is defined by the
@@ -1369,6 +1376,9 @@ The configured blob directory contains committed `<uuid>.blob` files and a
 private `.staging` directory. The [upload processing sequence](#server-processing-sequence)
 defines file creation, hashing, commit, and rollback; the
 [blob store](./internal/storage/blobstore.go) implements them.
+
+Staging files and orphan traversal/removal use root-scoped filesystem handles, so relative traversal and symlink resolution cannot escape the opened directories.
+Language-catalog and persisted-secret reads are likewise confined to their respective directories.
 
 ### Capacity and concurrency
 

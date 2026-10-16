@@ -49,7 +49,7 @@ func TestAdminLoginAcceptsOnlyPasswordHash(t *testing.T) {
 	request := func(values url.Values) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/admin/login", strings.NewReader(values.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.AddCookie(&http.Cookie{Name: "sid", Value: "admin-login-sid"})
+		req.Header.Add("Cookie", "sid=admin-login-sid")
 		response := httptest.NewRecorder()
 		router.ServeHTTP(response, req)
 		return response
@@ -247,7 +247,7 @@ func TestArchivePageReconcilesDatabaseAndBlobFilesBeforeRendering(t *testing.T) 
 	a, router := newRouter(t)
 	store := share.NewStore(a.DB)
 	orphan := filepath.Join(a.C.BlobDir, "public-page-orphan.blob")
-	if err := os.WriteFile(orphan, []byte("orphan"), 0644); err != nil {
+	if err := os.WriteFile(orphan, []byte("orphan"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	missing := sampleShare("00000000-0000-0000-0000-000000000112", "public", futureTS(time.Hour))
@@ -294,7 +294,7 @@ func TestLegacyShareWithoutDownloadVerifierIsHidden(t *testing.T) {
 	store := share.NewStore(a.DB)
 	id := "00000000-0000-0000-0000-000000000114"
 	path := filepath.Join(a.C.BlobDir, id+".blob")
-	if err := os.WriteFile(path, []byte("legacy-payload"), 0644); err != nil {
+	if err := os.WriteFile(path, []byte("legacy-payload"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	sh := sampleShare(id, "public", futureTS(time.Hour))
@@ -323,7 +323,7 @@ func TestExpiredSharePageShowsCountdownRedirect(t *testing.T) {
 	id := "00000000-0000-0000-0000-000000000001"
 	sh := sampleShare(id, "public", time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano))
 	sh.BlobPath = filepath.Join(a.C.BlobDir, id+".blob")
-	if err := os.WriteFile(sh.BlobPath, []byte("expired"), 0644); err != nil {
+	if err := os.WriteFile(sh.BlobPath, []byte("expired"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	mustInsertShare(t, store, sh)
@@ -466,7 +466,7 @@ func TestAPIIndexShowsArchiveListAndUsageGuide(t *testing.T) {
 	store := share.NewStore(a.DB)
 	id := "00000000-0000-0000-0000-000000000121"
 	blob := filepath.Join(a.C.BlobDir, id+".blob")
-	if err := os.WriteFile(blob, []byte("api archive"), 0644); err != nil {
+	if err := os.WriteFile(blob, []byte("api archive"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	sh := sampleShare(id, "public", futureTS(time.Hour))
@@ -614,7 +614,7 @@ func TestAdminDashboardOmitsManualStorageCleanupAction(t *testing.T) {
 	insertAdminSession(t, a.DB, "admin-sid", "admin-csrf")
 
 	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
-	req.AddCookie(&http.Cookie{Name: "sid", Value: "admin-sid"})
+	req.Header.Add("Cookie", "sid=admin-sid")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -629,13 +629,13 @@ func TestAdminDashboardOmitsManualStorageCleanupAction(t *testing.T) {
 func TestAdminSharesReconcilesDatabaseAndBlobFilesBeforeRendering(t *testing.T) {
 	a, router := newRouter(t)
 	insertAdminSession(t, a.DB, "cleanup-admin-sid", "cleanup-csrf")
-	if err := os.MkdirAll(a.C.BlobDir, 0755); err != nil {
+	if err := os.MkdirAll(a.C.BlobDir, 0700); err != nil {
 		t.Fatal(err)
 	}
 	registered := filepath.Join(a.C.BlobDir, "registered.file")
 	orphan := filepath.Join(a.C.BlobDir, "unregistered.tmp")
 	for _, path := range []string{registered, orphan} {
-		if err := os.WriteFile(path, []byte("data"), 0644); err != nil {
+		if err := os.WriteFile(path, []byte("data"), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -648,7 +648,7 @@ func TestAdminSharesReconcilesDatabaseAndBlobFilesBeforeRendering(t *testing.T) 
 	mustInsertShare(t, store, missing)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/shares", nil)
-	req.AddCookie(&http.Cookie{Name: "sid", Value: "cleanup-admin-sid"})
+	req.Header.Add("Cookie", "sid=cleanup-admin-sid")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -675,7 +675,7 @@ func TestAdminSharesOffersBulkSelection(t *testing.T) {
 	store := share.NewStore(a.DB)
 	id := "00000000-0000-0000-0000-000000000108"
 	blob := filepath.Join(a.C.BlobDir, id+".blob")
-	if err := os.WriteFile(blob, []byte("select me"), 0644); err != nil {
+	if err := os.WriteFile(blob, []byte("select me"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	sh := sampleShare(id, "public", futureTS(time.Hour))
@@ -683,7 +683,7 @@ func TestAdminSharesOffersBulkSelection(t *testing.T) {
 	mustInsertShare(t, store, sh)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/shares", nil)
-	req.AddCookie(&http.Cookie{Name: "sid", Value: "bulk-ui-admin-sid"})
+	req.Header.Add("Cookie", "sid=bulk-ui-admin-sid")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -712,7 +712,7 @@ func TestAdminBulkDeleteRemovesSelectedBlobAndDatabasePairs(t *testing.T) {
 	paths := map[string]string{}
 	for _, id := range append(selected, unselected) {
 		blob := filepath.Join(a.C.BlobDir, id+".blob")
-		if err := os.WriteFile(blob, []byte(id), 0644); err != nil {
+		if err := os.WriteFile(blob, []byte(id), 0600); err != nil {
 			t.Fatal(err)
 		}
 		sh := sampleShare(id, "public", futureTS(time.Hour))
@@ -724,7 +724,7 @@ func TestAdminBulkDeleteRemovesSelectedBlobAndDatabasePairs(t *testing.T) {
 	body := "csrf=bulk-delete-csrf&ids=" + selected[0] + "&ids=" + selected[1]
 	req := httptest.NewRequest(http.MethodPost, "/admin/shares/delete", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "sid", Value: "bulk-delete-admin-sid"})
+	req.Header.Add("Cookie", "sid=bulk-delete-admin-sid")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -754,17 +754,17 @@ func TestAdminBulkDeleteDropsMetadataWhenRegisteredPathIsNotAFile(t *testing.T) 
 	id := "00000000-0000-0000-0000-000000000106"
 	sh := sampleShare(id, "public", futureTS(time.Hour))
 	sh.BlobPath = filepath.Join(a.C.BlobDir, "directory-not-blob")
-	if err := os.Mkdir(sh.BlobPath, 0755); err != nil {
+	if err := os.Mkdir(sh.BlobPath, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(sh.BlobPath, "child"), []byte("x"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(sh.BlobPath, "child"), []byte("x"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	mustInsertShare(t, store, sh)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/shares/delete", strings.NewReader("csrf=failed-delete-admin-csrf&ids="+id))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "sid", Value: "failed-delete-admin-sid"})
+	req.Header.Add("Cookie", "sid=failed-delete-admin-sid")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 

@@ -132,8 +132,8 @@ func (h *Handler) renderUploadPage(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) renderArchivePage(w http.ResponseWriter, r *http.Request, data archivePageData) {
 	data.pageContext = h.pageContext(r, data.Share.Title)
-	if data.pageContext.Title == "" {
-		data.pageContext.Title = strings.TrimPrefix(data.pageContext.T("share.sharesTitle"), "# ")
+	if data.Title == "" {
+		data.Title = strings.TrimPrefix(data.T("share.sharesTitle"), "# ")
 	}
 	h.renderTemplate(w, http.StatusOK, "share.html", data)
 }
@@ -151,13 +151,13 @@ func (h *Handler) renderAdminLoginPage(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) renderAdminDashboardPage(w http.ResponseWriter, r *http.Request, data adminDashboardPage) {
 	data.pageContext = h.pageContext(r, "Admin")
-	data.pageContext.Title = strings.TrimPrefix(data.pageContext.T("admin.title"), "# ")
+	data.Title = strings.TrimPrefix(data.T("admin.title"), "# ")
 	h.renderTemplate(w, http.StatusOK, "admin_dashboard.html", data)
 }
 
 func (h *Handler) renderAdminSharesPage(w http.ResponseWriter, r *http.Request, data adminSharesPage) {
 	data.pageContext = h.pageContext(r, "Shares")
-	data.pageContext.Title = strings.TrimPrefix(data.pageContext.T("admin.sharesTitle"), "# ")
+	data.Title = strings.TrimPrefix(data.T("admin.sharesTitle"), "# ")
 	h.renderTemplate(w, http.StatusOK, "admin_shares.html", data)
 }
 

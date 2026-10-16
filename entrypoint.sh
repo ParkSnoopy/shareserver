@@ -40,14 +40,13 @@ trap 'exit 0' TERM INT
 
 ./shareserver &
 children+=("$!")
-./shareserver --anubis \
-	--bind="${ANUBIS_BIND:-0.0.0.0:8080}" \
-	--target=http://127.0.0.1:8081 \
-	--policy-fname="$PWD/anubis-policy.yaml" \
-	--difficulty="$difficulty" \
-	--metrics-bind=127.0.0.1:9090 \
-	--use-remote-address="$remote_address" \
-	--xff-strip-private=false &
+BIND="${ANUBIS_BIND:-0.0.0.0:8080}" \
+	TARGET=http://127.0.0.1:8081 \
+	POLICY_FNAME="$PWD/anubis-policy.yaml" \
+	DIFFICULTY="$difficulty" \
+	METRICS_BIND=127.0.0.1:9090 \
+	USE_REMOTE_ADDRESS="$remote_address" \
+	XFF_STRIP_PRIVATE=false ./shareserver --anubis &
 children+=("$!")
 
 # Either child's exit takes down the pair so a restart cannot leave a bypass.

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"io"
+	"log"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -64,7 +65,11 @@ func (h *Handler) apiUploadPost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing blob", 400)
 		return
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("error: close upload body: %v", err)
+		}
+	}()
 	res, err := h.Upload.Do(upload.Request{
 		Title:                fields["title"],
 		Visibility:           fields["visibility"],
@@ -182,23 +187,19 @@ func uploadParts(r *http.Request) (map[string]string, io.ReadCloser, string, err
 		}
 		if part.FormName() == "blob" {
 			if part.FileName() == "" {
-				part.Close()
-				return nil, nil, "", errors.New("blob filename required")
+				return nil, nil, "", errors.Join(errors.New("blob filename required"), part.Close())
 			}
 			return fields, &uploadPart{Part: part, reader: reader}, part.FileName(), nil
 		}
 		name := part.FormName()
 		if part.FileName() != "" || !allowed[name] {
-			part.Close()
-			return nil, nil, "", errors.New("unexpected upload field")
+			return nil, nil, "", errors.Join(errors.New("unexpected upload field"), part.Close())
 		}
 		if _, duplicate := fields[name]; duplicate {
-			part.Close()
-			return nil, nil, "", errors.New("duplicate upload field")
+			return nil, nil, "", errors.Join(errors.New("duplicate upload field"), part.Close())
 		}
 		value, err := io.ReadAll(io.LimitReader(part, maxUploadFieldBytes))
-		part.Close()
-		if err != nil {
+		if err := errors.Join(err, part.Close()); err != nil {
 			return nil, nil, "", err
 		}
 		if len(value) == maxUploadFieldBytes {
@@ -228,7 +229,7 @@ func (p *uploadPart) Read(buffer []byte) (int, error) {
 			return n, io.EOF
 		}
 		if next != nil {
-			next.Close()
+			return n, errors.Join(upload.ErrInvalidBody, next.Close())
 		}
 		return n, upload.ErrInvalidBody
 	}
@@ -366,21 +367,21 @@ func (h *Handler) adminLoginPost(w http.ResponseWriter, r *http.Request) {
 	switch result.Status {
 	case auth.AdminLoginBanned:
 		audit.Log(h.A.DB, "public", ip, "login_banned", "", "")
-		http.Error(w, "try again later", 429)
+		http.Error(w, "try again later", http.StatusTooManyRequests)
 	case auth.AdminLoginFailed:
 		meta := ""
 		if !result.BannedUntil.IsZero() {
 			meta = "banned_until=" + result.BannedUntil.Format(time.RFC3339Nano)
 		}
 		audit.Log(h.A.DB, "public", ip, "login_fail", user, meta)
-		http.Error(w, "login failed", 401)
+		http.Error(w, "login failed", http.StatusUnauthorized)
 	case auth.AdminLoginSuccess:
 		h.loginSession(w, r, CurrentSession(r).ID, int64(result.AdminID))
 		audit.Log(h.A.DB, "admin", ip, "login", user, "")
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 	default:
 		audit.Log(h.A.DB, "public", ip, "login_fail", user, "")
-		http.Error(w, "login failed", 401)
+		http.Error(w, "login failed", http.StatusUnauthorized)
 	}
 }
 

@@ -17,9 +17,17 @@ var (
 func loadCatalogs() {
 	catalogsOnce.Do(func() {
 		catalogs = make(map[string]map[string]any, len(languageCodes))
+		root, err := os.OpenRoot(repoFile("web", "static", "i18n"))
+		if err != nil {
+			panic("open language catalogs: " + err.Error())
+		}
+		defer func() {
+			if err := root.Close(); err != nil {
+				panic("close language catalogs: " + err.Error())
+			}
+		}()
 		for _, code := range languageCodes {
-			path := repoFile("web", "static", "i18n", code+".json")
-			body, err := os.ReadFile(path)
+			body, err := root.ReadFile(code + ".json")
 			if err != nil {
 				panic("read language catalog: " + err.Error())
 			}

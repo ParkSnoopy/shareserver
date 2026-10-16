@@ -1,5 +1,13 @@
 # Change Log
 
+## 2026-10-17
+
+### Fix
+- Propagate download-ban persistence errors so failed writes produce the conservative fail-closed response.
+- Use cryptographic ban jitter, bounded HTTP header/idle waits, and root-scoped catalog, secret, staging, and orphan-file operations.
+- Execute only the packaged Anubis binary with fixed arguments and supply its configuration through the supervisor environment.
+- Resolve the standard and security lint findings while retaining the selected configuration and one documented call-level G204 exception for inherited environment values.
+
 ## 2026-10-15
 
 ### Fix

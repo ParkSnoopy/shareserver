@@ -196,7 +196,7 @@ func TestStorageIntegrityDeletesBlobAndRow(t *testing.T) {
 	dir := t.TempDir()
 	id := "remove"
 	blob := filepath.Join(dir, id+".blob")
-	if err := os.WriteFile(blob, []byte("data"), 0644); err != nil {
+	if err := os.WriteFile(blob, []byte("data"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	sh := sampleShare(id, "public", futureTS(time.Hour))
@@ -218,7 +218,7 @@ func TestStorageIntegrityPurgesLegacyUnprotectedShare(t *testing.T) {
 	s, _ := newStore(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "legacy.blob")
-	if err := os.WriteFile(path, []byte("legacy payload"), 0644); err != nil {
+	if err := os.WriteFile(path, []byte("legacy payload"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	sh := sampleShare("legacy", "public", futureTS(time.Hour))

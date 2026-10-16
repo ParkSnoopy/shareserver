@@ -2,7 +2,8 @@ package httpx
 
 import (
 	"context"
-	"math/rand/v2"
+	"crypto/rand"
+	"math/big"
 	"strconv"
 	"sync"
 	"time"
@@ -32,7 +33,11 @@ func newDownloadProtection(db *ent.Client) *downloadProtection {
 	return &downloadProtection{
 		db: db,
 		jitter: func() time.Duration {
-			return downloadBanJitterMin + time.Duration(rand.IntN(downloadBanJitterSpan))*time.Second
+			jitter, err := rand.Int(rand.Reader, big.NewInt(downloadBanJitterSpan))
+			if err != nil {
+				panic("crypto rand failed: " + err.Error())
+			}
+			return downloadBanJitterMin + time.Duration(jitter.Int64())*time.Second
 		},
 	}
 }
@@ -94,7 +99,7 @@ func (p *downloadProtection) recordFailure(ctx context.Context, ip string, now t
 	}
 	until := now.Add(downloadBanBase + p.jitter()).UTC()
 	banID := failureKey
-	if _, err := p.db.IpBan.Get(ctx, banID); err == nil {
+	if _, err = p.db.IpBan.Get(ctx, banID); err == nil {
 		err = p.db.IpBan.UpdateOneID(banID).SetBannedUntil(until.Format(time.RFC3339Nano)).Exec(ctx)
 	} else if ent.IsNotFound(err) {
 		_, err = p.db.IpBan.Create().SetID(banID).SetBannedUntil(until.Format(time.RFC3339Nano)).Save(ctx)

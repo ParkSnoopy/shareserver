@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -114,18 +116,27 @@ func (i *Integrity) Reconcile() ReconcileResult {
 		}
 		known[absolutePath(blobPath)] = struct{}{}
 	}
-	_ = filepath.WalkDir(i.BlobDir, func(path string, entry os.DirEntry, err error) error {
+	root, err := os.OpenRoot(i.BlobDir)
+	if err != nil {
+		return result
+	}
+	defer func() {
+		if err := root.Close(); err != nil {
+			log.Printf("error: close blob directory: %v", err)
+		}
+	}()
+	_ = fs.WalkDir(root.FS(), ".", func(path string, entry os.DirEntry, err error) error {
 		if err != nil || entry == nil || entry.IsDir() {
 			if err == nil && entry != nil && entry.IsDir() && entry.Name() == ".staging" {
-				return filepath.SkipDir
+				return fs.SkipDir
 			}
 			return nil
 		}
-		blobPath := filepath.Clean(path)
+		blobPath := filepath.Join(i.BlobDir, filepath.FromSlash(path))
 		if _, ok := known[absolutePath(blobPath)]; ok {
 			return nil
 		}
-		if err := os.Remove(blobPath); err == nil {
+		if err := root.Remove(path); err == nil {
 			result.OrphanFiles++
 		}
 		return nil

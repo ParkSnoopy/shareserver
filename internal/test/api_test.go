@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"shareserver/internal/auth"
+	"shareserver/internal/ent/hook"
 	"shareserver/internal/ent/loginfailureevent"
 	httpx "shareserver/internal/http"
 	"shareserver/internal/share"
@@ -513,6 +515,34 @@ func TestAPIDownloadBansAfterMoreThanTenFailuresAndPersists(t *testing.T) {
 	}
 }
 
+func TestAPIDownloadBanWriteFailureFailsClosed(t *testing.T) {
+	a, router := newRouter(t)
+	ip := "203.0.113.26"
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for range 10 {
+		if _, err := a.DB.LoginFailureEvent.Create().SetIP("download:" + ip).
+			SetHappenedAt(now).Save(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.DB.IpBan.Use(hook.FixedError(errors.New("test-only ban storage failure")))
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/download/not-a-uuid", strings.NewReader(downloadPasswordJSON("wrong")))
+	req.TLS = &tls.ConnectionState{}
+	req.RemoteAddr = ip + ":4321"
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusTooManyRequests || w.Header().Get("Retry-After") != "60" {
+		t.Fatalf("ban storage failure response = %d, Retry-After %q", w.Code, w.Header().Get("Retry-After"))
+	}
+	if strings.Contains(w.Body.String(), "storage failure") {
+		t.Fatal("download denial leaked the storage error")
+	}
+	if _, err := a.DB.IpBan.Get(context.Background(), "download:"+ip); err == nil {
+		t.Fatal("failed ban write persisted a ban")
+	}
+}
+
 func TestAPIDownloadRemovesExpiredBanBeforeNextRequest(t *testing.T) {
 	a := newTestApp(t)
 	router := httpx.New(a)
@@ -562,13 +592,13 @@ func TestEnglishDefaultAndLanguageCookie(t *testing.T) {
 	second := httptest.NewRequest(http.MethodGet, "/upload", nil)
 	second.Header.Set("Accept-Language", "en")
 	second.AddCookie(cookies[0])
-	second.AddCookie(&http.Cookie{Name: "shareserver_lang", Value: "ko"})
+	second.Header.Add("Cookie", "shareserver_lang=ko")
 	secondResponse := httptest.NewRecorder()
 	router.ServeHTTP(secondResponse, second)
 	assertBodyContains(t, secondResponse.Body.String(), `<html lang="ko">`, ">업로드</h1>", "필수 암호화 비밀번호", ">English</button>")
 
 	api := httptest.NewRequest(http.MethodGet, "/api/", nil)
-	api.AddCookie(&http.Cookie{Name: "shareserver_lang", Value: "ko"})
+	api.Header.Add("Cookie", "shareserver_lang=ko")
 	apiResponse := httptest.NewRecorder()
 	router.ServeHTTP(apiResponse, api)
 	assertBodyContains(t, apiResponse.Body.String(), `<html lang="ko">`, "사용 안내")
@@ -585,13 +615,13 @@ func TestEnglishDefaultAndLanguageCookie(t *testing.T) {
 	assertBodyContains(t, noPreferenceResponse.Body.String(), `<html lang="en">`, ">Upload</h1>")
 	english := httptest.NewRequest(http.MethodGet, "/upload", nil)
 	english.AddCookie(cookies[0])
-	english.AddCookie(&http.Cookie{Name: "shareserver_lang", Value: "en"})
+	english.Header.Add("Cookie", "shareserver_lang=en")
 	englishResponse := httptest.NewRecorder()
 	router.ServeHTTP(englishResponse, english)
 	assertBodyContains(t, englishResponse.Body.String(), `<html lang="en">`, ">Upload</h1>")
 
 	invalid := httptest.NewRequest(http.MethodGet, "/upload", nil)
-	invalid.AddCookie(&http.Cookie{Name: "shareserver_lang", Value: "zh"})
+	invalid.Header.Add("Cookie", "shareserver_lang=zh")
 	invalidResponse := httptest.NewRecorder()
 	router.ServeHTTP(invalidResponse, invalid)
 	assertBodyContains(t, invalidResponse.Body.String(), `<html lang="en">`, ">Upload</h1>")
@@ -669,7 +699,7 @@ func TestAPIRequiresHTTPSWithoutCreatingSession(t *testing.T) {
 	a, router := newRouter(t)
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/download/not-a-uuid", strings.NewReader(downloadPasswordJSON("wrong")))
 	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(&http.Cookie{Name: "sid", Value: "invalid-session"})
+	req.Header.Add("Cookie", "sid=invalid-session")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusUpgradeRequired {

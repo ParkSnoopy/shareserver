@@ -39,7 +39,16 @@ func TestLoadProductionSecret(t *testing.T) {
 }
 
 func TestPersistentSecretConcurrentStartup(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "data", "test.db.secret")
+	root, err := os.OpenRoot(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := root.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	path := filepath.Join(root.Name(), "data", "test.db.secret")
 	var group sync.WaitGroup
 	for range 16 {
 		group.Go(func() {
@@ -48,7 +57,7 @@ func TestPersistentSecretConcurrentStartup(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			stored, err := os.ReadFile(path)
+			stored, err := root.ReadFile("data/test.db.secret")
 			if err != nil || secret != string(stored) {
 				t.Error("concurrent startup returned a different key from the published file")
 			}
@@ -61,6 +70,15 @@ func TestPersistentSecretRejectsUnsafeState(t *testing.T) {
 	for _, kind := range []string{"empty", "corrupt", "oversized", "exposed", "directory", "symlink", "blocked-parent"} {
 		t.Run(kind, func(t *testing.T) {
 			dir := t.TempDir()
+			root, err := os.OpenRoot(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := root.Close(); err != nil {
+					t.Error(err)
+				}
+			})
 			path := filepath.Join(dir, "test.db.secret")
 			original := []byte("test-only-corrupt-key")
 			switch kind {
@@ -90,7 +108,7 @@ func TestPersistentSecretRejectsUnsafeState(t *testing.T) {
 					t.Fatal(err)
 				}
 				if kind == "exposed" {
-					if err := os.Chmod(path, 0644); err != nil {
+					if err := root.Chmod("test.db.secret", 0644); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -106,7 +124,7 @@ func TestPersistentSecretRejectsUnsafeState(t *testing.T) {
 				t.Fatal("unsafe persisted state must fail instead of generating a replacement")
 			}
 			if kind != "directory" && kind != "blocked-parent" {
-				stored, err := os.ReadFile(path)
+				stored, err := root.ReadFile("test.db.secret")
 				if err != nil || !bytes.Equal(stored, original) {
 					t.Fatal("failed startup modified the persisted key")
 				}

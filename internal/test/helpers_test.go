@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"io"
 	stdhttp "net/http"
 	"os"
 	"path/filepath"
@@ -116,24 +117,14 @@ func mustInsertShare(t *testing.T, s *share.Store, sh share.Share) {
 	}
 }
 
-// insertRouteShare seeds a public share reachable by handler route tests.
-func insertRouteShare(t *testing.T, h *httpx.Handler, id, blobPath, expiry string) {
-	t.Helper()
-	sh := sampleShare(id, "public", expiry)
-	sh.BlobPath = blobPath
-	if err := h.Store.Insert(sh); err != nil {
-		t.Fatalf("insert: %v", err)
-	}
-}
-
 // insertProtectedShare seeds encrypted payload bytes with a separate download verifier.
 func insertProtectedShare(t *testing.T, a *app.App, id, payload, expiry, password string) {
 	t.Helper()
-	if err := os.MkdirAll(a.C.BlobDir, 0755); err != nil {
+	if err := os.MkdirAll(a.C.BlobDir, 0700); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(a.C.BlobDir, id+".blob")
-	if err := os.WriteFile(path, []byte(payload), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(payload), 0600); err != nil {
 		t.Fatal(err)
 	}
 	hash, err := auth.HashPasswordHash(testDownloadPasswordHash(password))
@@ -187,5 +178,12 @@ func insertAdminSession(t *testing.T, client *ent.Client, sid, csrf string) {
 		Save(context.Background())
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func closeTestResource(t *testing.T, resource io.Closer) {
+	t.Helper()
+	if err := resource.Close(); err != nil {
+		t.Errorf("close test resource: %v", err)
 	}
 }

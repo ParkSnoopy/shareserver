@@ -3,11 +3,12 @@ package auth
 import (
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"math/rand/v2"
+	"math/big"
 	"net"
 	"time"
 
@@ -155,7 +156,11 @@ func recordLoginFailure(ctx context.Context, client *ent.Client, ip string, now 
 		Where(loginfailureevent.IP(ip), loginfailureevent.HappenedAtGTE(cut)).
 		Count(ctx)
 	if n >= 5 {
-		until = now.Add(6*time.Hour + time.Duration(rand.IntN(61))*time.Minute).UTC()
+		jitter, err := rand.Int(rand.Reader, big.NewInt(61))
+		if err != nil {
+			panic("crypto rand failed: " + err.Error())
+		}
+		until = now.Add(6*time.Hour + time.Duration(jitter.Int64())*time.Minute).UTC()
 		bannedUntil := until.Format(time.RFC3339Nano)
 		if _, err := client.IpBan.Get(ctx, ip); err == nil {
 			_ = client.IpBan.UpdateOneID(ip).SetBannedUntil(bannedUntil).Exec(ctx)
