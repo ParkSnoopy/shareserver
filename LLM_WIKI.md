@@ -82,7 +82,7 @@ execution starts only Shareserver, with default address `127.0.0.1:8081`.
 Container configuration and proxy-trust requirements are owned by the
 [README](./README.md#run-with-docker).
 
-The launcher replaces itself with the packaged `./anubis` executable and fixed arguments, not a PATH-selected command or caller-supplied arguments.
+The image installs Anubis at `/app/anubis`, beside the server. The launcher replaces itself with that packaged `./anubis` executable and fixed arguments, not a PATH-selected command or caller-supplied arguments.
 The supervisor passes Anubis configuration through its supported environment variables while retaining the same process supervision and signing-key behavior.
 
 ## Public route inventory

@@ -41,10 +41,27 @@ func TestContainerGateway(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer closeTestResource(t, source)
+	dockerfile, err := source.ReadFile("Dockerfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	anubisCopy := regexp.MustCompile(`(?m)^COPY --from=\S+ /ko-app/anubis (/\S+)$`).FindSubmatch(dockerfile)
+	if len(anubisCopy) != 2 {
+		t.Fatal("Dockerfile must install the packaged Anubis executable")
+	}
 	for _, mode := range []string{"direct", "proxy", "railway", "railway-direct", "custom-key"} {
 		t.Run(mode, func(t *testing.T) {
 			direct := mode == "direct" || mode == "railway-direct"
-			dir := t.TempDir()
+			containerRoot := t.TempDir()
+			containerFiles, err := os.OpenRoot(containerRoot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer closeTestResource(t, containerFiles)
+			dir := filepath.Join(containerRoot, "app")
+			if err := os.Mkdir(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
 			files, err := os.OpenRoot(dir)
 			if err != nil {
 				t.Fatal(err)
@@ -59,7 +76,15 @@ func TestContainerGateway(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			for name, target := range map[string]string{"shareserver": server, "anubis": anubis, "web": filepath.Join(root, "web")} {
+			anubisName := strings.TrimPrefix(string(anubisCopy[1]), "/")
+			anubisPath := filepath.Join(containerRoot, anubisName)
+			if err := containerFiles.MkdirAll(filepath.Dir(anubisName), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := containerFiles.Symlink(anubis, anubisName); err != nil {
+				t.Fatal(err)
+			}
+			for name, target := range map[string]string{"shareserver": server, "web": filepath.Join(root, "web")} {
 				if err := os.Symlink(target, filepath.Join(dir, name)); err != nil {
 					t.Fatal(err)
 				}
@@ -74,7 +99,7 @@ func TestContainerGateway(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer closeTestResource(t, log)
-			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+			t.Setenv("PATH", filepath.Dir(anubisPath)+string(os.PathListSeparator)+os.Getenv("PATH"))
 			t.Setenv("DB_PATH", filepath.Join(dir, "test.db"))
 			t.Setenv("BLOB_DIR", filepath.Join(dir, "blobs"))
 			t.Setenv("DEBUG", "false")
