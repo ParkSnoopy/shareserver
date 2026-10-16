@@ -9,9 +9,9 @@ or modify the implementation without weakening its security model.
 The guide describes the current implementation. When a statement here conflicts
 with executable behavior, use the implementation and tests as the immediate
 authority, then update this document in the same change. Start with the
-[project README](./README.md), [release history](./CHANGELOG.md),
-[route table](./internal/http/router.go), [HTTP handlers](./internal/http/handlers.go),
-and [API route tests](./internal/test/api_test.go).
+[project README](../README.md), [release history](./CHANGELOG.md),
+[route table](../internal/http/router.go), [HTTP handlers](../internal/http/handlers.go),
+and [API route tests](../internal/test/api_test.go).
 
 The term **Share** means one logical archive consisting of:
 
@@ -23,11 +23,11 @@ contents. Clients create a ZIP, encrypt the complete ZIP locally, and send only
 the ciphertext plus safe metadata. The only plaintext-password exception in
 the project is startup administration configuration through `ADMIN_PASSWORD`;
 HTTP authentication still sends a derived hash, as implemented by the
-[authentication module](./internal/auth/auth.go).
+[authentication module](../internal/auth/auth.go).
 
 Security takes priority over speed, convenience, UI polish, and cleanup. Keep
 tradeoffs explicit. This guide owns agent instructions and the detailed API
-contract; the README owns build, configuration, and deployment procedures.
+contract; the [development guide](./DEVELOPMENT.md) owns build, configuration, and deployment procedures.
 
 ## Navigation
 
@@ -52,42 +52,42 @@ browser JavaScript modules. Its main components are:
 
 | Layer | Responsibility | Primary files |
 | --- | --- | --- |
-| Process entry | Load configuration, open SQLite, initialize integrity services, start cleanup, serve HTTP | [server entry point](./cmd/shareserver/main.go), [application container](./internal/app/app.go) |
-| Configuration | Read the environment and optional local environment file, apply development defaults, fail closed for production secrets | [configuration loader](./internal/config/config.go), [environment example](./.env.example) |
-| Routing and middleware | Register routes; apply security headers, request clocks, stateless API behavior, CSRF policy, body limits, proxy trust, and client-IP resolution | [route table](./internal/http/router.go), [middleware](./internal/http/middleware.go) |
-| HTTP adaptation | Parse multipart and credential bodies, map domain errors to HTTP statuses, and stream responses | [HTTP handlers](./internal/http/handlers.go) |
-| Upload policy | Validate metadata, reserve capacity, derive a verifier, stage ciphertext, commit the blob, insert metadata, and roll back failures | [upload module](./internal/upload/upload.go) |
-| Download protection | Persist failed attempts, create and expire IP bans, and produce `Retry-After` | [download protection](./internal/http/download.go) |
-| Authentication | Validate canonical password hashes, store bcrypt verifiers, hash private lookup keys, and protect admin login | [authentication module](./internal/auth/auth.go) |
-| Share model and queries | Define active/expired semantics and isolate Ent query behavior | [Share model](./internal/share/model.go), [Share store](./internal/share/store.go) |
-| Blob storage | Stage, hash, size-limit, atomically commit, count, remove, purge, and reconcile files | [blob store](./internal/storage/blobstore.go), [integrity service](./internal/storage/integrity.go) |
-| Database | Open SQLite through Ent, run schema creation, and serialize DB access through one connection | [database bootstrap](./internal/db/db.go), [Share schema](./internal/ent/schema/share.go) |
-| Browser client | ZIP files, derive authorization hashes, encrypt/decrypt ciphertext, invoke the API, and render archive entries | [upload client](./web/static/js/upload.js), [crypto client](./web/static/js/crypto.js), [Share client](./web/static/js/share.js), [archive client](./web/static/js/archive.js), [ZIP helpers](./web/static/js/zip.js) |
-| Public documentation UI | Render the active public archive list and concise API contract | [API template](./web/templates/api.html) |
+| Process entry | Load configuration, open SQLite, initialize integrity services, start cleanup, serve HTTP | [server entry point](../cmd/shareserver/main.go), [application container](../internal/app/app.go) |
+| Configuration | Read the environment and optional local environment file, apply development defaults, fail closed for production secrets | [configuration loader](../internal/config/config.go), [environment example](../.env.example) |
+| Routing and middleware | Register routes; apply security headers, request clocks, stateless API behavior, CSRF policy, body limits, proxy trust, and client-IP resolution | [route table](../internal/http/router.go), [middleware](../internal/http/middleware.go) |
+| HTTP adaptation | Parse multipart and credential bodies, map domain errors to HTTP statuses, and stream responses | [HTTP handlers](../internal/http/handlers.go) |
+| Upload policy | Validate metadata, reserve capacity, derive a verifier, stage ciphertext, commit the blob, insert metadata, and roll back failures | [upload module](../internal/upload/upload.go) |
+| Download protection | Persist failed attempts, create and expire IP bans, and produce `Retry-After` | [download protection](../internal/http/download.go) |
+| Authentication | Validate canonical password hashes, store bcrypt verifiers, hash private lookup keys, and protect admin login | [authentication module](../internal/auth/auth.go) |
+| Share model and queries | Define active/expired semantics and isolate Ent query behavior | [Share model](../internal/share/model.go), [Share store](../internal/share/store.go) |
+| Blob storage | Stage, hash, size-limit, atomically commit, count, remove, purge, and reconcile files | [blob store](../internal/storage/blobstore.go), [integrity service](../internal/storage/integrity.go) |
+| Database | Open SQLite through Ent, run schema creation, and serialize DB access through one connection | [database bootstrap](../internal/db/db.go), [Share schema](../internal/ent/schema/share.go) |
+| Browser client | ZIP files, derive authorization hashes, encrypt/decrypt ciphertext, invoke the API, and render archive entries | [upload client](../web/static/js/upload.js), [crypto client](../web/static/js/crypto.js), [Share client](../web/static/js/share.js), [archive client](../web/static/js/archive.js), [ZIP helpers](../web/static/js/zip.js) |
+| Public documentation UI | Render the active public archive list and concise API contract | [API template](../web/templates/api.html) |
 
-The module and dependency versions are declared in [the Go module](./go.mod).
-The container build is described by [the Dockerfile](./Dockerfile), and the
-container starts through [the entrypoint](./entrypoint.sh). For process and
-HTTPS deployment commands, use the [README deployment sections](./README.md#quick-start),
-[Compose definition](./deploy/docker-compose.yaml),
-[Caddy configuration](./deploy/Caddyfile), and
-[interactive deployment script](./deploy/deploy.sh).
+The module and dependency versions are declared in [the Go module](../go.mod).
+The container build is described by [the Dockerfile](../Dockerfile), and the
+container starts through [the entrypoint](../entrypoint.sh). For process and
+HTTPS deployment commands, use the [development guide](./DEVELOPMENT.md#quick-start),
+[Compose definition](../deploy/docker-compose.yaml),
+[Caddy configuration](../deploy/Caddyfile), and
+[interactive deployment script](../deploy/deploy.sh).
 
 The container entrypoint supervises Anubis on port `8080` and Shareserver on
-`127.0.0.1:8081`. The [gateway policy](./anubis-policy.yaml) challenges every
+`127.0.0.1:8081`. The [gateway policy](../anubis-policy.yaml) challenges every
 application route except nonempty `/api/` subpaths. `/api/` is HTML and is
 challenged; machine operations under `/api/v0/` do not need an Anubis cookie.
 Anubis's own challenge assets/verification routes remain accessible. Native
 execution starts only Shareserver, with default address `127.0.0.1:8081`.
 Container configuration and proxy-trust requirements are owned by the
-[README](./README.md#run-with-docker).
+[development guide](./DEVELOPMENT.md#run-with-docker).
 
 The image installs Anubis at `/app/anubis`, beside the server. The launcher replaces itself with that packaged `./anubis` executable and fixed arguments, not a PATH-selected command or caller-supplied arguments.
 The supervisor passes Anubis configuration through its supported environment variables while retaining the same process supervision and signing-key behavior.
 
 ## Public route inventory
 
-The current routes are registered in the [route table](./internal/http/router.go).
+The current routes are registered in the [route table](../internal/http/router.go).
 
 | Method | Path | Purpose | Session behavior |
 | --- | --- | --- | --- |
@@ -103,9 +103,9 @@ The current routes are registered in the [route table](./internal/http/router.go
 
 `GET /api/` is HTML and lists at most the 100 newest active public Shares.
 It is not a public JSON lookup endpoint. Listing queries are
-defined by the [Share store](./internal/share/store.go), while the public page is
-rendered by the [API template](./web/templates/api.html). The crawler policy is
-the [robots file](./web/robots.txt).
+defined by the [Share store](../internal/share/store.go), while the public page is
+rendered by the [API template](../web/templates/api.html). The crawler policy is
+the [robots file](../web/robots.txt).
 
 The API operation routes are registered only for `POST`; another method receives
 `405 Method Not Allowed`. Router-level unknown paths return `404`, but middleware
@@ -133,10 +133,10 @@ proxy trust only in trusted-proxy mode (`ANUBIS_USE_REMOTE_ADDRESS=false`);
 the HTTPS Compose sidecar supplies verified client-IP and HTTPS headers. Direct
 mode ignores forwarded security claims, even though Anubis connects over loopback.
 Untrusted clients cannot make a request secure merely by adding forwarding
-headers. The exact rules live in [HTTP middleware](./internal/http/middleware.go),
-with proxy regression coverage in [API route tests](./internal/test/api_test.go).
+headers. The exact rules live in [HTTP middleware](../internal/http/middleware.go),
+with proxy regression coverage in [API route tests](../internal/test/api_test.go).
 
-The [HTTP server](./cmd/shareserver/main.go) bounds header-read and idle-connection time without imposing a whole-body read or response-write deadline on large transfers.
+The [HTTP server](../cmd/shareserver/main.go) bounds header-read and idle-connection time without imposing a whole-body read or response-write deadline on large transfers.
 
 ### Client IP
 
@@ -155,7 +155,7 @@ The `/api/`, upload, private-list, download, and crawler-policy routes do not
 create browser session rows or issue session cookies. If a valid `sid` cookie
 already exists, the server may attach that session to the request without
 creating a new one.
-This behavior is implemented in [HTTP middleware](./internal/http/middleware.go).
+This behavior is implemented in [HTTP middleware](../internal/http/middleware.go).
 
 Ordinary machine clients should omit cookies and `X-CSRF-Token`. Upload has one
 intentional browser-admin extension: a valid existing admin session plus its
@@ -176,13 +176,13 @@ Middleware sets these headers on every normal application response:
 
 The application intentionally does not add HSTS. TLS termination and HSTS, if
 desired, belong to deployment infrastructure. Header behavior is implemented in
-[HTTP middleware](./internal/http/middleware.go) and covered by
-[HTTP tests](./internal/test/http_test.go).
+[HTTP middleware](../internal/http/middleware.go) and covered by
+[HTTP tests](../internal/test/http_test.go).
 
 ## Body-only JSON and form envelopes
 
 Private listing and download authorization share `requestBodyValue` in the
-[HTTP handlers](./internal/http/handlers.go). Their body contract is defined
+[HTTP handlers](../internal/http/handlers.go). Their body contract is defined
 here once; the endpoint sections below provide complete curl examples.
 
 | Endpoint | Only accepted property/form key | Maximum decoded UTF-8 bytes | Invalid-body outcome |
@@ -223,8 +223,8 @@ unpadded Base64, hexadecimal text, a SHA-256 digest without the domain prefix,
 or a hash of non-normalized text is not the same credential.
 
 The browser implementation is `downloadPasswordHash` in the
-[crypto client](./web/static/js/crypto.js). Server-side canonical validation and
-verifier comparison are in the [authentication module](./internal/auth/auth.go).
+[crypto client](../web/static/js/crypto.js). Server-side canonical validation and
+verifier comparison are in the [authentication module](../internal/auth/auth.go).
 
 ### Security meaning
 
@@ -268,7 +268,7 @@ for response-header write-outs, jq for JSON construction/validation, and Bun
 for the existing client crypto module. ZIP preparation also uses `zip` and
 `unzip`. Run against a small, disposable integration fixture, not unknown
 production archives. Start an HTTPS deployment using the
-[README](./README.md#run-docker-compose-with-self-signed-https) first.
+[development guide](./DEVELOPMENT.md#run-docker-compose-with-self-signed-https) first.
 
 For a new Share, follow workspace setup, ZIP/encryption preparation, one upload
 recipe, optional private lookup, target resolution/download, and decryption.
@@ -321,7 +321,7 @@ under the private workspace still require secret-safe handling and cleanup.
 
 The plaintext passed to encryption must be a valid ZIP archive, even for one
 file. The first-party browser uses level-6 compression and sanitizes entry names
-through the [ZIP helpers](./web/static/js/zip.js). The server cannot verify this
+through the [ZIP helpers](../web/static/js/zip.js). The server cannot verify this
 because it never decrypts the payload.
 
 Before encryption, an AI client should:
@@ -364,7 +364,7 @@ The current client encryption format is:
 | Authentication tag | 16 bytes, appended to ciphertext by the Web Crypto representation |
 
 The normative implementation for this repository is `encryptBlob` in the
-[crypto client](./web/static/js/crypto.js). Do not copy the legacy framed
+[crypto client](../web/static/js/crypto.js). Do not copy the legacy framed
 decryption support as an upload format: current uploads accept only the single
 AES-256-GCM payload format.
 
@@ -383,7 +383,7 @@ Serialize a JSON object with exactly the intended values:
 ```
 
 The server checks the KDF and cipher names, iteration range, Base64 decoding,
-salt length, and nonce length in the [upload module](./internal/upload/upload.go).
+salt length, and nonce length in the [upload module](../internal/upload/upload.go).
 It does not decrypt the blob or validate the GCM tag. A syntactically accepted
 upload can therefore still be undecryptable if the client encrypted incorrectly.
 The client must perform a local round-trip or equivalent cryptographic
@@ -395,7 +395,7 @@ Curl transports bytes; it does not create ZIPs or perform this AES-GCM format.
 Use the repository's existing client implementation rather than inventing an
 OpenSSL `enc` command: that command does not implement this authenticated wire
 format. This Bun adapter imports `encryptBlob`, `decryptBlob`, and
-`downloadPasswordHash` from the [crypto client](./web/static/js/crypto.js).
+`downloadPasswordHash` from the [crypto client](../web/static/js/crypto.js).
 It performs a local authenticated round-trip before writing the upload inputs.
 
 ```bash
@@ -517,8 +517,8 @@ After parsing the key, the server:
 
 The raw key is used transiently for HMAC derivation. It is never written to the
 Share row, audit log, or response. Lookup hashing is implemented by the
-[authentication module](./internal/auth/auth.go); filtering is implemented by
-the [Share store](./internal/share/store.go).
+[authentication module](../internal/auth/auth.go); filtering is implemented by
+the [Share store](../internal/share/store.go).
 
 ### Private-list success response
 
@@ -599,7 +599,7 @@ The request body must be a multipart stream. Metadata parts must precede the
 file part, and `blob` must be final. The parser rejects duplicate fields,
 unknown fields, extra file fields, a `blob` without a filename, and any part
 after `blob`. Parsing is implemented by `uploadParts` in the
-[HTTP handlers](./internal/http/handlers.go).
+[HTTP handlers](../internal/http/handlers.go).
 
 ### Multipart fields
 
@@ -620,9 +620,9 @@ Each metadata part is bounded to 64 KiB by the HTTP parser. The deeper upload
 policy applies tighter limits to title, cipher metadata, and password-hash input.
 The whole HTTP request is bounded to the configured maximum payload plus 4 MiB
 of multipart overhead. The authoritative code is in
-[HTTP middleware](./internal/http/middleware.go),
-[HTTP handlers](./internal/http/handlers.go), and the
-[upload module](./internal/upload/upload.go).
+[HTTP middleware](../internal/http/middleware.go),
+[HTTP handlers](../internal/http/handlers.go), and the
+[upload module](../internal/upload/upload.go).
 
 ### Public upload with curl
 
@@ -751,9 +751,9 @@ above, the owning upload module performs these storage transitions:
    failure removes the committed blob; earlier failures remove staged bytes.
 7. Write a safe audit event and return `201 Created` JSON.
 
-The orchestration is in the [upload module](./internal/upload/upload.go), staging
-and atomic rename are in the [blob store](./internal/storage/blobstore.go), and
-metadata insertion is in the [Share store](./internal/share/store.go).
+The orchestration is in the [upload module](../internal/upload/upload.go), staging
+and atomic rename are in the [blob store](../internal/storage/blobstore.go), and
+metadata insertion is in the [Share store](../internal/share/store.go).
 
 ### Upload success response
 
@@ -983,8 +983,8 @@ The server handles a download in this order:
    `410 Gone` and does not add a failed-password event.
 8. Set download headers and delegate file streaming to Go's file server.
 
-The handler lives in [HTTP handlers](./internal/http/handlers.go), and persistent
-failure/ban policy lives in [download protection](./internal/http/download.go).
+The handler lives in [HTTP handlers](../internal/http/handlers.go), and persistent
+failure/ban policy lives in [download protection](../internal/http/download.go).
 
 ### Download success response
 
@@ -1046,11 +1046,11 @@ with a conservative `Retry-After: 60`.
 This includes errors from creating or updating the durable ban, not only failure-event writes.
 Both login and download ban jitter use cryptographic randomness without changing their duration ranges.
 
-The policy is implemented in [download protection](./internal/http/download.go).
+The policy is implemented in [download protection](../internal/http/download.go).
 Persistence is defined by the
-[failure-event schema](./internal/ent/schema/loginfailureevent.go) and
-[IP-ban schema](./internal/ent/schema/ipban.go). Its key behavior is covered by
-[API route tests](./internal/test/api_test.go).
+[failure-event schema](../internal/ent/schema/loginfailureevent.go) and
+[IP-ban schema](../internal/ent/schema/ipban.go). Its key behavior is covered by
+[API route tests](../internal/test/api_test.go).
 
 ## Decrypting a downloaded payload
 
@@ -1110,13 +1110,13 @@ automatically. Do not blindly extract or ZIP-test an unbounded archive.
 
 The first-party flow downloads to a pre-sized byte buffer, decrypts directly to
 bytes, then unzips in-browser to reduce duplicate memory pressure. See the
-[Share client](./web/static/js/share.js), [archive client](./web/static/js/archive.js),
-[crypto client](./web/static/js/crypto.js), and [ZIP helpers](./web/static/js/zip.js).
+[Share client](../web/static/js/share.js), [archive client](../web/static/js/archive.js),
+[crypto client](../web/static/js/crypto.js), and [ZIP helpers](../web/static/js/zip.js).
 
 For a private Share, `POST /api/v0/list` returns `cipher_meta` after a matching
 private-key lookup. There is no equivalent JSON metadata lookup for a public
 Share. The browser Share page embeds metadata in HTML through the
-[Share template](./web/templates/share.html), but that markup is a UI
+[Share template](../web/templates/share.html), but that markup is a UI
 implementation detail rather than a stable machine API. A robust automation
 workflow should retain metadata at upload time or obtain it through the private
 list endpoint rather than scraping HTML.
@@ -1308,7 +1308,7 @@ printf 'invalid_download_status=%s\n' "$HTTP_STATUS"
 
 Do not run a shell loop to reach the ban threshold. Its restart, expiry,
 namespacing, and boundary behavior are exercised by the
-[API route tests](./internal/test/api_test.go), not by attacking a shared server.
+[API route tests](../internal/test/api_test.go), not by attacking a shared server.
 
 ## Data persistence
 
@@ -1321,7 +1321,7 @@ file atomically without overwriting a concurrent winner. Invalid, inaccessible,
 non-regular, or group/world-accessible files fail startup; they are not rotated.
 Back up the key with the database: changing it breaks private-key lookup HMACs.
 Development retains its ephemeral-secret behavior. `ADMIN_PASSWORD` is still
-required in production. See the [configuration loader](./internal/config/config.go).
+required in production. See the [configuration loader](../internal/config/config.go).
 
 The container launches Anubis through `shareserver --anubis`, which derives its
 Ed25519 seed with HMAC-SHA-256 and the separate context
@@ -1344,7 +1344,7 @@ a fresh challenge. Forwarded mode requires the documented restricted proxy ingre
 The server uses SQLite through Ent and `go-sqlite3`. It enables foreign keys,
 uses a five-second busy timeout, and restricts the connection pool to one open
 connection. Schema creation runs at startup. See the
-[database bootstrap](./internal/db/db.go) and [Go module](./go.mod).
+[database bootstrap](../internal/db/db.go) and [Go module](../go.mod).
 
 The Share row records:
 
@@ -1358,24 +1358,24 @@ The Share row records:
 - expiry and creation timestamps; and
 - optional purge marker retained for compatibility with model status logic.
 
-The authoritative schema is the [Share schema](./internal/ent/schema/share.go),
-with hand-written domain mapping in the [Share model](./internal/share/model.go)
-and [Share store](./internal/share/store.go).
+The authoritative schema is the [Share schema](../internal/ent/schema/share.go),
+with hand-written domain mapping in the [Share model](../internal/share/model.go)
+and [Share store](../internal/share/store.go).
 
 Other durable tables include administrator credentials, browser sessions, audit
 events, login/download failure events, and namespaced IP bans. Their definitions
-are the [administrator schema](./internal/ent/schema/admin.go),
-[session schema](./internal/ent/schema/session.go),
-[audit-event schema](./internal/ent/schema/auditevent.go),
-[failure-event schema](./internal/ent/schema/loginfailureevent.go), and
-[IP-ban schema](./internal/ent/schema/ipban.go).
+are the [administrator schema](../internal/ent/schema/admin.go),
+[session schema](../internal/ent/schema/session.go),
+[audit-event schema](../internal/ent/schema/auditevent.go),
+[failure-event schema](../internal/ent/schema/loginfailureevent.go), and
+[IP-ban schema](../internal/ent/schema/ipban.go).
 
 ### Blob filesystem
 
 The configured blob directory contains committed `<uuid>.blob` files and a
 private `.staging` directory. The [upload processing sequence](#server-processing-sequence)
 defines file creation, hashing, commit, and rollback; the
-[blob store](./internal/storage/blobstore.go) implements them.
+[blob store](../internal/storage/blobstore.go) implements them.
 
 Staging files and orphan traversal/removal use root-scoped filesystem handles, so relative traversal and symlink resolution cannot escape the opened directories.
 Language-catalog and persisted-secret reads are likewise confined to their respective directories.
@@ -1390,13 +1390,13 @@ Before reading a potentially slow upload, the server reserves the smaller of:
 The final committed size is checked again under a process-wide capacity mutex
 and the integrity lock. This prevents concurrent requests from independently
 observing the same free space. Storage limits are configured through the
-[configuration loader](./internal/config/config.go).
+[configuration loader](../internal/config/config.go).
 
 ## Expiry, purge, and reconciliation
 
 A Share is active when it is not marked purged and its optional expiry is later
 than the request's canonical UTC timestamp. Expiry at exactly `now` is expired.
-The rule is centralized in the [Share model](./internal/share/model.go).
+The rule is centralized in the [Share model](../internal/share/model.go).
 
 The server performs cleanup:
 
@@ -1412,16 +1412,16 @@ metadata row; unexpected filesystem errors preserve metadata for a later retry.
 Legacy Shares without a download verifier cannot be migrated by recovering a
 password: the server never retained their passwords. Startup removes those
 unprotected blob/row pairs rather than exposing an unauthenticated payload path.
-See the [cleanup scheduler](./internal/http/cleanup.go) and
-[integrity service](./internal/storage/integrity.go).
+See the [cleanup scheduler](../internal/http/cleanup.go) and
+[integrity service](../internal/storage/integrity.go).
 
 ## Audit and safe observability
 
 Uploads and selected administrator actions produce audit rows containing actor,
 IP, action, target, safe metadata, and timestamp. Audit write failure does not
 fail the primary operation. The implementation is the
-[audit logger](./internal/audit/audit.go) and
-[audit-event schema](./internal/ent/schema/auditevent.go).
+[audit logger](../internal/audit/audit.go) and
+[audit-event schema](../internal/ent/schema/auditevent.go).
 The following boundaries apply equally to server audit records, browser
 diagnostics, agent reports, prompts, traces, tickets, and persisted memory.
 
@@ -1449,7 +1449,7 @@ Do not log:
 - environment secrets.
 
 The browser's expected high-level sequence is visible in the
-[upload client](./web/static/js/upload.js) and [Share client](./web/static/js/share.js).
+[upload client](../web/static/js/upload.js) and [Share client](../web/static/js/share.js).
 
 ## Modifying the project safely
 
@@ -1520,13 +1520,13 @@ An AI coding agent changing this repository should preserve these boundaries:
 
 The strongest executable references are:
 
-- [API route tests](./internal/test/api_test.go) for plaintext rejection,
+- [API route tests](../internal/test/api_test.go) for plaintext rejection,
   multipart ordering, HTTPS, response latency, bans, and ban expiry;
-- [HTTP tests](./internal/test/http_test.go) for session, login-hash, page, and
+- [HTTP tests](../internal/test/http_test.go) for session, login-hash, page, and
   security-header behavior;
-- [upload tests](./internal/test/upload_test.go) for policy, rollback, size, and
+- [upload tests](../internal/test/upload_test.go) for policy, rollback, size, and
   capacity behavior; and
-- [crypto tests](./web/test/crypto.test.mjs) for password derivation and cipher
+- [crypto tests](../web/test/crypto.test.mjs) for password derivation and cipher
   metadata behavior.
 
 Run the current validation commands from the repository root:
