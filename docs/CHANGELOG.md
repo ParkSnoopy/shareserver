@@ -3,6 +3,7 @@
 ## 2026-10-17
 
 ### Fix
+- Keep static assets and the download worker from creating anonymous sessions that can overwrite the admin login cookie during navigation.
 - Install Anubis beside the server so the fixed launcher path works in the container; verify the Dockerfile layout in the gateway integration test.
 - Propagate download-ban persistence errors so failed writes produce the conservative fail-closed response.
 - Use cryptographic ban jitter, bounded HTTP header/idle waits, and root-scoped catalog, secret, staging, and orphan-file operations.

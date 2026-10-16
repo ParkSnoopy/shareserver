@@ -151,10 +151,9 @@ trusted reverse proxy.
 
 ### Stateless API behavior
 
-The `/api/`, upload, private-list, download, and crawler-policy routes do not
-create browser session rows or issue session cookies. If a valid `sid` cookie
-already exists, the server may attach that session to the request without
-creating a new one.
+The `/api/`, upload, private-list, download, crawler-policy, `/static/`, and `/download-sw.js` routes do not create browser session rows or issue session cookies.
+Late asset responses therefore cannot overwrite the session cookie rotated by admin login.
+If a valid `sid` cookie already exists, the server may attach that session to the request without creating a new one.
 This behavior is implemented in [HTTP middleware](../internal/http/middleware.go).
 
 Ordinary machine clients should omit cookies and `X-CSRF-Token`. Upload has one

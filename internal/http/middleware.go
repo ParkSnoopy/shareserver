@@ -50,7 +50,7 @@ func (h *Handler) security(next http.Handler) http.Handler {
 	})
 }
 
-// withSession attaches browser session state while keeping machine-readable routes stateless.
+// withSession attaches browser state without creating sessions for API or asset requests.
 func (h *Handler) withSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isSessionlessPath(r.URL.Path) {
@@ -69,7 +69,9 @@ func (h *Handler) withSession(next http.Handler) http.Handler {
 }
 
 func isSessionlessPath(path string) bool {
-	return path == "/robots.txt" || path == "/api/" || isAPIPath(path)
+	// A late asset response must not replace the cookie rotated by admin login.
+	return strings.HasPrefix(path, "/static/") || path == "/download-sw.js" ||
+		path == "/robots.txt" || path == "/api/" || isAPIPath(path)
 }
 
 func isAPIPath(path string) bool {

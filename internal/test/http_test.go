@@ -66,6 +66,73 @@ func TestAdminLoginAcceptsOnlyPasswordHash(t *testing.T) {
 	if hashed.Code != http.StatusSeeOther || hashed.Header().Get("Location") != "/admin" {
 		t.Fatalf("hashed admin login response = %d %q", hashed.Code, hashed.Header().Get("Location"))
 	}
+	loginResponse := hashed.Result()
+	defer closeTestResource(t, loginResponse.Body)
+	var adminCookie *http.Cookie
+	for _, cookie := range loginResponse.Cookies() {
+		if cookie.Name == "sid" {
+			adminCookie = cookie
+		}
+	}
+	if adminCookie == nil || adminCookie.Value == "admin-login-sid" {
+		t.Fatal("successful login did not rotate the session cookie")
+	}
+	for _, path := range []string{"/admin", "/upload", "/api/", "/", "/admin"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.AddCookie(adminCookie)
+		page := httptest.NewRecorder()
+		router.ServeHTTP(page, req)
+		if page.Code != http.StatusOK {
+			t.Fatalf("authenticated navigation to %s returned %d", path, page.Code)
+		}
+		assertBodyContains(t, page.Body.String(), `action="/admin/logout"`)
+		if page.Header().Get("Set-Cookie") != "" {
+			t.Fatalf("navigation to %s replaced the admin cookie", path)
+		}
+		if path == "/upload" {
+			assertBodyContains(t, page.Body.String(), `<option value="2160"`)
+		}
+	}
+	sess, ok := httpx.NewSessions(a.DB).Get(context.Background(), adminCookie.Value)
+	if !ok {
+		t.Fatal("navigation invalidated the admin session")
+	}
+	logout := httptest.NewRequest(http.MethodPost, "/admin/logout", strings.NewReader(url.Values{"csrf": {sess.CSRF}}.Encode()))
+	logout.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	logout.AddCookie(adminCookie)
+	loggedOut := httptest.NewRecorder()
+	router.ServeHTTP(loggedOut, logout)
+	if loggedOut.Code != http.StatusSeeOther || existsSession(t, a.DB, adminCookie.Value) {
+		t.Fatal("explicit logout did not revoke the admin session")
+	}
+}
+
+func TestAssetRequestsDoNotReplaceLoginSession(t *testing.T) {
+	a, router := newRouter(t)
+	sessions := httpx.NewSessions(a.DB)
+	old, _ := sessions.GetOrCreate(context.Background(), "", "en")
+	admin := sessions.Rotate(context.Background(), old.ID, 42)
+	for _, path := range []string{"/static/css/app.css", "/static/js/upload.js", "/static/i18n/en.json", "/static/img/favicon.ico", "/download-sw.js"} {
+		for _, state := range []struct{ name, sid string }{{"anonymous", ""}, {"pre-login", old.ID}, {"admin", admin.ID}} {
+			t.Run(path+"/"+state.name, func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodGet, path, nil)
+				if state.sid != "" {
+					req.Header.Set("Cookie", "sid="+state.sid)
+				}
+				response := httptest.NewRecorder()
+				router.ServeHTTP(response, req)
+				if response.Code != http.StatusOK {
+					t.Fatalf("asset status = %d, want 200", response.Code)
+				}
+				if response.Header().Get("Set-Cookie") != "" {
+					t.Error("asset response can overwrite the current admin cookie")
+				}
+			})
+		}
+	}
+	if count, err := a.DB.Session.Query().Count(context.Background()); err != nil || count != 1 {
+		t.Fatalf("asset requests created sessions: count=%d, err=%v", count, err)
+	}
 }
 
 func TestCleanExpiredSessionsRemovesOnlyExpired(t *testing.T) {
