@@ -6,10 +6,13 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"html"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +22,7 @@ import (
 	"shareserver/internal/ent/loginfailureevent"
 	httpx "shareserver/internal/http"
 	"shareserver/internal/share"
+	"shareserver/internal/upload"
 )
 
 func TestAPIUploadRejectsPlaintextPasswordField(t *testing.T) {
@@ -309,6 +313,135 @@ func TestAPIClientUploadAndDownloadAcceptBrowserPasswordHash(t *testing.T) {
 	router.ServeHTTP(downloadResponse, download)
 	if downloadResponse.Code != http.StatusOK || downloadResponse.Body.String() != "browser-encrypted-payload" {
 		t.Fatalf("browser-hash download status = %d, body=%q", downloadResponse.Code, downloadResponse.Body.String())
+	}
+}
+
+func TestAPIUploadAdminNotices(t *testing.T) {
+	message := "For the review team only.\n<script>alert('notice')</script>"
+	for _, tc := range []struct {
+		name, warning, message, session, csrf, visibility string
+		status                                            int
+	}{
+		{name: "anonymous defaults", status: http.StatusCreated},
+		{name: "anonymous warning", warning: "1", status: http.StatusForbidden},
+		{name: "anonymous message", message: message, status: http.StatusForbidden},
+		{name: "anonymous forged csrf", warning: "true", csrf: "forged", status: http.StatusForbidden},
+		{name: "nonadmin session", message: message, session: "user", csrf: "valid", status: http.StatusForbidden},
+		{name: "admin missing csrf", warning: "1", session: "admin", status: http.StatusForbidden},
+		{name: "admin wrong csrf", warning: "1", session: "admin", csrf: "wrong", status: http.StatusForbidden},
+		{name: "expired admin", warning: "1", session: "expired", csrf: "valid", status: http.StatusForbidden},
+		{name: "admin both", warning: "1", message: message, session: "admin", csrf: "valid", status: http.StatusCreated},
+		{name: "admin warning only", warning: "true", session: "admin", csrf: "valid", status: http.StatusCreated},
+		{name: "admin message only", warning: "0", message: message, session: "admin", csrf: "valid", status: http.StatusCreated},
+		{name: "admin private", warning: "1", message: message, session: "admin", csrf: "valid", visibility: "private", status: http.StatusCreated},
+		{name: "admin empty", warning: "false", message: " \n ", session: "admin", csrf: "valid", status: http.StatusCreated},
+		{name: "invalid toggle", warning: "yes", session: "admin", csrf: "valid", status: http.StatusBadRequest},
+		{name: "maximum message", message: strings.Repeat("a", upload.MaxAdminMessageBytes), session: "admin", csrf: "valid", status: http.StatusCreated},
+		{name: "oversized message", message: strings.Repeat("a", upload.MaxAdminMessageBytes+1), session: "admin", csrf: "valid", status: http.StatusRequestEntityTooLarge},
+		{name: "oversized unicode", message: strings.Repeat("한", upload.MaxAdminMessageBytes/3+1), session: "admin", csrf: "valid", status: http.StatusRequestEntityTooLarge},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, router := newRouter(t)
+			var sess httpx.Session
+			if tc.session != "" {
+				sessions := httpx.NewSessions(a.DB)
+				if tc.session == "expired" {
+					sessions.Now = func() time.Time { return time.Now().Add(-24 * time.Hour) }
+				}
+				if tc.session == "user" {
+					sess, _ = sessions.GetOrCreate(context.Background(), "", "en")
+				} else {
+					sess = sessions.Rotate(context.Background(), "", 1)
+				}
+			}
+			var body bytes.Buffer
+			form := multipart.NewWriter(&body)
+			for name, value := range map[string]string{
+				"title": "notice test", "visibility": tc.visibility, "private_key": "test lookup key",
+				"password_hash": testDownloadPasswordHash("test password"), "encrypted": "1", "cipher_meta": testCipherMeta,
+				"security_warning": tc.warning, "admin_message": tc.message,
+			} {
+				if err := form.WriteField(name, value); err != nil {
+					t.Fatal(err)
+				}
+			}
+			part, err := form.CreateFormFile("blob", "payload")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := io.WriteString(part, "browser-encrypted-payload"); err != nil {
+				t.Fatal(err)
+			}
+			if err := form.Close(); err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/api/v0/upload", &body)
+			req.TLS = &tls.ConnectionState{}
+			req.Header.Set("Content-Type", form.FormDataContentType())
+			if sess.ID != "" {
+				req.Header.Set("Cookie", "sid="+sess.ID)
+			}
+			if tc.csrf == "valid" {
+				req.Header.Set("X-CSRF-Token", sess.CSRF)
+			} else if tc.csrf != "" {
+				req.Header.Set("X-CSRF-Token", tc.csrf)
+			}
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			if w.Code != tc.status {
+				t.Fatalf("status=%d, want=%d, body=%q", w.Code, tc.status, w.Body.String())
+			}
+			if tc.status != http.StatusCreated {
+				count, err := a.DB.Share.Query().Count(context.Background())
+				if err != nil || count != 0 {
+					t.Fatalf("rejected upload left shares: count=%d, err=%v", count, err)
+				}
+				entries, err := os.ReadDir(a.C.BlobDir)
+				if err != nil || len(entries) != 0 {
+					t.Fatalf("rejected upload left blobs: count=%d, err=%v", len(entries), err)
+				}
+				return
+			}
+			var result struct {
+				ID              string `json:"id"`
+				SecurityWarning bool   `json:"security_warning"`
+				AdminMessage    string `json:"admin_message"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			warning := tc.warning == "1" || tc.warning == "true"
+			message := strings.TrimSpace(tc.message)
+			stored, ok := share.NewStore(a.DB).Get(result.ID)
+			if !ok || stored.SecurityWarning != warning || stored.AdminMessage != message || result.SecurityWarning != warning || result.AdminMessage != message {
+				t.Fatal("notice metadata did not round-trip through response and storage")
+			}
+			// A fresh visitor sees notices before entering the download password.
+			page := httptest.NewRecorder()
+			router.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/s/"+result.ID, nil))
+			if page.Code != http.StatusOK || strings.Contains(page.Body.String(), `id="securityWarningTitle"`) != warning || strings.Contains(page.Body.String(), `id="adminMessageTitle"`) != (message != "") {
+				t.Fatalf("incorrect anonymous notice rendering: status=%d", page.Code)
+			}
+			if message != "" && (!strings.Contains(page.Body.String(), html.EscapeString(message)) || strings.Contains(page.Body.String(), "<script>alert")) {
+				t.Fatal("admin message must render as escaped plain text")
+			}
+			if tc.visibility == "private" {
+				list := httptest.NewRequest(http.MethodPost, "/api/v0/list", strings.NewReader(`{"private_key":"test lookup key"}`))
+				list.TLS = &tls.ConnectionState{}
+				list.Header.Set("Content-Type", "application/json")
+				listed := httptest.NewRecorder()
+				router.ServeHTTP(listed, list)
+				var results struct {
+					Archives []struct {
+						SecurityWarning bool   `json:"security_warning"`
+						AdminMessage    string `json:"admin_message"`
+					} `json:"archives"`
+				}
+				if err := json.Unmarshal(listed.Body.Bytes(), &results); err != nil || listed.Code != http.StatusOK || len(results.Archives) != 1 || !results.Archives[0].SecurityWarning || results.Archives[0].AdminMessage != message {
+					t.Fatalf("private lookup lost notices: status=%d, err=%v", listed.Code, err)
+				}
+			}
+		})
 	}
 }
 

@@ -108,6 +108,19 @@
 
 			<div class="section-rule" aria-hidden="true"></div>
 
+			{{ if .Share.SecurityWarning }}
+			<section class="download-notice" aria-labelledby="securityWarningTitle">
+				<h3 id="securityWarningTitle" data-i18n="share.securityWarningTitle">{{.T "share.securityWarningTitle"}}</h3>
+				<p data-i18n="share.securityWarning">{{.T "share.securityWarning"}}</p>
+			</section>
+			{{ end }}
+			{{ if .Share.AdminMessage }}
+			<section class="download-notice" aria-labelledby="adminMessageTitle">
+				<h3 id="adminMessageTitle" data-i18n="share.adminMessage">{{.T "share.adminMessage"}}</h3>
+				<p class="admin-message">{{.Share.AdminMessage}}</p>
+			</section>
+			{{ end }}
+
 			<div
 				id="share"
 				class="input-panel share-control"

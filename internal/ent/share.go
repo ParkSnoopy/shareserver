@@ -30,6 +30,10 @@ type Share struct {
 	CipherMeta string `json:"cipher_meta,omitempty"`
 	// ZipManifest holds the value of the "zip_manifest" field.
 	ZipManifest string `json:"zip_manifest,omitempty"`
+	// SecurityWarning holds the value of the "security_warning" field.
+	SecurityWarning bool `json:"security_warning,omitempty"`
+	// AdminMessage holds the value of the "admin_message" field.
+	AdminMessage string `json:"admin_message,omitempty"`
 	// Size holds the value of the "size" field.
 	Size int64 `json:"size,omitempty"`
 	// BlobPath holds the value of the "blob_path" field.
@@ -52,11 +56,11 @@ func (*Share) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case share.FieldEncrypted:
+		case share.FieldEncrypted, share.FieldSecurityWarning:
 			values[i] = new(sql.NullBool)
 		case share.FieldSize:
 			values[i] = new(sql.NullInt64)
-		case share.FieldID, share.FieldTitle, share.FieldVisibility, share.FieldPrivateKeyHash, share.FieldDownloadPasswordHash, share.FieldCipherMeta, share.FieldZipManifest, share.FieldBlobPath, share.FieldBlobSha256, share.FieldUploaderIP, share.FieldExpiresAt, share.FieldCreatedAt, share.FieldPurgedAt:
+		case share.FieldID, share.FieldTitle, share.FieldVisibility, share.FieldPrivateKeyHash, share.FieldDownloadPasswordHash, share.FieldCipherMeta, share.FieldZipManifest, share.FieldAdminMessage, share.FieldBlobPath, share.FieldBlobSha256, share.FieldUploaderIP, share.FieldExpiresAt, share.FieldCreatedAt, share.FieldPurgedAt:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -122,6 +126,18 @@ func (_m *Share) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field zip_manifest", values[i])
 			} else if value.Valid {
 				_m.ZipManifest = value.String
+			}
+		case share.FieldSecurityWarning:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field security_warning", values[i])
+			} else if value.Valid {
+				_m.SecurityWarning = value.Bool
+			}
+		case share.FieldAdminMessage:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field admin_message", values[i])
+			} else if value.Valid {
+				_m.AdminMessage = value.String
 			}
 		case share.FieldSize:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -227,6 +243,12 @@ func (_m *Share) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("zip_manifest=")
 	builder.WriteString(_m.ZipManifest)
+	builder.WriteString(", ")
+	builder.WriteString("security_warning=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SecurityWarning))
+	builder.WriteString(", ")
+	builder.WriteString("admin_message=")
+	builder.WriteString(_m.AdminMessage)
 	builder.WriteString(", ")
 	builder.WriteString("size=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Size))

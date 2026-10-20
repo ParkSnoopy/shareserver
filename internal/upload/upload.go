@@ -16,11 +16,15 @@ import (
 	"shareserver/internal/share"
 	"shareserver/internal/storage"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 const (
+	// MaxAdminMessageBytes bounds the plaintext notice displayed on the share page.
+	MaxAdminMessageBytes = 4096
+
 	maxTitleBytes        = 512
 	maxCipherBytes       = 4096
 	maxManifestBytes     = 64 << 10
@@ -43,6 +47,7 @@ var (
 	ErrEncryptionRequired   = errors.New("invalid encryption mode")
 	ErrMetadataTooLarge     = errors.New("metadata too large")
 	ErrInvalidBody          = errors.New("invalid upload body")
+	ErrAdminRequired        = errors.New("admin required for download notices")
 )
 
 // Config is the subset of config the upload policy depends on.
@@ -65,6 +70,7 @@ type Uploader struct {
 type Request struct {
 	Title, Visibility, PrivateKey, DownloadPasswordHash string
 	CipherMeta, ZipManifest, EncryptedFlag, ExpiryHours string
+	SecurityWarning, AdminMessage                       string
 	Reader                                              io.Reader
 	UploaderIP                                          string
 	Admin                                               bool
@@ -74,6 +80,8 @@ type Request struct {
 type Result struct {
 	ID, URL, DownloadURL, ExpiresAt, CipherMeta, Encryption string
 	Size                                                    int64
+	SecurityWarning                                         bool
+	AdminMessage                                            string
 }
 
 // Do runs the upload policy. On any error no share row is left behind; a blob
@@ -87,8 +95,20 @@ func (u *Uploader) Do(req Request) (Result, error) {
 	if title == "" {
 		title = "untitled share"
 	}
-	if len(title) > maxTitleBytes || len(req.DownloadPasswordHash) > maxPasswordHashBytes || len(req.CipherMeta) > maxCipherBytes || len(req.ZipManifest) > maxManifestBytes {
+	if len(title) > maxTitleBytes || len(req.DownloadPasswordHash) > maxPasswordHashBytes || len(req.CipherMeta) > maxCipherBytes || len(req.ZipManifest) > maxManifestBytes || len(req.AdminMessage) > MaxAdminMessageBytes {
 		return Result{}, ErrMetadataTooLarge
+	}
+	securityWarning := false
+	switch req.SecurityWarning {
+	case "", "0", "false":
+	case "1", "true":
+		securityWarning = true
+	default:
+		return Result{}, ErrInvalidBody
+	}
+	adminMessage := strings.TrimSpace(req.AdminMessage)
+	if !req.Admin && (securityWarning || adminMessage != "") {
+		return Result{}, ErrAdminRequired
 	}
 	clientEncrypted := req.EncryptedFlag == "1" || req.EncryptedFlag == "true"
 	if !clientEncrypted {
@@ -195,6 +215,7 @@ func (u *Uploader) Do(req Request) (Result, error) {
 	sh := share.Share{
 		ID: id, Title: title, Visibility: vis, PrivateKeyHash: keyHash, DownloadPasswordHash: downloadPasswordVerifier,
 		Encrypted: enc == 1, CipherMeta: cipherMeta, ZipManifest: "[]",
+		SecurityWarning: securityWarning, AdminMessage: adminMessage,
 		Size: size, BlobPath: path, BlobSHA256: sum, UploaderIP: ip,
 		ExpiresAt: sql.NullString{String: exp, Valid: true},
 	}
@@ -206,6 +227,7 @@ func (u *Uploader) Do(req Request) (Result, error) {
 	return Result{
 		ID: id, URL: "/s/" + id, DownloadURL: "/api/v0/download/" + id,
 		Size: size, ExpiresAt: exp, CipherMeta: cipherMeta, Encryption: "client",
+		SecurityWarning: securityWarning, AdminMessage: adminMessage,
 	}, nil
 }
 

@@ -104,6 +104,8 @@ var (
 		{Name: "encrypted", Type: field.TypeBool},
 		{Name: "cipher_meta", Type: field.TypeString, Nullable: true},
 		{Name: "zip_manifest", Type: field.TypeString, Nullable: true},
+		{Name: "security_warning", Type: field.TypeBool, Default: false},
+		{Name: "admin_message", Type: field.TypeString, Default: ""},
 		{Name: "size", Type: field.TypeInt64},
 		{Name: "blob_path", Type: field.TypeString},
 		{Name: "blob_sha256", Type: field.TypeString},
@@ -131,7 +133,7 @@ var (
 			{
 				Name:    "share_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{SharesColumns[12]},
+				Columns: []*schema.Column{SharesColumns[14]},
 			},
 		},
 	}

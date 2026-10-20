@@ -25,6 +25,10 @@ const (
 	FieldCipherMeta = "cipher_meta"
 	// FieldZipManifest holds the string denoting the zip_manifest field in the database.
 	FieldZipManifest = "zip_manifest"
+	// FieldSecurityWarning holds the string denoting the security_warning field in the database.
+	FieldSecurityWarning = "security_warning"
+	// FieldAdminMessage holds the string denoting the admin_message field in the database.
+	FieldAdminMessage = "admin_message"
 	// FieldSize holds the string denoting the size field in the database.
 	FieldSize = "size"
 	// FieldBlobPath holds the string denoting the blob_path field in the database.
@@ -53,6 +57,8 @@ var Columns = []string{
 	FieldEncrypted,
 	FieldCipherMeta,
 	FieldZipManifest,
+	FieldSecurityWarning,
+	FieldAdminMessage,
 	FieldSize,
 	FieldBlobPath,
 	FieldBlobSha256,
@@ -71,6 +77,13 @@ func ValidColumn(column string) bool {
 	}
 	return false
 }
+
+var (
+	// DefaultSecurityWarning holds the default value on creation for the "security_warning" field.
+	DefaultSecurityWarning bool
+	// DefaultAdminMessage holds the default value on creation for the "admin_message" field.
+	DefaultAdminMessage string
+)
 
 // OrderOption defines the ordering options for the Share queries.
 type OrderOption func(*sql.Selector)
@@ -113,6 +126,16 @@ func ByCipherMeta(opts ...sql.OrderTermOption) OrderOption {
 // ByZipManifest orders the results by the zip_manifest field.
 func ByZipManifest(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldZipManifest, opts...).ToFunc()
+}
+
+// BySecurityWarning orders the results by the security_warning field.
+func BySecurityWarning(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSecurityWarning, opts...).ToFunc()
+}
+
+// ByAdminMessage orders the results by the admin_message field.
+func ByAdminMessage(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAdminMessage, opts...).ToFunc()
 }
 
 // BySize orders the results by the size field.

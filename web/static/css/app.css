@@ -280,6 +280,22 @@ input[type="checkbox"] {
 .admin-bulk-actions label {
 	display: inline;
 }
+.download-notice {
+	margin-bottom: 12px;
+	padding: 10px;
+	border: 1px solid #808080;
+	background: var(--snow);
+}
+.download-notice h3 {
+	margin-top: 0;
+}
+.download-notice p {
+	margin-bottom: 0;
+	overflow-wrap: anywhere;
+}
+.admin-message {
+	white-space: pre-wrap;
+}
 button,
 .primary-action-button {
 	display: inline-block;

@@ -25,18 +25,6 @@
 				<input class="text-input field-md" id="uploadTitle" name="title" autocomplete="off">
 			</div>
 
-			<div class="field-row">
-				<label class="field-label" for="source" data-i18n="upload.sourceLabel"
-					>{{.T "upload.sourceLabel"}}</label
-				>
-				<select class="select-input field-md" id="source">
-					<option value="file" data-i18n="upload.sourceFile">{{.T "upload.sourceFile"}}</option>
-					<option value="clipboard" data-i18n="upload.sourceClipboard">
-						{{.T "upload.sourceClipboard"}}
-					</option>
-				</select>
-			</div>
-
 			<section id="fileSource" class="field-row">
 				<label class="field-label" id="filesLabel" data-i18n="upload.filesLabel">{{.T "upload.filesLabel"}}</label>
 				<label id="dropzone" class="dropzone field-full" for="files">
@@ -49,7 +37,7 @@
 				<div id="fileList" class="selected-file-list" aria-live="polite"></div>
 			</section>
 
-			<section id="clipSource" class="field-row" hidden>
+			<section id="clipSource" class="field-row">
 				<label class="field-label" id="clipboxLabel" data-i18n="upload.clipboardLabel"
 					>{{.T "upload.clipboardLabel"}}</label
 				>
@@ -110,6 +98,19 @@
 					>
 				</div>
 			</div>
+
+			{{ if .Admin }}
+			<div class="field-row">
+				<label class="check" for="securityWarning">
+					<input id="securityWarning" name="security_warning" type="checkbox" role="switch" value="1">
+					<span data-i18n="upload.securityWarning">{{.T "upload.securityWarning"}}</span>
+				</label>
+			</div>
+			<div class="field-row">
+				<label class="field-label" for="adminMessage" data-i18n="upload.adminMessage">{{.T "upload.adminMessage"}}</label>
+				<textarea id="adminMessage" name="admin_message" rows="3" maxlength="{{.MaxAdminMessageBytes}}" data-max-bytes="{{.MaxAdminMessageBytes}}" placeholder='{{.T "upload.adminMessagePlaceholder"}}' data-i18n-placeholder="upload.adminMessagePlaceholder"></textarea>
+			</div>
+			{{ end }}
 
 			<div class="field-row compact">
 				<label class="field-label" for="uploadPassword" data-i18n="upload.passwordLabel"

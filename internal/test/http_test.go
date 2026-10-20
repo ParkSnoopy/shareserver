@@ -91,6 +91,8 @@ func TestAdminLoginAcceptsOnlyPasswordHash(t *testing.T) {
 		}
 		if path == "/upload" {
 			assertBodyContains(t, page.Body.String(), `<option value="2160"`)
+			assertBodyContains(t, page.Body.String(), `name="security_warning"`)
+			assertBodyContains(t, page.Body.String(), `name="admin_message"`)
 		}
 	}
 	sess, ok := httpx.NewSessions(a.DB).Get(context.Background(), adminCookie.Value)
@@ -105,6 +107,14 @@ func TestAdminLoginAcceptsOnlyPasswordHash(t *testing.T) {
 	if loggedOut.Code != http.StatusSeeOther || existsSession(t, a.DB, adminCookie.Value) {
 		t.Fatal("explicit logout did not revoke the admin session")
 	}
+	anonymousUpload := httptest.NewRecorder()
+	router.ServeHTTP(anonymousUpload, httptest.NewRequest(http.MethodGet, "/upload", nil))
+	body := anonymousUpload.Body.String()
+	if anonymousUpload.Code != http.StatusOK || strings.Contains(body, `name="security_warning"`) || strings.Contains(body, `name="admin_message"`) || strings.Contains(body, `id="source"`) {
+		t.Fatal("anonymous upload must hide admin notices and have no input-mode selector")
+	}
+	assertBodyContains(t, body, `<section id="fileSource" class="field-row">`)
+	assertBodyContains(t, body, `<section id="clipSource" class="field-row">`)
 }
 
 func TestAssetRequestsDoNotReplaceLoginSession(t *testing.T) {

@@ -98,6 +98,16 @@ func ZipManifest(v string) predicate.Share {
 	return predicate.Share(sql.FieldEQ(FieldZipManifest, v))
 }
 
+// SecurityWarning applies equality check predicate on the "security_warning" field. It's identical to SecurityWarningEQ.
+func SecurityWarning(v bool) predicate.Share {
+	return predicate.Share(sql.FieldEQ(FieldSecurityWarning, v))
+}
+
+// AdminMessage applies equality check predicate on the "admin_message" field. It's identical to AdminMessageEQ.
+func AdminMessage(v string) predicate.Share {
+	return predicate.Share(sql.FieldEQ(FieldAdminMessage, v))
+}
+
 // Size applies equality check predicate on the "size" field. It's identical to SizeEQ.
 func Size(v int64) predicate.Share {
 	return predicate.Share(sql.FieldEQ(FieldSize, v))
@@ -571,6 +581,81 @@ func ZipManifestEqualFold(v string) predicate.Share {
 // ZipManifestContainsFold applies the ContainsFold predicate on the "zip_manifest" field.
 func ZipManifestContainsFold(v string) predicate.Share {
 	return predicate.Share(sql.FieldContainsFold(FieldZipManifest, v))
+}
+
+// SecurityWarningEQ applies the EQ predicate on the "security_warning" field.
+func SecurityWarningEQ(v bool) predicate.Share {
+	return predicate.Share(sql.FieldEQ(FieldSecurityWarning, v))
+}
+
+// SecurityWarningNEQ applies the NEQ predicate on the "security_warning" field.
+func SecurityWarningNEQ(v bool) predicate.Share {
+	return predicate.Share(sql.FieldNEQ(FieldSecurityWarning, v))
+}
+
+// AdminMessageEQ applies the EQ predicate on the "admin_message" field.
+func AdminMessageEQ(v string) predicate.Share {
+	return predicate.Share(sql.FieldEQ(FieldAdminMessage, v))
+}
+
+// AdminMessageNEQ applies the NEQ predicate on the "admin_message" field.
+func AdminMessageNEQ(v string) predicate.Share {
+	return predicate.Share(sql.FieldNEQ(FieldAdminMessage, v))
+}
+
+// AdminMessageIn applies the In predicate on the "admin_message" field.
+func AdminMessageIn(vs ...string) predicate.Share {
+	return predicate.Share(sql.FieldIn(FieldAdminMessage, vs...))
+}
+
+// AdminMessageNotIn applies the NotIn predicate on the "admin_message" field.
+func AdminMessageNotIn(vs ...string) predicate.Share {
+	return predicate.Share(sql.FieldNotIn(FieldAdminMessage, vs...))
+}
+
+// AdminMessageGT applies the GT predicate on the "admin_message" field.
+func AdminMessageGT(v string) predicate.Share {
+	return predicate.Share(sql.FieldGT(FieldAdminMessage, v))
+}
+
+// AdminMessageGTE applies the GTE predicate on the "admin_message" field.
+func AdminMessageGTE(v string) predicate.Share {
+	return predicate.Share(sql.FieldGTE(FieldAdminMessage, v))
+}
+
+// AdminMessageLT applies the LT predicate on the "admin_message" field.
+func AdminMessageLT(v string) predicate.Share {
+	return predicate.Share(sql.FieldLT(FieldAdminMessage, v))
+}
+
+// AdminMessageLTE applies the LTE predicate on the "admin_message" field.
+func AdminMessageLTE(v string) predicate.Share {
+	return predicate.Share(sql.FieldLTE(FieldAdminMessage, v))
+}
+
+// AdminMessageContains applies the Contains predicate on the "admin_message" field.
+func AdminMessageContains(v string) predicate.Share {
+	return predicate.Share(sql.FieldContains(FieldAdminMessage, v))
+}
+
+// AdminMessageHasPrefix applies the HasPrefix predicate on the "admin_message" field.
+func AdminMessageHasPrefix(v string) predicate.Share {
+	return predicate.Share(sql.FieldHasPrefix(FieldAdminMessage, v))
+}
+
+// AdminMessageHasSuffix applies the HasSuffix predicate on the "admin_message" field.
+func AdminMessageHasSuffix(v string) predicate.Share {
+	return predicate.Share(sql.FieldHasSuffix(FieldAdminMessage, v))
+}
+
+// AdminMessageEqualFold applies the EqualFold predicate on the "admin_message" field.
+func AdminMessageEqualFold(v string) predicate.Share {
+	return predicate.Share(sql.FieldEqualFold(FieldAdminMessage, v))
+}
+
+// AdminMessageContainsFold applies the ContainsFold predicate on the "admin_message" field.
+func AdminMessageContainsFold(v string) predicate.Share {
+	return predicate.Share(sql.FieldContainsFold(FieldAdminMessage, v))
 }
 
 // SizeEQ applies the EQ predicate on the "size" field.

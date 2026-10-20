@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"shareserver/internal/db"
 	"shareserver/internal/share"
 	"shareserver/internal/storage"
 )
@@ -37,16 +38,52 @@ func TestStoreGetMissing(t *testing.T) {
 func TestStoreInsertGetRoundTrip(t *testing.T) {
 	s, _ := newStore(t)
 	want := sampleShare("id1", "public", futureTS(1*time.Hour))
+	want.SecurityWarning = true
+	want.AdminMessage = "Review privately.\nDo not forward."
 	mustInsertShare(t, s, want)
 	got, ok := s.Get("id1")
 	if !ok {
 		t.Fatal("Get failed after Insert")
 	}
-	if got.Title != want.Title || got.Visibility != want.Visibility || got.Size != want.Size {
+	if got.Title != want.Title || got.Visibility != want.Visibility || got.Size != want.Size || got.SecurityWarning != want.SecurityWarning || got.AdminMessage != want.AdminMessage {
 		t.Fatalf("roundtrip mismatch: got %+v", got)
 	}
 	if !got.ExpiresAt.Valid || got.ExpiresAt.String != want.ExpiresAt.String {
 		t.Fatalf("expiry mismatch: got %+v want %+v", got.ExpiresAt, want.ExpiresAt)
+	}
+}
+
+func TestShareNoticeMigrationPreservesExistingShares(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	client, err := db.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := sampleShare("legacy", "public", futureTS(time.Hour))
+	mustInsertShare(t, share.NewStore(client), want)
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = legacy.Close() })
+	// Derive the previous schema by removing only the two newly added columns.
+	if _, err := legacy.Exec("ALTER TABLE shares DROP COLUMN security_warning; ALTER TABLE shares DROP COLUMN admin_message"); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+	migrated, err := db.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = migrated.Close() })
+	got, ok := share.NewStore(migrated).Get(want.ID)
+	if !ok || got.Title != want.Title || got.BlobPath != want.BlobPath || got.BlobSHA256 != want.BlobSHA256 || got.SecurityWarning || got.AdminMessage != "" {
+		t.Fatalf("migration changed legacy share or notice defaults: %+v", got)
 	}
 }
 

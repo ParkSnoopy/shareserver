@@ -149,6 +149,34 @@ func (_u *ShareUpdate) ClearZipManifest() *ShareUpdate {
 	return _u
 }
 
+// SetSecurityWarning sets the "security_warning" field.
+func (_u *ShareUpdate) SetSecurityWarning(v bool) *ShareUpdate {
+	_u.mutation.SetSecurityWarning(v)
+	return _u
+}
+
+// SetNillableSecurityWarning sets the "security_warning" field if the given value is not nil.
+func (_u *ShareUpdate) SetNillableSecurityWarning(v *bool) *ShareUpdate {
+	if v != nil {
+		_u.SetSecurityWarning(*v)
+	}
+	return _u
+}
+
+// SetAdminMessage sets the "admin_message" field.
+func (_u *ShareUpdate) SetAdminMessage(v string) *ShareUpdate {
+	_u.mutation.SetAdminMessage(v)
+	return _u
+}
+
+// SetNillableAdminMessage sets the "admin_message" field if the given value is not nil.
+func (_u *ShareUpdate) SetNillableAdminMessage(v *string) *ShareUpdate {
+	if v != nil {
+		_u.SetAdminMessage(*v)
+	}
+	return _u
+}
+
 // SetSize sets the "size" field.
 func (_u *ShareUpdate) SetSize(v int64) *ShareUpdate {
 	_u.mutation.ResetSize()
@@ -340,6 +368,12 @@ func (_u *ShareUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.ZipManifestCleared() {
 		_spec.ClearField(share.FieldZipManifest, field.TypeString)
 	}
+	if value, ok := _u.mutation.SecurityWarning(); ok {
+		_spec.SetField(share.FieldSecurityWarning, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AdminMessage(); ok {
+		_spec.SetField(share.FieldAdminMessage, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.Size(); ok {
 		_spec.SetField(share.FieldSize, field.TypeInt64, value)
 	}
@@ -509,6 +543,34 @@ func (_u *ShareUpdateOne) SetNillableZipManifest(v *string) *ShareUpdateOne {
 // ClearZipManifest clears the value of the "zip_manifest" field.
 func (_u *ShareUpdateOne) ClearZipManifest() *ShareUpdateOne {
 	_u.mutation.ClearZipManifest()
+	return _u
+}
+
+// SetSecurityWarning sets the "security_warning" field.
+func (_u *ShareUpdateOne) SetSecurityWarning(v bool) *ShareUpdateOne {
+	_u.mutation.SetSecurityWarning(v)
+	return _u
+}
+
+// SetNillableSecurityWarning sets the "security_warning" field if the given value is not nil.
+func (_u *ShareUpdateOne) SetNillableSecurityWarning(v *bool) *ShareUpdateOne {
+	if v != nil {
+		_u.SetSecurityWarning(*v)
+	}
+	return _u
+}
+
+// SetAdminMessage sets the "admin_message" field.
+func (_u *ShareUpdateOne) SetAdminMessage(v string) *ShareUpdateOne {
+	_u.mutation.SetAdminMessage(v)
+	return _u
+}
+
+// SetNillableAdminMessage sets the "admin_message" field if the given value is not nil.
+func (_u *ShareUpdateOne) SetNillableAdminMessage(v *string) *ShareUpdateOne {
+	if v != nil {
+		_u.SetAdminMessage(*v)
+	}
 	return _u
 }
 
@@ -732,6 +794,12 @@ func (_u *ShareUpdateOne) sqlSave(ctx context.Context) (_node *Share, err error)
 	}
 	if _u.mutation.ZipManifestCleared() {
 		_spec.ClearField(share.FieldZipManifest, field.TypeString)
+	}
+	if value, ok := _u.mutation.SecurityWarning(); ok {
+		_spec.SetField(share.FieldSecurityWarning, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AdminMessage(); ok {
+		_spec.SetField(share.FieldAdminMessage, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Size(); ok {
 		_spec.SetField(share.FieldSize, field.TypeInt64, value)

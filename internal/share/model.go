@@ -10,6 +10,8 @@ type Share struct {
 	ID, Title, Visibility, PrivateKeyHash, DownloadPasswordHash string
 	Encrypted                                                   bool
 	CipherMeta, ZipManifest                                     string
+	SecurityWarning                                             bool
+	AdminMessage                                                string
 	Size                                                        int64
 	BlobPath, BlobSHA256, UploaderIP                            string
 	ExpiresAt                                                   sql.NullString

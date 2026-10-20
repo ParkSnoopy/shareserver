@@ -10,14 +10,13 @@ const form = document.getElementById("uploadForm");
 const maxBytes = Number(form.dataset.maxBytes || 0);
 const filesEl = document.getElementById("files");
 const titleEl = form.elements.title;
-const sourceEl = document.getElementById("source");
 const passwordEl = document.getElementById("uploadPassword");
+const adminMessageEl = document.getElementById("adminMessage");
 const visibilityEl = document.getElementById("visibility");
 const privateKeyLabel = document.getElementById("privateKeyLabel");
 const privateKey = document.getElementById("privateKey");
 const privateKeyRow = document.getElementById("privateKeyRow");
-const fileSource = document.getElementById("fileSource");
-const clipSource = document.getElementById("clipSource");
+
 const progress = new Progress(document.getElementById("progress"));
 const result = document.getElementById("result");
 const clip = document.getElementById("clip");
@@ -34,7 +33,7 @@ function debugLog(event, data = {}) {
 	console.info(`[shareserver:upload] ${event}`, data);
 }
 
-// clearClipboardPreviews removes old object URLs and preview nodes from clipboard mode.
+// clearClipboardPreviews removes old clipboard object URLs and preview nodes.
 function clearClipboardPreviews() {
 	for (const url of clipPreviewURLs) URL.revokeObjectURL(url);
 	clipPreviewURLs = [];
@@ -42,13 +41,6 @@ function clearClipboardPreviews() {
 }
 
 const fileSize = document.getElementById("fileSize");
-
-// syncSource switches visible controls between file picker and clipboard input.
-function syncSource() {
-	const clipMode = sourceEl.value === "clipboard";
-	fileSource.hidden = clipMode;
-	clipSource.hidden = !clipMode;
-}
 
 // syncVisibility shows private-key inputs only for private shares.
 function syncVisibility() {
@@ -180,7 +172,6 @@ function setFiles(files) {
 	updateFileSize(files);
 }
 
-sourceEl.addEventListener("change", syncSource);
 visibilityEl.addEventListener("change", syncVisibility);
 filesEl.addEventListener("change", () => {
 	setFiles([...filesEl.files]);
@@ -402,24 +393,28 @@ form.onsubmit = async (event) => {
 		const fd = new FormData(form);
 		const password = passwordEl.value;
 		if (!password) throw Error(translate("archiveError.passwordRequired"));
-		let files =
-			sourceEl.value === "clipboard" ? [...clipFiles] : [...filesEl.files];
-		// clipboard mode: typed text in the box becomes a text file alongside
-		// any pasted media, so both upload as separate entries in the zip.
-		if (sourceEl.value === "clipboard") {
-			const text = clipText();
-			if (text) {
-				const stamp = new Date()
-					.toISOString()
-					.replace(/[-:]/g, "")
-					.replace(/\.\d+Z$/, "Z");
-				files = [
-					new File([text], `clipboard-text-${stamp}.txt`, {
-						type: "text/plain",
-					}),
-					...files,
-				];
-			}
+		if (
+			adminMessageEl &&
+			new TextEncoder().encode(adminMessageEl.value).length >
+				Number(adminMessageEl.dataset.maxBytes)
+		) {
+			throw Error(
+				translate("upload.messageTooLong", {
+					max: adminMessageEl.dataset.maxBytes,
+				}),
+			);
+		}
+		const files = [...filesEl.files, ...clipFiles];
+		// Text is another archive entry, alongside picked files and pasted media.
+		const text = clipText();
+		if (text) {
+			const stamp = new Date()
+				.toISOString()
+				.replace(/[-:]/g, "")
+				.replace(/\.\d+Z$/, "Z");
+			files.unshift(
+				new File([text], `clipboard-text-${stamp}.txt`, { type: "text/plain" }),
+			);
 		}
 		if (!files.length) throw Error(translate("upload.noFile"));
 		if (!fd.get("title")) fd.set("title", basename(files[0].name));
@@ -474,6 +469,10 @@ form.onsubmit = async (event) => {
 			"expiry_hours",
 		])
 			out.append(key, fd.get(key) || "");
+		if (form.elements.security_warning) {
+			out.append("security_warning", fd.get("security_warning") || "0");
+			out.append("admin_message", fd.get("admin_message") || "");
+		}
 		out.append("encrypted", "1");
 		out.append("password_hash", passwordHash);
 		out.append("cipher_meta", cipherMeta);
@@ -505,7 +504,6 @@ if (passwordEl) {
 	});
 }
 
-syncSource();
 syncVisibility();
 onLanguageChange(() => {
 	updateFileSize(selectedFiles);

@@ -2398,6 +2398,8 @@ type ShareMutation struct {
 	encrypted              *bool
 	cipher_meta            *string
 	zip_manifest           *string
+	security_warning       *bool
+	admin_message          *string
 	size                   *int64
 	addsize                *int64
 	blob_path              *string
@@ -2820,6 +2822,78 @@ func (m *ShareMutation) ResetZipManifest() {
 	delete(m.clearedFields, share.FieldZipManifest)
 }
 
+// SetSecurityWarning sets the "security_warning" field.
+func (m *ShareMutation) SetSecurityWarning(b bool) {
+	m.security_warning = &b
+}
+
+// SecurityWarning returns the value of the "security_warning" field in the mutation.
+func (m *ShareMutation) SecurityWarning() (r bool, exists bool) {
+	v := m.security_warning
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSecurityWarning returns the old "security_warning" field's value of the Share entity.
+// If the Share object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ShareMutation) OldSecurityWarning(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSecurityWarning is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSecurityWarning requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSecurityWarning: %w", err)
+	}
+	return oldValue.SecurityWarning, nil
+}
+
+// ResetSecurityWarning resets all changes to the "security_warning" field.
+func (m *ShareMutation) ResetSecurityWarning() {
+	m.security_warning = nil
+}
+
+// SetAdminMessage sets the "admin_message" field.
+func (m *ShareMutation) SetAdminMessage(s string) {
+	m.admin_message = &s
+}
+
+// AdminMessage returns the value of the "admin_message" field in the mutation.
+func (m *ShareMutation) AdminMessage() (r string, exists bool) {
+	v := m.admin_message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAdminMessage returns the old "admin_message" field's value of the Share entity.
+// If the Share object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ShareMutation) OldAdminMessage(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAdminMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAdminMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAdminMessage: %w", err)
+	}
+	return oldValue.AdminMessage, nil
+}
+
+// ResetAdminMessage resets all changes to the "admin_message" field.
+func (m *ShareMutation) ResetAdminMessage() {
+	m.admin_message = nil
+}
+
 // SetSize sets the "size" field.
 func (m *ShareMutation) SetSize(i int64) {
 	m.size = &i
@@ -3152,7 +3226,7 @@ func (m *ShareMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ShareMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 16)
 	if m.title != nil {
 		fields = append(fields, share.FieldTitle)
 	}
@@ -3173,6 +3247,12 @@ func (m *ShareMutation) Fields() []string {
 	}
 	if m.zip_manifest != nil {
 		fields = append(fields, share.FieldZipManifest)
+	}
+	if m.security_warning != nil {
+		fields = append(fields, share.FieldSecurityWarning)
+	}
+	if m.admin_message != nil {
+		fields = append(fields, share.FieldAdminMessage)
 	}
 	if m.size != nil {
 		fields = append(fields, share.FieldSize)
@@ -3217,6 +3297,10 @@ func (m *ShareMutation) Field(name string) (ent.Value, bool) {
 		return m.CipherMeta()
 	case share.FieldZipManifest:
 		return m.ZipManifest()
+	case share.FieldSecurityWarning:
+		return m.SecurityWarning()
+	case share.FieldAdminMessage:
+		return m.AdminMessage()
 	case share.FieldSize:
 		return m.Size()
 	case share.FieldBlobPath:
@@ -3254,6 +3338,10 @@ func (m *ShareMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldCipherMeta(ctx)
 	case share.FieldZipManifest:
 		return m.OldZipManifest(ctx)
+	case share.FieldSecurityWarning:
+		return m.OldSecurityWarning(ctx)
+	case share.FieldAdminMessage:
+		return m.OldAdminMessage(ctx)
 	case share.FieldSize:
 		return m.OldSize(ctx)
 	case share.FieldBlobPath:
@@ -3325,6 +3413,20 @@ func (m *ShareMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetZipManifest(v)
+		return nil
+	case share.FieldSecurityWarning:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSecurityWarning(v)
+		return nil
+	case share.FieldAdminMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAdminMessage(v)
 		return nil
 	case share.FieldSize:
 		v, ok := value.(int64)
@@ -3498,6 +3600,12 @@ func (m *ShareMutation) ResetField(name string) error {
 		return nil
 	case share.FieldZipManifest:
 		m.ResetZipManifest()
+		return nil
+	case share.FieldSecurityWarning:
+		m.ResetSecurityWarning()
+		return nil
+	case share.FieldAdminMessage:
+		m.ResetAdminMessage()
 		return nil
 	case share.FieldSize:
 		m.ResetSize()

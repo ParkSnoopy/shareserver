@@ -5,6 +5,7 @@ package ent
 import (
 	"shareserver/internal/ent/schema"
 	"shareserver/internal/ent/session"
+	"shareserver/internal/ent/share"
 )
 
 // The init function reads all schema descriptors with runtime code
@@ -17,4 +18,14 @@ func init() {
 	sessionDescLanguage := sessionFields[3].Descriptor()
 	// session.DefaultLanguage holds the default value on creation for the language field.
 	session.DefaultLanguage = sessionDescLanguage.Default.(string)
+	shareFields := schema.Share{}.Fields()
+	_ = shareFields
+	// shareDescSecurityWarning is the schema descriptor for security_warning field.
+	shareDescSecurityWarning := shareFields[8].Descriptor()
+	// share.DefaultSecurityWarning holds the default value on creation for the security_warning field.
+	share.DefaultSecurityWarning = shareDescSecurityWarning.Default.(bool)
+	// shareDescAdminMessage is the schema descriptor for admin_message field.
+	shareDescAdminMessage := shareFields[9].Descriptor()
+	// share.DefaultAdminMessage holds the default value on creation for the admin_message field.
+	share.DefaultAdminMessage = shareDescAdminMessage.Default.(string)
 }

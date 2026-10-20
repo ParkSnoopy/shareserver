@@ -114,6 +114,8 @@ func (s *Store) Insert(sh Share) error {
 		SetEncrypted(sh.Encrypted).
 		SetCipherMeta(sh.CipherMeta).
 		SetZipManifest(sh.ZipManifest).
+		SetSecurityWarning(sh.SecurityWarning).
+		SetAdminMessage(sh.AdminMessage).
 		SetSize(sh.Size).
 		SetBlobPath(sh.BlobPath).
 		SetBlobSha256(sh.BlobSHA256).
@@ -164,6 +166,8 @@ func fromEnt(row *ent.Share) Share {
 		Encrypted:            row.Encrypted,
 		CipherMeta:           row.CipherMeta,
 		ZipManifest:          row.ZipManifest,
+		SecurityWarning:      row.SecurityWarning,
+		AdminMessage:         row.AdminMessage,
 		Size:                 row.Size,
 		BlobPath:             row.BlobPath,
 		BlobSHA256:           row.BlobSha256,

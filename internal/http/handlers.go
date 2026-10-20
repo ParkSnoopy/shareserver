@@ -79,12 +79,16 @@ func (h *Handler) apiUploadPost(w http.ResponseWriter, r *http.Request) {
 		ZipManifest:          fields["zip_manifest"],
 		EncryptedFlag:        fields["encrypted"],
 		ExpiryHours:          fields["expiry_hours"],
+		SecurityWarning:      fields["security_warning"],
+		AdminMessage:         fields["admin_message"],
 		Reader:               file,
 		UploaderIP:           ip,
 		Admin:                admin,
 	})
 	if err != nil {
 		switch {
+		case errors.Is(err, upload.ErrAdminRequired):
+			http.Error(w, "admin required for download notices", http.StatusForbidden)
 		case errors.Is(err, upload.ErrTooLarge):
 			http.Error(w, "upload too large after zip/encrypt", http.StatusRequestEntityTooLarge)
 		case errors.Is(err, upload.ErrPrivateKeyRequired):
@@ -113,19 +117,22 @@ func (h *Handler) apiUploadPost(w http.ResponseWriter, r *http.Request) {
 		"id": res.ID, "url": res.URL, "download_url": res.DownloadURL,
 		"size": res.Size, "expires_at": res.ExpiresAt,
 		"cipher_meta": json.RawMessage(res.CipherMeta), "encryption": res.Encryption,
+		"security_warning": res.SecurityWarning, "admin_message": res.AdminMessage,
 	})
 }
 
 type privateArchiveResponse struct {
-	ID          string          `json:"id"`
-	Title       string          `json:"title"`
-	URL         string          `json:"url"`
-	DownloadURL string          `json:"download_url"`
-	Size        int64           `json:"size"`
-	ExpiresAt   string          `json:"expires_at"`
-	CreatedAt   string          `json:"created_at"`
-	CipherMeta  json.RawMessage `json:"cipher_meta"`
-	Encryption  string          `json:"encryption"`
+	ID              string          `json:"id"`
+	Title           string          `json:"title"`
+	URL             string          `json:"url"`
+	DownloadURL     string          `json:"download_url"`
+	Size            int64           `json:"size"`
+	ExpiresAt       string          `json:"expires_at"`
+	CreatedAt       string          `json:"created_at"`
+	CipherMeta      json.RawMessage `json:"cipher_meta"`
+	Encryption      string          `json:"encryption"`
+	SecurityWarning bool            `json:"security_warning"`
+	AdminMessage    string          `json:"admin_message"`
 }
 
 // apiPrivateListPost returns active private archives matching one body-only lookup key.
@@ -156,6 +163,7 @@ func (h *Handler) apiPrivateListPost(w http.ResponseWriter, r *http.Request) {
 			DownloadURL: "/api/v0/download/" + match.ID,
 			ExpiresAt:   expiresAt, CreatedAt: match.CreatedAt, Encryption: "client",
 			Size: match.Size, CipherMeta: cipherMeta,
+			SecurityWarning: match.SecurityWarning, AdminMessage: match.AdminMessage,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -176,6 +184,7 @@ func uploadParts(r *http.Request) (map[string]string, io.ReadCloser, string, err
 		"csrf": true, "title": true, "visibility": true, "private_key": true,
 		"password_hash": true, "cipher_meta": true, "zip_manifest": true,
 		"encrypted": true, "expiry_hours": true,
+		"security_warning": true, "admin_message": true,
 	}
 	for {
 		part, err := reader.NextPart()

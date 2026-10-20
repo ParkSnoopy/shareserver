@@ -22,6 +22,8 @@ func (Share) Fields() []ent.Field {
 		field.Bool("encrypted"),
 		field.String("cipher_meta").Optional(),
 		field.String("zip_manifest").Optional(),
+		field.Bool("security_warning").Default(false),
+		field.String("admin_message").Default(""),
 		field.Int64("size"),
 		field.String("blob_path"),
 		field.String("blob_sha256"),

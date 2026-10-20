@@ -158,8 +158,8 @@ This behavior is implemented in [HTTP middleware](../internal/http/middleware.go
 
 Ordinary machine clients should omit cookies and `X-CSRF-Token`. Upload has one
 intentional browser-admin extension: a valid existing admin session plus its
-matching `X-CSRF-Token` allows the longer administrator expiry ceiling. If an
-agent sends any `X-CSRF-Token` and it does not match the attached session, the
+matching `X-CSRF-Token` allows the longer administrator expiry ceiling and administrator-authored download notices.
+If an agent sends any `X-CSRF-Token` and it does not match the attached session, the
 upload is rejected with `403 Forbidden`. A stateless agent cannot gain admin
 policy by inventing a token.
 
@@ -612,16 +612,28 @@ after `blob`. Parsing is implemented by `uploadParts` in the
 | `cipher_meta` | Yes | JSON metadata for PBKDF2-SHA-384 and AES-256-GCM; maximum 4 KiB |
 | `zip_manifest` | No | Maximum 64 KiB; accepted for compatibility but stored as `[]`, so it cannot recover filenames or MIME metadata |
 | `expiry_hours` | No | Base-10 integer hours. Missing, invalid, or non-positive becomes 6. Anonymous maximum is 24; authenticated administrator maximum is 2160 |
+| `security_warning` | No | Empty, `0`, or `false` disables the warning; `1` or `true` enables it. Any other value is rejected. Enabling it requires an existing admin session and matching `X-CSRF-Token` |
+| `admin_message` | No | Optional plain-text admin notice, maximum 4096 UTF-8 bytes before trimming outer whitespace. Nonempty notices require the same admin authorization, independently of the warning toggle |
 | `csrf` | No | Accepted as multipart metadata for browser compatibility, but API admin elevation is authorized by the `X-CSRF-Token` header and existing session |
 | `blob` | Yes | Final multipart part, must have a filename, must contain client-encrypted ZIP bytes, and must be at least 16 bytes |
 
 Each metadata part is bounded to 64 KiB by the HTTP parser. The deeper upload
 policy applies tighter limits to title, cipher metadata, and password-hash input.
+It also bounds the administrator message and rejects unauthorized notices with `403` before storing any blob or Share.
 The whole HTTP request is bounded to the configured maximum payload plus 4 MiB
 of multipart overhead. The authoritative code is in
 [HTTP middleware](../internal/http/middleware.go),
 [HTTP handlers](../internal/http/handlers.go), and the
 [upload module](../internal/upload/upload.go).
+
+### Download notices
+
+The [upload page](../web/templates/upload.html) accepts selected files, typed text, and pasted media together in one client-encrypted archive, without an input-mode selector.
+Administrators may independently enable the sensitive-information warning and enter an optional message for that Share.
+The [share page](../web/templates/share.html) displays both enabled notices to every visitor above the password/download controls, including on reload and for private Share links.
+Messages render as escaped plain text with line breaks preserved.
+These notices are server-visible metadata, not encrypted archive content, and are visible before password entry.
+Upload receipts and private-list results include `security_warning` and `admin_message`; existing Shares default to `false` and `""` through the additive database migration.
 
 ### Public upload with curl
 
@@ -1134,7 +1146,7 @@ complete JSON file left by a failed command.
 | `400` | Upload | Malformed/duplicate/unknown/trailing multipart fields; missing blob/filename/private key/hash; invalid hash, encryption metadata/mode; ciphertext shorter than 16 bytes | Correct the request without an unchanged retry |
 | `400` | Private list | Violated the strict body, encoding, query, cardinality, or size contract | Fix the envelope; do not enumerate keys |
 | `401` | Download | Malformed body, missing/invalid/incorrect hash, invalid/unknown UUID, missing blob during precheck, or unprotected Share | Check local inputs once, then stop; denial persists a failure event |
-| `403` | Upload | Supplied CSRF header mismatched the attached session | Omit browser-only auth state or use a valid existing session/token pair |
+| `403` | Upload | Supplied CSRF header mismatched the attached session, or a non-admin upload attempted to set download notices | Omit administrator-only fields or use a valid existing admin session/token pair |
 | `404` | Routing; download race | Unknown routed path, or an authorized blob disappeared after its precheck | Correct routing or report an integrity race; do not repeatedly submit credentials |
 | `405` | Known operation route | Method was not `POST` | Correct the method |
 | `410` | Download | Credential matched but the Share expired | Treat expiry as terminal |

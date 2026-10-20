@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"shareserver/internal/share"
+	"shareserver/internal/upload"
 	"strings"
 	"time"
 )
@@ -58,7 +59,8 @@ type errorPage struct {
 
 type uploadPageData struct {
 	pageContext
-	Max int64
+	Max                  int64
+	MaxAdminMessageBytes int
 }
 
 type archivePageData struct {
@@ -125,8 +127,9 @@ func (h *Handler) renderUploadPage(w http.ResponseWriter, r *http.Request) {
 	context := h.pageContext(r, "")
 	context.Title = strings.TrimPrefix(context.T("upload.title"), "# ")
 	h.renderTemplate(w, http.StatusOK, "upload.html", uploadPageData{
-		pageContext: context,
-		Max:         h.A.C.MaxUploadBytes,
+		pageContext:          context,
+		Max:                  h.A.C.MaxUploadBytes,
+		MaxAdminMessageBytes: upload.MaxAdminMessageBytes,
 	})
 }
 

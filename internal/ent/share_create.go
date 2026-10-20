@@ -93,6 +93,34 @@ func (_c *ShareCreate) SetNillableZipManifest(v *string) *ShareCreate {
 	return _c
 }
 
+// SetSecurityWarning sets the "security_warning" field.
+func (_c *ShareCreate) SetSecurityWarning(v bool) *ShareCreate {
+	_c.mutation.SetSecurityWarning(v)
+	return _c
+}
+
+// SetNillableSecurityWarning sets the "security_warning" field if the given value is not nil.
+func (_c *ShareCreate) SetNillableSecurityWarning(v *bool) *ShareCreate {
+	if v != nil {
+		_c.SetSecurityWarning(*v)
+	}
+	return _c
+}
+
+// SetAdminMessage sets the "admin_message" field.
+func (_c *ShareCreate) SetAdminMessage(v string) *ShareCreate {
+	_c.mutation.SetAdminMessage(v)
+	return _c
+}
+
+// SetNillableAdminMessage sets the "admin_message" field if the given value is not nil.
+func (_c *ShareCreate) SetNillableAdminMessage(v *string) *ShareCreate {
+	if v != nil {
+		_c.SetAdminMessage(*v)
+	}
+	return _c
+}
+
 // SetSize sets the "size" field.
 func (_c *ShareCreate) SetSize(v int64) *ShareCreate {
 	_c.mutation.SetSize(v)
@@ -164,6 +192,7 @@ func (_c *ShareCreate) Mutation() *ShareMutation {
 
 // Save creates the Share in the database.
 func (_c *ShareCreate) Save(ctx context.Context) (*Share, error) {
+	_c.defaults()
 	return withHooks(ctx, _c.sqlSave, _c.mutation, _c.hooks)
 }
 
@@ -189,6 +218,18 @@ func (_c *ShareCreate) ExecX(ctx context.Context) {
 	}
 }
 
+// defaults sets the default values of the builder before save.
+func (_c *ShareCreate) defaults() {
+	if _, ok := _c.mutation.SecurityWarning(); !ok {
+		v := share.DefaultSecurityWarning
+		_c.mutation.SetSecurityWarning(v)
+	}
+	if _, ok := _c.mutation.AdminMessage(); !ok {
+		v := share.DefaultAdminMessage
+		_c.mutation.SetAdminMessage(v)
+	}
+}
+
 // check runs all checks and user-defined validators on the builder.
 func (_c *ShareCreate) check() error {
 	if _, ok := _c.mutation.Title(); !ok {
@@ -199,6 +240,12 @@ func (_c *ShareCreate) check() error {
 	}
 	if _, ok := _c.mutation.Encrypted(); !ok {
 		return &ValidationError{Name: "encrypted", err: errors.New(`ent: missing required field "Share.encrypted"`)}
+	}
+	if _, ok := _c.mutation.SecurityWarning(); !ok {
+		return &ValidationError{Name: "security_warning", err: errors.New(`ent: missing required field "Share.security_warning"`)}
+	}
+	if _, ok := _c.mutation.AdminMessage(); !ok {
+		return &ValidationError{Name: "admin_message", err: errors.New(`ent: missing required field "Share.admin_message"`)}
 	}
 	if _, ok := _c.mutation.Size(); !ok {
 		return &ValidationError{Name: "size", err: errors.New(`ent: missing required field "Share.size"`)}
@@ -278,6 +325,14 @@ func (_c *ShareCreate) createSpec() (*Share, *sqlgraph.CreateSpec) {
 		_spec.SetField(share.FieldZipManifest, field.TypeString, value)
 		_node.ZipManifest = value
 	}
+	if value, ok := _c.mutation.SecurityWarning(); ok {
+		_spec.SetField(share.FieldSecurityWarning, field.TypeBool, value)
+		_node.SecurityWarning = value
+	}
+	if value, ok := _c.mutation.AdminMessage(); ok {
+		_spec.SetField(share.FieldAdminMessage, field.TypeString, value)
+		_node.AdminMessage = value
+	}
 	if value, ok := _c.mutation.Size(); ok {
 		_spec.SetField(share.FieldSize, field.TypeInt64, value)
 		_node.Size = value
@@ -327,6 +382,7 @@ func (_c *ShareCreateBulk) Save(ctx context.Context) ([]*Share, error) {
 	for i := range _c.builders {
 		func(i int, root context.Context) {
 			builder := _c.builders[i]
+			builder.defaults()
 			var mut Mutator = MutateFunc(func(ctx context.Context, m Mutation) (Value, error) {
 				mutation, ok := m.(*ShareMutation)
 				if !ok {

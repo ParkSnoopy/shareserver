@@ -1,5 +1,12 @@
 # Change Log
 
+## Unreleased
+
+### Update
+- Combine selected files, typed text, and pasted media in one encrypted archive without choosing an input mode.
+- Add an administrator-only security-warning toggle and optional message when uploading, displayed to every visitor on that Share's download page.
+- Persist both notices with safe defaults for existing Shares and enforce administrator session/CSRF authorization and bounded plain-text messages.
+
 ## 2026-10-17
 
 ### Fix
