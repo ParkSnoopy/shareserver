@@ -109,7 +109,11 @@ func TestContainerGateway(t *testing.T) {
 				t.Setenv(key, "")
 			}
 			if mode == "custom-key" {
-				t.Setenv("HS512_SECRET", rand.Text())
+				var signingKey [64]byte
+				if _, err := rand.Read(signingKey[:]); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv("HS512_SECRET", hex.EncodeToString(signingKey[:]))
 			}
 			t.Setenv("ANUBIS_BIND", "127.0.0.1:8080")
 			t.Setenv("ANUBIS_USE_REMOTE_ADDRESS", strconv.FormatBool(direct))
@@ -253,6 +257,17 @@ func TestContainerGateway(t *testing.T) {
 			if status, _ := request("GET", "/.within.website/x/cmd/anubis/static/js/main.mjs", "curl/8", ""); status != 200 {
 				t.Fatal("challenge JavaScript must remain accessible")
 			}
+			// A cookie-less favicon response can arrive (or be replayed) after
+			// pass-challenge. Its headers must not delete the newly issued cookie.
+			stale, err := client.Get(edge.URL + "/favicon.ico")
+			if err != nil {
+				t.Fatal(err)
+			}
+			lateCookies := stale.Cookies()
+			closeTestResource(t, stale.Body)
+			if stale.Header.Get("Cache-Control") != "no-store" {
+				t.Fatal("challenge responses must not be cached")
+			}
 			client.Jar, _ = cookiejar.New(nil)
 			_, body := request("GET", "/api/", "Mozilla/5.0", "")
 			match := regexp.MustCompile(`(?s)<script id="anubis_challenge"[^>]*>(.*?)</script>`).FindStringSubmatch(body)
@@ -276,7 +291,7 @@ func TestContainerGateway(t *testing.T) {
 			if !direct {
 				ip = "198.51.100.42"
 			}
-			if got := challenge.Challenge.Metadata["X-Real-Ip"]; got != ip {
+			if got := challenge.Challenge.Metadata["X-Real-IP"]; got != ip {
 				t.Fatalf("challenge client IP = %q, want %q", got, ip)
 			}
 			query := url.Values{"id": {challenge.Challenge.ID}, "redir": {edge.URL + "/api/"}, "elapsedTime": {"100"}}
@@ -296,8 +311,15 @@ func TestContainerGateway(t *testing.T) {
 			if status != 200 || !strings.Contains(body, `class="site-frame"`) || strings.Contains(body, `id="anubis_challenge"`) {
 				t.Fatalf("solved challenge did not reach application: %d %s", status, body)
 			}
-			if status, body := request("GET", "/static/css/app.css", "Mozilla/5.0", ""); status != 200 || strings.Contains(body, `id="anubis_challenge"`) {
-				t.Fatal("passed cookie did not authorize application CSS")
+			clientURL, err := url.Parse(edge.URL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			client.Jar.SetCookies(clientURL, lateCookies)
+			for _, path := range []string{"/static/css/app.css", "/static/js/archive-list.js", "/static/js/i18n.js"} {
+				if status, body := request("GET", path, "Mozilla/5.0", ""); status != 200 || strings.Contains(body, `id="anubis_challenge"`) {
+					t.Fatalf("late anonymous response revoked the solved cookie for %s", path)
+				}
 			}
 			secret, err := files.ReadFile("test.db.secret")
 			if err != nil {

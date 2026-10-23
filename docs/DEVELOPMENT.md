@@ -68,13 +68,15 @@ preserves configured secrets and supervises both processes:
 TLS proxy -> Anubis :8080 -> Shareserver 127.0.0.1:8081
 ```
 
-The image bundles Anubis `v1.27.0`. Its [policy](../anubis-policy.yaml) bypasses
+The image bundles Anubis `v1.28.2`. Its [policy](../anubis-policy.yaml) bypasses
 only nonempty `/api/` subpaths, such as `/api/v0/upload`. `/api/` itself,
 all browser/admin pages, static assets, and unknown non-API routes require a
 successful proof-of-work challenge, regardless of user agent. Anubis serves its
 own challenge assets and verification endpoints without that challenge so clients
 can complete it. Passing the challenge issues a cookie; it does not replace
 Shareserver authentication, CSRF, HTTPS checks, body limits, or IP bans.
+Anubis responses to requests without an auth cookie must not clear that cookie, because a delayed or replayed favicon response can otherwise revoke a newly solved challenge and cause CSS/JavaScript requests to receive challenge HTML.
+The bundled release includes the [upstream correction](https://github.com/TecharoHQ/anubis/pull/1828) without exempting application assets from proof-of-work.
 
 `ANUBIS_DIFFICULTY` controls the fast SHA-256 challenge (default `4`, integer
 `1..64`; larger values rapidly increase client work). The backend is fixed to
@@ -83,7 +85,8 @@ Only port `8080` is exposed; Anubis health/metrics stay on `127.0.0.1:9090`.
 Either process exiting stops the pair. The launcher derives a separate Anubis
 signing seed from `APP_SECRET`, so solved cookies survive restarts while the
 application secret remains unchanged. Explicit Anubis signing-key settings are
-preserved. In-progress challenges remain in memory and must be retried after a
+preserved. Explicit `HS512_SECRET` overrides must contain at least 64 bytes, as required by Anubis; the default derived Ed25519 seed is unaffected.
+In-progress challenges remain in memory and must be retried after a
 restart; multiple replicas need sticky routing or a shared challenge store.
 
 The command above selects trusted-proxy mode. Restrict access to port `8080`
@@ -241,7 +244,7 @@ bun test
 ```
 
 For the native integration of the container supervisor/policy, provide absolute
-paths to a built Shareserver binary and the Anubis `v1.27.0` executable:
+paths to a built Shareserver binary and the Anubis `v1.28.2` executable:
 
 ```sh
 ANUBIS_BINARY=/absolute/path/to/anubis \
@@ -250,7 +253,7 @@ SHARESERVER_BINARY=/absolute/path/to/shareserver \
 ```
 
 This opt-in test owns ports `8080`, `8081`, and `9090`. It checks challenge
-coverage, API bypass, difficulty, a solved proof-of-work/cookie flow, proxy
+coverage, API bypass, difficulty, a solved proof-of-work/cookie flow with late anonymous-response replay, proxy
 security, and supervisor shutdown with real processes. It is not an image-build
 test; container-engine build/start verification is a separate deployment gate.
 

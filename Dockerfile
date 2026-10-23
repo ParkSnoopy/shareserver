@@ -14,8 +14,8 @@ RUN CGO_ENABLED=1 go build -o shareserver ./cmd/shareserver
 FROM alpine:3.24
 
 RUN apk add --no-cache bash ca-certificates
-COPY --from=ghcr.io/techarohq/anubis:v1.27.0 /ko-app/anubis /app/anubis
-ADD --chmod=644 https://raw.githubusercontent.com/TecharoHQ/anubis/v1.27.0/LICENSE /usr/share/licenses/anubis/LICENSE
+COPY --from=ghcr.io/techarohq/anubis:v1.28.2 /ko-app/anubis /app/anubis
+ADD --chmod=644 https://raw.githubusercontent.com/TecharoHQ/anubis/v1.28.2/LICENSE /usr/share/licenses/anubis/LICENSE
 
 # Add user `shareserver`
 USER root

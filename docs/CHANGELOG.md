@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fix
+- Bundle Anubis v1.28.2 so delayed anonymous challenge responses cannot delete a newly issued auth cookie and break CSS/JavaScript loading after challenge success.
+- Regress late favicon-response replay through the real gateway while retaining challenge coverage and client-IP binding.
+
 ### Update
 - Combine selected files, typed text, and pasted media in one encrypted archive without choosing an input mode.
 - Add an administrator-only security-warning toggle and optional message when uploading, displayed to every visitor on that Share's download page.
