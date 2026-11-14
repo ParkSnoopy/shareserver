@@ -81,7 +81,8 @@ func AdminLogin(ctx context.Context, client *ent.Client, ip, username, passwordH
 		Where(entadmin.UsernameEQ(username)).
 		Only(ctx)
 	if err != nil || !CheckPasswordHash(adminRow.PasswordHash, passwordHash) {
-		_, until := recordLoginFailure(ctx, client, ip, ip, loginFailureLimit, now)
+		// Wrong-password failures are counted under the bare IP.
+		_, until := recordLoginFailure(ctx, client, ip, ip, maxPasswordFailures, now)
 		return AdminLoginResult{Status: AdminLoginFailed, BannedUntil: until}
 	}
 	resetFailures(ctx, client, ip)
@@ -89,9 +90,9 @@ func AdminLogin(ctx context.Context, client *ent.Client, ip, username, passwordH
 }
 
 const (
-	loginFailureLimit    = 5
-	malformedLoginPrefix = "login-malformed:"
-	malformedLoginLimit  = 20
+	maxPasswordFailures    = 5
+	malformedFailurePrefix = "login-malformed:"
+	maxMalformedFailures   = 20
 )
 
 // AdminLoginMalformed rejects a malformed login request and counts it against
@@ -101,7 +102,7 @@ func AdminLoginMalformed(ctx context.Context, client *ent.Client, ip string, now
 	if isBanned(ctx, client, ip, now) {
 		return AdminLoginResult{Status: AdminLoginBanned}
 	}
-	_, until := recordLoginFailure(ctx, client, ip, malformedLoginPrefix+ip, malformedLoginLimit, now)
+	_, until := recordLoginFailure(ctx, client, ip, malformedFailurePrefix+ip, maxMalformedFailures, now)
 	return AdminLoginResult{Status: AdminLoginFailed, BannedUntil: until}
 }
 
@@ -162,28 +163,28 @@ func isBanned(ctx context.Context, client *ent.Client, ip string, now time.Time)
 	return err != nil || t.After(now.UTC())
 }
 
-// recordLoginFailure stores a failure under key and bans ip once the key
-// reaches limit failures within one minute.
-func recordLoginFailure(ctx context.Context, client *ent.Client, ip, key string, limit int, now time.Time) (banned bool, until time.Time) {
+// recordLoginFailure stores a failure under failureKey and bans banIP once
+// failureKey reaches maxFailures failures within one minute.
+func recordLoginFailure(ctx context.Context, client *ent.Client, banIP, failureKey string, maxFailures int, now time.Time) (banned bool, until time.Time) {
 	_, _ = client.LoginFailureEvent.Create().
-		SetIP(key).
+		SetIP(failureKey).
 		SetHappenedAt(now.UTC().Format(time.RFC3339Nano)).
 		Save(ctx)
 	cut := now.Add(-time.Minute).UTC().Format(time.RFC3339Nano)
 	n, _ := client.LoginFailureEvent.Query().
-		Where(loginfailureevent.IP(key), loginfailureevent.HappenedAtGTE(cut)).
+		Where(loginfailureevent.IP(failureKey), loginfailureevent.HappenedAtGTE(cut)).
 		Count(ctx)
-	if n >= limit {
+	if n >= maxFailures {
 		jitter, err := rand.Int(rand.Reader, big.NewInt(61))
 		if err != nil {
 			panic("crypto rand failed: " + err.Error())
 		}
 		until = now.Add(6*time.Hour + time.Duration(jitter.Int64())*time.Minute).UTC()
 		bannedUntil := until.Format(time.RFC3339Nano)
-		if _, err := client.IpBan.Get(ctx, ip); err == nil {
-			_ = client.IpBan.UpdateOneID(ip).SetBannedUntil(bannedUntil).Exec(ctx)
+		if _, err := client.IpBan.Get(ctx, banIP); err == nil {
+			_ = client.IpBan.UpdateOneID(banIP).SetBannedUntil(bannedUntil).Exec(ctx)
 		} else {
-			_, _ = client.IpBan.Create().SetID(ip).SetBannedUntil(bannedUntil).Save(ctx)
+			_, _ = client.IpBan.Create().SetID(banIP).SetBannedUntil(bannedUntil).Save(ctx)
 		}
 		return true, until
 	}
@@ -192,7 +193,7 @@ func recordLoginFailure(ctx context.Context, client *ent.Client, ip, key string,
 
 // resetFailures clears failed-login history after successful admin auth.
 func resetFailures(ctx context.Context, client *ent.Client, ip string) {
-	_, _ = client.LoginFailureEvent.Delete().Where(loginfailureevent.IPIn(ip, malformedLoginPrefix+ip)).Exec(ctx)
+	_, _ = client.LoginFailureEvent.Delete().Where(loginfailureevent.IPIn(ip, malformedFailurePrefix+ip)).Exec(ctx)
 }
 
 // CleanIP strips a port from RemoteAddr-style values when present.
