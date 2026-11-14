@@ -5,6 +5,7 @@
 ### Fix
 - Bundle Anubis v1.28.2 so delayed anonymous challenge responses cannot delete a newly issued auth cookie and break CSS/JavaScript loading after challenge success.
 - Regress late favicon-response replay through the real gateway while retaining challenge coverage and client-IP binding.
+- Count malformed admin login requests as failed attempts and check the IP ban before form validation, so repeated invalid requests receive `429` instead of an unlimited stream of `401` responses.
 
 ### Update
 - Combine selected files, typed text, and pasted media in one encrypted archive without choosing an input mode.

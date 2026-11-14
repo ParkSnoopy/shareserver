@@ -367,11 +367,11 @@ func (h *Handler) adminLoginPage(w http.ResponseWriter, r *http.Request) {
 // adminLoginPost delegates credential decisions to auth and rotates admin session state on success.
 func (h *Handler) adminLoginPost(w http.ResponseWriter, r *http.Request) {
 	ip := h.clientIP(r)
-	if r.URL.RawQuery != "" || r.ParseForm() != nil || len(r.PostForm) != 3 || len(r.PostForm["username"]) != 1 || len(r.PostForm["password_hash"]) != 1 || len(r.PostForm["csrf"]) != 1 {
-		http.Error(w, "login failed", http.StatusUnauthorized)
-		return
+	// Malformed attempts keep empty credentials so they still honor bans and count as failures.
+	user, passwordHash := "", ""
+	if r.URL.RawQuery == "" && r.ParseForm() == nil && len(r.PostForm) == 3 && len(r.PostForm["username"]) == 1 && len(r.PostForm["password_hash"]) == 1 && len(r.PostForm["csrf"]) == 1 {
+		user, passwordHash = r.PostForm["username"][0], r.PostForm["password_hash"][0]
 	}
-	user, passwordHash := r.PostForm["username"][0], r.PostForm["password_hash"][0]
 	result := auth.AdminLogin(r.Context(), h.A.DB, ip, user, passwordHash, time.Now())
 	switch result.Status {
 	case auth.AdminLoginBanned:
