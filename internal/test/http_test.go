@@ -118,36 +118,44 @@ func TestAdminLoginAcceptsOnlyPasswordHash(t *testing.T) {
 }
 
 func TestAdminLoginMalformedAttemptsCountTowardBan(t *testing.T) {
-	a, router := newRouter(t)
-	insertLoginAdmin(t, a.DB, "admin", "correct")
-	now := time.Now().UTC()
-	if _, err := a.DB.Session.Create().
-		SetID("malformed-login-sid").
-		SetCsrf("malformed-login-csrf").
-		SetCreatedAt(now.Format(time.RFC3339Nano)).
-		SetExpiresAt(now.Add(time.Hour).Format(time.RFC3339Nano)).
-		Save(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	request := func(values url.Values) int {
-		req := httptest.NewRequest(http.MethodPost, "/admin/login", strings.NewReader(values.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.Header.Add("Cookie", "sid=malformed-login-sid")
-		response := httptest.NewRecorder()
-		router.ServeHTTP(response, req)
-		return response.Code
-	}
-	for attempt := 1; attempt <= 5; attempt++ {
-		code := request(url.Values{"csrf": {"malformed-login-csrf"}, "username": {"admin"}, "password": {"guess"}})
-		if code != http.StatusUnauthorized {
-			t.Fatalf("malformed attempt %d status = %d, want 401", attempt, code)
+	for _, tc := range []struct {
+		malformed int
+		want      int
+	}{
+		{malformed: 19, want: http.StatusSeeOther},
+		{malformed: 20, want: http.StatusTooManyRequests},
+	} {
+		a, router := newRouter(t)
+		insertLoginAdmin(t, a.DB, "admin", "correct")
+		now := time.Now().UTC()
+		if _, err := a.DB.Session.Create().
+			SetID("malformed-login-sid").
+			SetCsrf("malformed-login-csrf").
+			SetCreatedAt(now.Format(time.RFC3339Nano)).
+			SetExpiresAt(now.Add(time.Hour).Format(time.RFC3339Nano)).
+			Save(context.Background()); err != nil {
+			t.Fatal(err)
 		}
-	}
-	code := request(url.Values{
-		"csrf": {"malformed-login-csrf"}, "username": {"admin"}, "password_hash": {testAdminPasswordHash("correct")},
-	})
-	if code != http.StatusTooManyRequests {
-		t.Fatalf("login after five malformed attempts status = %d, want 429", code)
+		request := func(values url.Values) int {
+			req := httptest.NewRequest(http.MethodPost, "/admin/login", strings.NewReader(values.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Add("Cookie", "sid=malformed-login-sid")
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, req)
+			return response.Code
+		}
+		for attempt := 1; attempt <= tc.malformed; attempt++ {
+			code := request(url.Values{"csrf": {"malformed-login-csrf"}, "username": {"admin"}, "password": {"guess"}})
+			if code != http.StatusUnauthorized {
+				t.Fatalf("malformed attempt %d status = %d, want 401", attempt, code)
+			}
+		}
+		code := request(url.Values{
+			"csrf": {"malformed-login-csrf"}, "username": {"admin"}, "password_hash": {testAdminPasswordHash("correct")},
+		})
+		if code != tc.want {
+			t.Fatalf("login after %d malformed attempts status = %d, want %d", tc.malformed, code, tc.want)
+		}
 	}
 }
 

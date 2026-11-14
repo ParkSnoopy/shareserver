@@ -81,11 +81,28 @@ func AdminLogin(ctx context.Context, client *ent.Client, ip, username, passwordH
 		Where(entadmin.UsernameEQ(username)).
 		Only(ctx)
 	if err != nil || !CheckPasswordHash(adminRow.PasswordHash, passwordHash) {
-		_, until := recordLoginFailure(ctx, client, ip, now)
+		_, until := recordLoginFailure(ctx, client, ip, ip, loginFailureLimit, now)
 		return AdminLoginResult{Status: AdminLoginFailed, BannedUntil: until}
 	}
 	resetFailures(ctx, client, ip)
 	return AdminLoginResult{Status: AdminLoginSuccess, AdminID: adminRow.ID}
+}
+
+const (
+	loginFailureLimit    = 5
+	malformedLoginPrefix = "login-malformed:"
+	malformedLoginLimit  = 20
+)
+
+// AdminLoginMalformed rejects a malformed login request and counts it against
+// a separate, higher per-IP limit that leads to the same login ban.
+func AdminLoginMalformed(ctx context.Context, client *ent.Client, ip string, now time.Time) AdminLoginResult {
+	now = now.UTC()
+	if isBanned(ctx, client, ip, now) {
+		return AdminLoginResult{Status: AdminLoginBanned}
+	}
+	_, until := recordLoginFailure(ctx, client, ip, malformedLoginPrefix+ip, malformedLoginLimit, now)
+	return AdminLoginResult{Status: AdminLoginFailed, BannedUntil: until}
 }
 
 // EnsureAdmin derives the configured plaintext password once at startup. HTTP
@@ -145,17 +162,18 @@ func isBanned(ctx context.Context, client *ent.Client, ip string, now time.Time)
 	return err != nil || t.After(now.UTC())
 }
 
-// recordLoginFailure stores a failed login and returns a ban after repeated attempts.
-func recordLoginFailure(ctx context.Context, client *ent.Client, ip string, now time.Time) (banned bool, until time.Time) {
+// recordLoginFailure stores a failure under key and bans ip once the key
+// reaches limit failures within one minute.
+func recordLoginFailure(ctx context.Context, client *ent.Client, ip, key string, limit int, now time.Time) (banned bool, until time.Time) {
 	_, _ = client.LoginFailureEvent.Create().
-		SetIP(ip).
+		SetIP(key).
 		SetHappenedAt(now.UTC().Format(time.RFC3339Nano)).
 		Save(ctx)
 	cut := now.Add(-time.Minute).UTC().Format(time.RFC3339Nano)
 	n, _ := client.LoginFailureEvent.Query().
-		Where(loginfailureevent.IP(ip), loginfailureevent.HappenedAtGTE(cut)).
+		Where(loginfailureevent.IP(key), loginfailureevent.HappenedAtGTE(cut)).
 		Count(ctx)
-	if n >= 5 {
+	if n >= limit {
 		jitter, err := rand.Int(rand.Reader, big.NewInt(61))
 		if err != nil {
 			panic("crypto rand failed: " + err.Error())
@@ -174,7 +192,7 @@ func recordLoginFailure(ctx context.Context, client *ent.Client, ip string, now 
 
 // resetFailures clears failed-login history after successful admin auth.
 func resetFailures(ctx context.Context, client *ent.Client, ip string) {
-	_, _ = client.LoginFailureEvent.Delete().Where(loginfailureevent.IP(ip)).Exec(ctx)
+	_, _ = client.LoginFailureEvent.Delete().Where(loginfailureevent.IPIn(ip, malformedLoginPrefix+ip)).Exec(ctx)
 }
 
 // CleanIP strips a port from RemoteAddr-style values when present.
