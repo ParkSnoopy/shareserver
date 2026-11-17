@@ -85,6 +85,11 @@ type adminDashboardPage struct {
 	Active, Expired, Purged int
 }
 
+type adminLoginPageData struct {
+	pageContext
+	MessageKey string
+}
+
 type adminSharesPage struct {
 	pageContext
 	Shares       []share.Share
@@ -158,10 +163,13 @@ func (h *Handler) renderAPIPage(w http.ResponseWriter, r *http.Request, data api
 	h.renderTemplate(w, http.StatusOK, "api.html", data)
 }
 
-func (h *Handler) renderAdminLoginPage(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) renderAdminLoginPage(w http.ResponseWriter, r *http.Request, status int, messageKey string) {
 	context := h.pageContext(r, "")
 	context.Title = strings.TrimPrefix(context.T("admin.loginTitle"), "# ")
-	h.renderTemplate(w, http.StatusOK, "admin_login.html", context)
+	h.renderTemplate(w, status, "admin_login.html", adminLoginPageData{
+		pageContext: context,
+		MessageKey:  messageKey,
+	})
 }
 
 func (h *Handler) renderAdminDashboardPage(w http.ResponseWriter, r *http.Request, data adminDashboardPage) {

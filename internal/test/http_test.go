@@ -61,6 +61,17 @@ func TestAdminLoginAcceptsOnlyPasswordHash(t *testing.T) {
 	if plaintext.Code != http.StatusUnauthorized {
 		t.Fatalf("plaintext admin login status = %d, want 401", plaintext.Code)
 	}
+	assertBodyContains(t, plaintext.Body.String(), `class="paper"`, `data-i18n="admin.loginFailed"`, `id="adminLoginForm"`, `value="admin-login-csrf"`)
+	wrong := request(url.Values{
+		"csrf": {"admin-login-csrf"}, "username": {"admin"}, "password_hash": {testAdminPasswordHash("wrong")},
+	})
+	if wrong.Code != http.StatusUnauthorized || wrong.Header().Get("Content-Type") != "text/html; charset=utf-8" || wrong.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("failed login must return uncached HTML with status 401: %d %v", wrong.Code, wrong.Header())
+	}
+	assertBodyContains(t, wrong.Body.String(), `class="paper"`, `role="alert"`, `data-i18n="admin.loginFailed"`, `id="adminLoginForm"`, `value="admin-login-csrf"`)
+	if strings.Contains(wrong.Body.String(), testAdminPasswordHash("wrong")) {
+		t.Fatal("failed login reflected the submitted password hash")
+	}
 	hashed := request(url.Values{
 		"csrf": {"admin-login-csrf"}, "username": {"admin"}, "password_hash": {testAdminPasswordHash("correct")},
 	})
@@ -137,25 +148,28 @@ func TestAdminLoginMalformedAttemptsCountTowardBan(t *testing.T) {
 			Save(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		request := func(values url.Values) int {
+		request := func(values url.Values) *httptest.ResponseRecorder {
 			req := httptest.NewRequest(http.MethodPost, "/admin/login", strings.NewReader(values.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			req.Header.Add("Cookie", "sid=malformed-login-sid")
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, req)
-			return response.Code
+			return response
 		}
 		for attempt := 1; attempt <= tc.malformed; attempt++ {
-			code := request(url.Values{"csrf": {"malformed-login-csrf"}, "username": {"admin"}, "password": {"guess"}})
-			if code != http.StatusUnauthorized {
-				t.Fatalf("malformed attempt %d status = %d, want 401", attempt, code)
+			response := request(url.Values{"csrf": {"malformed-login-csrf"}, "username": {"admin"}, "password": {"guess"}})
+			if response.Code != http.StatusUnauthorized {
+				t.Fatalf("malformed attempt %d status = %d, want 401", attempt, response.Code)
 			}
 		}
-		code := request(url.Values{
+		response := request(url.Values{
 			"csrf": {"malformed-login-csrf"}, "username": {"admin"}, "password_hash": {testAdminPasswordHash("correct")},
 		})
-		if code != tc.want {
-			t.Fatalf("login after %d malformed attempts status = %d, want %d", tc.malformed, code, tc.want)
+		if response.Code != tc.want {
+			t.Fatalf("login after %d malformed attempts status = %d, want %d", tc.malformed, response.Code, tc.want)
+		}
+		if tc.want == http.StatusTooManyRequests {
+			assertBodyContains(t, response.Body.String(), `class="paper"`, `role="alert"`, `data-i18n="admin.loginThrottled"`, `id="adminLoginForm"`)
 		}
 	}
 }

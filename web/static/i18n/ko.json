@@ -110,6 +110,8 @@
 		"user": "이장 이름",
 		"password": "비밀번호",
 		"login": "입장",
+		"loginFailed": "이름이나 비밀번호가 맞지 않소. 다시 확인해 주시오.",
+		"loginThrottled": "로그인 시도가 너무 많소. 나중에 다시 해보시오.",
 		"sharesTitle": "창고 관리",
 		"select": "선택",
 		"selectAll": "몽땅 선택",

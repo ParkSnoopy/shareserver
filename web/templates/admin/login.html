@@ -16,6 +16,9 @@
 		<form class="panel" id="adminLoginForm" method="post" action="/admin/login">
 			<input type="hidden" name="csrf" value="{{.CSRF}}">
 			<input type="hidden" name="password_hash" id="adminPasswordHash">
+			{{if .MessageKey}}
+			<p class="err" role="alert" data-i18n="{{.MessageKey}}">{{.T .MessageKey}}</p>
+			{{end}}
 
 			<div class="field-row">
 				<label for="adminUsername" data-i18n="admin.user">{{ .T "admin.user" }}</label>

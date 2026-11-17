@@ -361,7 +361,7 @@ func requestBodyValue(r *http.Request, field string, maximum int64) (string, err
 
 // adminLoginPage renders the admin sign-in form.
 func (h *Handler) adminLoginPage(w http.ResponseWriter, r *http.Request) {
-	h.renderAdminLoginPage(w, r)
+	h.renderAdminLoginPage(w, r, http.StatusOK, "")
 }
 
 // adminLoginPost delegates credential decisions to auth and rotates admin session state on success.
@@ -379,21 +379,21 @@ func (h *Handler) adminLoginPost(w http.ResponseWriter, r *http.Request) {
 	switch result.Status {
 	case auth.AdminLoginBanned:
 		audit.Log(h.A.DB, "public", ip, "login_banned", "", "")
-		http.Error(w, "try again later", http.StatusTooManyRequests)
+		h.renderAdminLoginPage(w, r, http.StatusTooManyRequests, "admin.loginThrottled")
 	case auth.AdminLoginFailed:
 		meta := ""
 		if !result.BannedUntil.IsZero() {
 			meta = "banned_until=" + result.BannedUntil.Format(time.RFC3339Nano)
 		}
 		audit.Log(h.A.DB, "public", ip, "login_fail", user, meta)
-		http.Error(w, "login failed", http.StatusUnauthorized)
+		h.renderAdminLoginPage(w, r, http.StatusUnauthorized, "admin.loginFailed")
 	case auth.AdminLoginSuccess:
 		h.loginSession(w, r, CurrentSession(r).ID, int64(result.AdminID))
 		audit.Log(h.A.DB, "admin", ip, "login", user, "")
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 	default:
 		audit.Log(h.A.DB, "public", ip, "login_fail", user, "")
-		http.Error(w, "login failed", http.StatusUnauthorized)
+		h.renderAdminLoginPage(w, r, http.StatusUnauthorized, "admin.loginFailed")
 	}
 }
 

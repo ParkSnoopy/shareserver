@@ -110,6 +110,8 @@
 		"user": "user",
 		"password": "password",
 		"login": "login",
+		"loginFailed": "Login failed. Check your username and password.",
+		"loginThrottled": "Too many login attempts. Try again later.",
 		"sharesTitle": "Shares",
 		"select": "select",
 		"selectAll": "select all",
