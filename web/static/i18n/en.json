@@ -1,5 +1,17 @@
 {
+	"village": {
+		"name": "Share Village",
+		"footer": "Nothing in this village belongs to the chief either."
+	},
+	"remark": {
+		"archive": "The chief guards it without peeking",
+		"upload": "Once packed, even the chief cannot open it",
+		"api": "Machines are residents too",
+		"admin": "Chief only. Out!",
+		"error": "Lost? Tsk tsk.."
+	},
 	"nav": {
+		"archive": "storage",
 		"upload": "upload",
 		"api": "api",
 		"admin": "admin",

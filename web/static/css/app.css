@@ -1,14 +1,17 @@
+/* Village look: a yellow canvas, a drawn paper sheet and mouse-drawn chrome.
+   The drawings come from /static/js/village.js. Every rule here only places
+   them or styles plain HTML, which keeps square legacy shapes. */
 :root {
 	color-scheme: only light;
-	--paper: #000;
-	--panel: #eff3ff;
-	--snow: #fffafa;
-	--cream: #fcfbf3;
-	--gold: #ffd700;
-	--yellow: #ffff00;
+	--canvas: #ffd200;
 	--ink: #000;
-	--blue: #0000cd;
-	--red: #b00000;
+	--paper: #fff;
+	--sky: #2bb8e6;
+	--sun: #ffe400;
+	--red: #c00000;
+	--blue: #005aff;
+	--focus: #005eff;
+	--line: #c9c9c9;
 }
 [hidden],
 .api-sidebar[hidden],
@@ -18,18 +21,19 @@
 * {
 	box-sizing: border-box;
 }
-html {
-	background: var(--paper);
+html,
+body {
+	background: var(--canvas);
 }
 body {
 	margin: 0;
-	background: var(--paper);
 	color: var(--ink);
 	font:
-		10pt Verdana,
-		Tahoma,
+		10pt "굴림",
+		Gulim,
 		"돋움",
-		"돋움체",
+		Dotum,
+		Tahoma,
 		sans-serif;
 }
 button,
@@ -40,12 +44,13 @@ textarea {
 	border-radius: 0;
 }
 a {
-	color: var(--blue);
+	color: #333;
 }
 a:visited {
-	color: #006400;
+	color: #777;
 }
 a:hover {
+	color: #004eff;
 	text-decoration: underline;
 }
 a:focus-visible,
@@ -54,91 +59,174 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 [tabindex]:focus-visible {
-	outline: 2px solid #024491;
+	outline: 3px solid var(--focus);
 	outline-offset: 2px;
 }
-.site-frame {
-	width: min(955px, 100%);
-	margin: 16px auto 48px;
-	border-spacing: 0;
-	table-layout: fixed;
-	background: var(--cream);
-}
-.site-frame > tbody > tr > td {
-	padding: 1px;
-}
-.site-head {
-	background: #000;
-	color: white;
-}
-.site-head nav {
-	display: table;
-	width: 100%;
-	table-layout: fixed;
-	border-spacing: 0;
-}
-.site-head .logo,
-.site-head .tab-links {
-	display: table-cell;
-	vertical-align: middle;
-}
-.site-head .logo {
-	width: 215px;
-	padding: 12px 18px;
-	color: white;
-	font:
-		bold 20pt Verdana,
-		Tahoma,
-		sans-serif;
-	text-decoration: none;
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
 	white-space: nowrap;
 }
-.site-head .logo-initial {
-	color: var(--yellow);
-	font-size: 30pt;
+svg.d {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	shape-rendering: crispEdges;
 }
-.tab-links {
-	text-align: left;
+
+/* Stage, header and scenery */
+.stage {
+	position: relative;
+	z-index: 0;
+	width: min(950px, 100%);
+	margin: 0 auto;
 }
-.tab-links a,
-.tab-links form {
-	display: inline-block;
-	vertical-align: middle;
+.village-head {
+	position: relative;
+	height: 230px;
 }
-.tab-links a,
-.tab-links button {
-	padding: 14px 16px;
-	color: #f9f9f9;
-	background: transparent;
-	border: 0;
+.site-logo {
+	position: absolute;
+	top: 26px;
+	left: 30px;
 	text-decoration: none;
-	cursor: pointer;
 }
-.tab-links a:visited {
-	color: #f9f9f9;
+.head-actions {
+	position: absolute;
+	top: 18px;
+	right: 20px;
+	display: flex;
+	gap: 8px;
 }
-.tab-links a:hover,
-.tab-links button:hover {
-	color: #f9f9f9;
-	text-decoration: underline;
-}
-.tab-links a[aria-current="page"] {
-	color: var(--yellow);
-}
-.tab-links form {
+.head-actions form {
 	margin: 0;
 }
-.tab-links .language-toggle {
-	float: right;
+/* The paper comes after the header and paints over the flat tab bottoms.
+   Tabs share one baseline, because a lifted tab leaves a gap above the
+   paper. No negative z-index here: it would put the tabs under the header
+   box, and the header would take every click. */
+.tabs {
+	position: absolute;
+	bottom: 0;
+	left: 320px;
+	display: flex;
+	align-items: flex-end;
+	gap: 4px;
 }
-.tab-links .language-toggle:disabled {
-	background: #000;
-	color: #fff;
+.nav-tab {
+	position: relative;
+	display: block;
+	width: 140px;
+	text-decoration: none;
+	transition: translate 0.1s;
 }
-.shell {
-	padding: 12px;
-	background: var(--cream);
+.nav-tab .art {
+	display: block;
 }
+.nav-tab:hover {
+	translate: 0 -6px;
+}
+.nav-tab .tab-label {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+.scenery {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+.scene-link {
+	position: absolute;
+	pointer-events: auto;
+}
+.scene-sun {
+	top: 2px;
+	left: 300px;
+}
+.scene-cloud {
+	top: 34px;
+	left: 470px;
+}
+.scene-bird {
+	top: 64px;
+	left: 610px;
+}
+.scene-garbage {
+	top: 160px;
+	left: 40px;
+}
+.scene-link .art {
+	display: block;
+}
+.scene-link:hover .art {
+	translate: 0 -3px;
+}
+
+/* Paper sheet and ground */
+/* z-index 0 keeps the sheet drawing inside the paper and puts the paper
+   over the tabs. The paper box starts above its drawn edge, so the box
+   itself lets clicks through to the tabs; its content still takes them. */
+.paper {
+	position: relative;
+	z-index: 0;
+	display: block;
+	min-height: 320px;
+	margin-top: -60px;
+	padding: 92px 70px 120px;
+	pointer-events: none;
+}
+.paper > * {
+	pointer-events: auto;
+}
+.paper > .paper-art {
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+}
+.paper-art svg {
+	display: block;
+	shape-rendering: crispEdges;
+}
+.site-ground {
+	position: relative;
+	margin-top: -84px;
+	pointer-events: none;
+}
+.site-ground svg.d {
+	width: 100%;
+}
+
+/* Headings */
+h1 {
+	margin: 0 0 12px;
+	font:
+		bold 18pt "굴림",
+		Gulim,
+		sans-serif;
+	overflow-wrap: anywhere;
+}
+.title-art {
+	margin: 0 0 12px -12px;
+}
+h3 {
+	margin: 0 0 8px;
+	font-size: 11pt;
+}
+p {
+	margin: 5px 0 10px;
+	line-height: 1.6;
+	overflow-wrap: anywhere;
+}
+
+/* Page skeleton kept from the old layout */
 .source-buffer,
 .grid,
 .numbered-page {
@@ -149,73 +237,58 @@ textarea:focus-visible,
 	display: block;
 }
 .line-gutter,
-.row > span:first-child {
+.row > span:first-child,
+.section-rule {
 	display: none;
 }
 .editor-line > :last-child,
 .row > :last-child {
 	max-width: 100%;
 }
-h1 {
-	margin: 0;
-	padding: 8px 12px;
-	background: var(--gold);
-	color: var(--ink);
-	font:
-		bold 18pt Verdana,
-		Tahoma,
-		"돋움",
-		sans-serif;
-	overflow-wrap: anywhere;
-}
-h3 {
-	margin: 0 0 8px;
-	font-size: 11pt;
-}
-p {
-	margin: 5px 0 10px;
-	line-height: 1.5;
-	overflow-wrap: anywhere;
-}
-.section-rule {
-	height: 1px;
-	margin: 8px 0;
-	background: #808080;
-}
 .sidebar-rule {
-	height: 1px;
-	margin: 12px 0;
-	background: #a9a9a9;
-}
-.panel,
-.input-panel,
-.api-detail,
-.api-sidebar,
-.api-main,
-.wide {
-	padding: 12px;
-	background: var(--panel);
+	height: 0;
+	margin: 14px 0;
+	border-top: 3px dotted var(--ink);
 }
 .source-buffer > .editor-line:has(.progress-output:empty),
 .source-buffer > .editor-line:has(.result-output:empty) {
 	display: none;
 }
+
+/* Panels */
+.panel,
+.input-panel,
+.api-detail,
+.api-sidebar,
+.wide,
+.download-notice {
+	margin-bottom: 14px;
+	padding: 20px 22px;
+	border: 3px solid var(--ink);
+	background-color: var(--paper);
+}
+.api-main,
+.api-guide {
+	min-width: 0;
+}
+
+/* Forms */
 .field-row,
 .field-grid {
-	margin-bottom: 12px;
+	margin-bottom: 14px;
+}
+.field-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 0 14px;
 }
 .field-grid > .field-row {
-	display: inline-block;
-	width: 49%;
-	vertical-align: top;
-}
-.field-grid > .field-row[hidden] {
-	display: none;
+	margin-bottom: 14px;
 }
 .field-label,
 label {
 	display: block;
-	margin: 0 0 4px;
+	margin: 0 0 5px;
 	font-weight: bold;
 }
 input:not([type="hidden"]):not([type="checkbox"]):not([type="file"]),
@@ -224,17 +297,19 @@ textarea,
 .textarea-input {
 	width: 100%;
 	min-width: 0;
-	min-height: 30px;
-	padding: 5px 7px;
-	border: 1px solid #ababab;
-	background: #f3f3f3;
+	min-height: 36px;
+	padding: 6px 8px;
+	border: 2px solid var(--ink);
+	background: var(--paper);
 	color: #222;
 }
 select {
 	cursor: pointer;
 }
 input[type="checkbox"] {
-	width: auto;
+	width: 18px;
+	height: 18px;
+	vertical-align: middle;
 }
 .native-file {
 	position: absolute;
@@ -245,24 +320,26 @@ input[type="checkbox"] {
 }
 .dropzone {
 	display: block;
-	min-height: 86px;
-	padding: 22px;
-	border: 3px ridge #808080;
-	background: var(--snow);
+	min-height: 90px;
+	padding: 24px;
+	border: 3px dashed var(--ink);
+	background: #fffbe2;
 	cursor: pointer;
 	font-weight: normal;
+	text-align: center;
 }
 .dropzone:hover,
 .dropzone.drag-over,
 #fileSource:has(.native-file:focus-visible) .dropzone {
-	border-color: #024491;
+	border-color: var(--focus);
+	background: #e8fbff;
 }
 .selected-file-list {
 	margin: 8px 0;
 }
 .selected-file-row {
-	padding: 5px;
-	border-bottom: 1px solid #a9a9a9;
+	padding: 6px 4px;
+	border-bottom: 1px dotted #bbb;
 }
 .selected-file-name {
 	overflow-wrap: anywhere;
@@ -280,12 +357,6 @@ input[type="checkbox"] {
 .admin-bulk-actions label {
 	display: inline;
 }
-.download-notice {
-	margin-bottom: 12px;
-	padding: 10px;
-	border: 1px solid #808080;
-	background: var(--snow);
-}
 .download-notice h3 {
 	margin-top: 0;
 }
@@ -296,106 +367,99 @@ input[type="checkbox"] {
 .admin-message {
 	white-space: pre-wrap;
 }
+
+/* Buttons */
 button,
 .primary-action-button {
 	display: inline-block;
-	min-height: 30px;
-	padding: 5px 12px;
-	border: 2px outset #dcdcdc;
-	background: var(--gold);
+	min-height: 40px;
+	padding: 8px 22px;
+	border: 3px solid var(--ink);
+	background-color: var(--sky);
 	color: var(--ink);
+	font-weight: bold;
 	text-decoration: none;
 	cursor: pointer;
 }
-button:hover,
-.primary-action-button:hover {
-	text-decoration: underline;
-}
-button:active,
-.primary-action-button:active {
-	border-style: inset;
+.pill-button {
+	min-height: 36px;
+	padding: 6px 18px;
 }
 button:disabled,
 button.visually-disabled {
-	color: #666;
-	background: #eee;
+	color: #555;
 	cursor: default;
 }
 .lookup-form > button {
-	margin-top: 6px;
+	margin-top: 8px;
 }
+
+/* Output */
 .progress-output {
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
 }
 .result-output:not(:empty) {
-	padding: 8px;
-	border: 2px ridge #808080;
-	background: var(--snow);
+	padding: 10px;
+	border: 3px solid var(--ink);
+	background: var(--paper);
 }
 .err {
-	padding: 10px;
-	border: 3px ridge #b00000;
-	background: var(--yellow);
+	padding: 14px 18px;
+	border: 3px solid var(--red);
+	background-color: var(--sun);
 	color: var(--red);
+	font-weight: bold;
 }
+
+/* Archive and API layout */
 .api-doc-layout {
 	width: 100%;
 	table-layout: fixed;
 	border-spacing: 0;
-	background: var(--panel);
 }
 .sidebar-toggle-row {
 	display: none;
 }
 .api-doc-layout > tbody > tr > td {
 	vertical-align: top;
-	padding: 8px;
+	padding: 0;
 }
 .api-doc-layout .sidebar-cell {
-	width: 260px;
-	border-right: 1px solid #808080;
+	width: 250px;
+	padding-right: 14px;
 }
 .api-doc-layout > tbody > tr:not(.sidebar-toggle-row) > td:last-child {
 	overflow: hidden;
-}
-.api-sidebar,
-.api-main {
-	padding: 4px;
-}
-.api-main {
-	min-width: 0;
-}
-.api-guide > .api-detail,
-.api-main > .api-detail {
-	margin-bottom: 8px;
-	border: 2px ridge #c0c0c0;
-	background: var(--snow);
-}
-.api-guide > .api-detail:first-child {
-	margin-top: 0;
 }
 .api-index-list {
 	margin: 4px 0;
 }
 .api-index-row {
 	display: block;
-	padding: 7px;
-	border-bottom: 1px solid #c0c0c0;
-	background: var(--snow);
+	padding: 8px 4px;
+	border-bottom: 1px dotted #bbb;
 	text-decoration: none;
 }
 .api-index-row:hover,
 .api-index-row[aria-current="page"] {
-	background: #ffffe0;
+	background: #fffbe2;
+}
+.api-index-row[aria-current="page"] {
+	font-weight: bold;
 }
 .archive-name {
 	overflow-wrap: anywhere;
 }
 .method-label {
 	margin-left: 8px;
-	color: #024491;
-	font-weight: bold;
+	padding: 0 5px;
+	border: 2px solid var(--ink);
+	background: var(--sun);
+	color: var(--ink);
+	font:
+		bold 8pt Tahoma,
+		sans-serif;
 }
 .api-endpoint {
 	overflow-wrap: anywhere;
@@ -405,8 +469,8 @@ button.visually-disabled {
 	margin: 8px 0;
 	padding: 10px;
 	overflow-x: auto;
-	border: 2px inset #c0c0c0;
-	background: var(--snow);
+	border: 2px solid var(--ink);
+	background: #f4f4f4;
 	font:
 		9pt "Courier New",
 		monospace;
@@ -415,12 +479,14 @@ button.visually-disabled {
 	margin: 5px 0;
 }
 .api-policy {
-	border-left: 3px solid #024491;
 	padding-left: 8px;
+	border-left: 4px solid var(--red);
 }
 .sidebar-toggle {
 	display: none;
 }
+
+/* Upload clipboard */
 #clipbox {
 	min-height: 70px;
 	max-height: 260px;
@@ -444,29 +510,32 @@ button.visually-disabled {
 .detail-actions > * {
 	margin: 4px 8px 4px 0;
 }
+
+/* Admin table: legacy square look */
 .table-scroll {
 	width: 100%;
 	overflow-x: auto;
 }
 .admin-shares {
 	width: 100%;
-	min-width: 850px;
-	border-spacing: 0;
-	background: var(--snow);
+	min-width: 760px;
+	border-collapse: collapse;
+	background: var(--paper);
 }
 .admin-shares th,
 .admin-shares td {
 	padding: 7px;
-	border: 1px ridge #c0c0c0;
+	border: 1px solid var(--line);
 	text-align: left;
 	vertical-align: top;
 	white-space: nowrap;
 }
 .admin-shares th {
-	background: #f5deb3;
+	border-bottom: 3px solid var(--ink);
+	background: var(--canvas);
 }
-.admin-shares tr:nth-child(even) {
-	background: var(--panel);
+.admin-shares tbody tr:hover {
+	background: #fffbe2;
 }
 .admin-title {
 	max-width: 240px;
@@ -474,20 +543,23 @@ button.visually-disabled {
 	text-overflow: ellipsis;
 }
 .admin-bulk-actions {
-	margin: 8px 0;
-}
-.admin-bulk-actions > * {
-	margin-right: 8px;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+	margin: 8px 0 12px;
 }
 #deleteSelectedShares:not(:disabled) {
 	color: var(--red);
 }
+
+/* Archive viewer */
 .archive-list {
 	width: 100%;
 }
 .archive-row {
 	padding: 7px;
-	border-bottom: 1px solid #808080;
+	border-bottom: 1px dotted #bbb;
 }
 .archive-row > * {
 	margin-right: 10px;
@@ -497,8 +569,8 @@ button.visually-disabled {
 	min-height: 140px;
 	padding: 8px;
 	overflow: auto;
-	border: 2px inset #808080;
-	background: var(--snow);
+	border: 2px solid var(--ink);
+	background: var(--paper);
 }
 .archive-preview img,
 .archive-preview video,
@@ -526,26 +598,80 @@ button.visually-disabled {
 	width: 100%;
 	height: 70vh;
 }
-@media (max-width: 760px) {
-	.site-frame {
-		margin: 0 auto 24px;
+
+/* Drawn frames: village.js paints --art as a background image. These rules
+   come last so they win over the square frames above. */
+.drawn {
+	border-color: transparent;
+	background: var(--art) center / 100% 100% no-repeat;
+}
+button.drawn:hover,
+.primary-action-button.drawn:hover {
+	background-image: var(--art-hover);
+}
+button.drawn:disabled,
+button.drawn.visually-disabled {
+	background-image: var(--art-disabled);
+}
+
+/* Narrow screens: the stage turns fluid and the tabs form a grid. */
+@media (max-width: 950px) {
+	.village-head {
+		height: auto;
+		padding: 64px 12px 0;
 	}
-	.site-head nav,
-	.site-head .logo,
-	.site-head .tab-links {
+	.site-logo {
+		position: static;
 		display: block;
+		width: clamp(170px, 46vw, 260px);
+		margin: 0 auto 10px;
+	}
+	.site-logo svg.d {
 		width: 100%;
 	}
-	.site-head .logo {
-		padding: 6px 12px;
+	.head-actions {
+		top: 12px;
+		right: 12px;
 	}
-	.tab-links a,
-	.tab-links button {
-		min-height: 44px;
-		padding: 12px;
+	.tabs {
+		position: static;
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 4px;
 	}
-	.shell {
-		padding: 8px;
+	.nav-tab {
+		width: auto;
+	}
+	.nav-tab svg.d {
+		width: 100%;
+		max-width: 140px;
+		margin: 0 auto;
+	}
+	.scene-cloud,
+	.scene-bird {
+		display: none;
+	}
+	.scene-sun {
+		top: 4px;
+		left: 6px;
+	}
+	.scene-sun svg.d {
+		width: 64px;
+	}
+	.scene-garbage {
+		display: none;
+	}
+	.paper {
+		margin-top: -52px;
+		padding: 74px 36px 110px;
+	}
+}
+@media (max-width: 760px) {
+	.paper {
+		padding: 70px 18px 90px;
+	}
+	.site-ground {
+		margin-top: -40px;
 	}
 	.api-doc-layout,
 	.api-doc-layout > tbody,
@@ -554,15 +680,12 @@ button.visually-disabled {
 		display: block;
 		width: 100%;
 	}
-	.api-doc-layout > tbody > tr > td {
-		padding: 8px 0;
-	}
 	.api-doc-layout .sidebar-cell {
-		border-right: 0;
-		border-bottom: 1px solid #808080;
+		padding-right: 0;
 	}
 	.sidebar-toggle-row {
 		display: block;
+		margin-bottom: 10px;
 	}
 	.sidebar-toggle {
 		display: inline-block;
@@ -570,17 +693,28 @@ button.visually-disabled {
 	.api-doc-layout:has(.api-sidebar.is-collapsed) .sidebar-cell {
 		display: none;
 	}
+	.title-art {
+		margin-left: -6px;
+	}
 }
 @media (max-width: 520px) {
 	h1 {
-		font-size: 16pt;
+		font-size: 15pt;
 	}
-	.field-grid > .field-row {
-		display: block;
-		width: 100%;
+	.paper {
+		padding: 64px 12px 80px;
 	}
-	.field-grid > .field-row[hidden] {
-		display: none;
+	.panel,
+	.input-panel,
+	.api-detail,
+	.api-sidebar,
+	.wide,
+	.download-notice {
+		padding: 16px 14px;
+	}
+	.head-actions .pill-button {
+		min-height: 32px;
+		padding: 4px 12px;
 	}
 	.dropzone {
 		padding: 16px;

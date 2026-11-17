@@ -455,7 +455,7 @@ func TestExpiredSharePageShowsCountdownRedirect(t *testing.T) {
 		t.Fatalf("expected expired page status 200, got %d", w.Code)
 	}
 	assertBodyContains(t, w.Body.String(),
-		"expired.",
+		"기한이 지나서 버렸읍니다.",
 		`class="numbered-page"`,
 		"data-redirect-countdown",
 		"data-seconds=\"5\"",
@@ -603,20 +603,20 @@ func TestAPIIndexShowsArchiveListAndUsageGuide(t *testing.T) {
 		t.Fatalf("API index created session cookie: %q", w.Header().Get("Set-Cookie"))
 	}
 	assertBodyContains(t, w.Body.String(),
-		"Archive List",
+		"창고 목록",
 		"API archive fixture",
-		"Usage Guide",
+		"기계주민 안내서",
 		`class="method-label method-post">POST</span>`,
 		"/api/v0/upload",
 		"/api/v0/list",
-		"matching active private archives",
+		"아직 살아있는 비공개 보따리",
 		"/api/v0/download/{uuid}",
 		"SHA-256",
-		"23–29 hour ban",
+		"23–29시간 동안 출입금지",
 	)
 }
 
-func TestReaderPagesUseBeveledFrame(t *testing.T) {
+func TestReaderPagesUseVillageFrame(t *testing.T) {
 	_, router := newRouter(t)
 	for _, path := range []string{"/", "/upload", "/api/", "/s/nope"} {
 		t.Run(path, func(t *testing.T) {
@@ -630,8 +630,9 @@ func TestReaderPagesUseBeveledFrame(t *testing.T) {
 				t.Fatalf("page status = %d", w.Code)
 			}
 			assertBodyContains(t, w.Body.String(),
-				`class="site-frame"`,
-				`bordercolorlight="#dcdcdc"`,
+				`class="stage"`,
+				`class="paper"`,
+				`/static/js/village.js`,
 				`<meta name="color-scheme" content="only light">`,
 				`href="/static/css/app.css"`,
 			)

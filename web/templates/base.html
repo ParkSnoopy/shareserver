@@ -10,30 +10,44 @@
     <link rel="stylesheet" href="/static/css/app.css">
   </head>
   <body>
-    <table class="site-frame" border="1" bordercolorlight="#dcdcdc" bordercolordark="#696969" role="presentation"><tbody>
-      <tr><td class="site-head">
+    <div class="stage">
+      <header class="village-head">
+        <a class="site-logo" href="/"><span class="sr-only">Share://</span><span class="art" data-art="logo" aria-hidden="true"></span></a>
+        <div class="head-actions">
+          {{if .Admin}}
+            <form method="post" action="/admin/logout">
+              <input type="hidden" name="csrf" value="{{.CSRF}}">
+              <button class="pill-button" data-i18n="nav.logout">{{.T "nav.logout"}}</button>
+            </form>
+          {{end}}
+          <button type="button" class="pill-button language-toggle" data-language-toggle aria-label='{{.T "nav.language"}}: {{if eq .Language "ko"}}English{{else}}한국어{{end}}'>{{if eq .Language "ko"}}English{{else}}한국어{{end}}</button>
+        </div>
         <nav class="tabs" aria-label="Main navigation">
-          <a class="logo" href="/"><span class="logo-initial">S</span>hare://</a>
-          <div class="tab-links">
-            <a href="/upload" data-i18n="nav.upload">{{.T "nav.upload"}}</a>
-            <a href="/api/" data-i18n="nav.api">{{.T "nav.api"}}</a>
-            <a href="/admin" data-i18n="nav.admin">{{.T "nav.admin"}}</a>
-            {{if .Admin}}
-              <form method="post" action="/admin/logout">
-                <input type="hidden" name="csrf" value="{{.CSRF}}">
-                <button data-i18n="nav.logout">{{.T "nav.logout"}}</button>
-              </form>
-            {{end}}
-            <button type="button" class="language-toggle" data-language-toggle aria-label='{{.T "nav.language"}}: {{if eq .Language "ko"}}English{{else}}한국어{{end}}'>{{if eq .Language "ko"}}English{{else}}한국어{{end}}</button>
-          </div>
+          <a class="nav-tab" data-tab="archive" href="/"><span class="tab-label" data-i18n="nav.archive">{{.T "nav.archive"}}</span><span class="art" aria-hidden="true"></span></a>
+          <a class="nav-tab" data-tab="upload" href="/upload"><span class="tab-label" data-i18n="nav.upload">{{.T "nav.upload"}}</span><span class="art" aria-hidden="true"></span></a>
+          <a class="nav-tab" data-tab="api" href="/api/"><span class="tab-label" data-i18n="nav.api">{{.T "nav.api"}}</span><span class="art" aria-hidden="true"></span></a>
+          <a class="nav-tab" data-tab="admin" href="/admin"><span class="tab-label" data-i18n="nav.admin">{{.T "nav.admin"}}</span><span class="art" aria-hidden="true"></span></a>
         </nav>
-      </td></tr>
-      <tr><td><main class="shell">
+        <div class="scenery">
+          <a class="scene-link scene-sun" href="/" title='{{.T "nav.archive"}}' aria-label='{{.T "nav.archive"}}' data-i18n-title="nav.archive" data-i18n-aria-label="nav.archive"><span class="art" data-art="sun" aria-hidden="true"></span></a>
+          <a class="scene-link scene-cloud" href="/upload" title='{{.T "nav.upload"}}' aria-label='{{.T "nav.upload"}}' data-i18n-title="nav.upload" data-i18n-aria-label="nav.upload"><span class="art" data-art="cloud" aria-hidden="true"></span></a>
+          <a class="scene-link scene-bird" href="/api/" title='{{.T "nav.api"}}' aria-label='{{.T "nav.api"}}' data-i18n-title="nav.api" data-i18n-aria-label="nav.api"><span class="art" data-art="bird" aria-hidden="true"></span></a>
+          <a class="scene-link scene-garbage" href="/admin/shares" title='{{.T "admin.sharesTitle"}}' aria-label='{{.T "admin.sharesTitle"}}' data-i18n-title="admin.sharesTitle" data-i18n-aria-label="admin.sharesTitle"><span class="art" data-art="garbage" aria-hidden="true"></span></a>
+        </div>
+      </header>
+      <main class="paper">
+        <span class="paper-art" aria-hidden="true"></span>
 {{end}}
 
 {{define "base_bottom"}}
-    </main></td></tr></tbody></table>
+      </main>
+      <footer class="site-ground"><span class="art" data-art="ground" aria-hidden="true"></span></footer>
+    </div>
+    <script src="/static/js/draw/hangul.js"></script>
+    <script src="/static/js/draw/draw.js"></script>
+    <script src="/static/js/draw/art.js"></script>
     <script type="module" src="/static/js/i18n.js"></script>
+    <script type="module" src="/static/js/village.js"></script>
   </body>
 </html>
 {{end}}

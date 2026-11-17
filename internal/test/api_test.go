@@ -707,66 +707,66 @@ func TestAPIDownloadRemovesExpiredBanBeforeNextRequest(t *testing.T) {
 	}
 }
 
-func TestEnglishDefaultAndLanguageCookie(t *testing.T) {
+func TestKoreanDefaultAndLanguageCookie(t *testing.T) {
 	a, router := newRouter(t)
 	first := httptest.NewRequest(http.MethodGet, "/upload", nil)
-	first.Header.Set("Accept-Language", "ko-KR,ko;q=0.9,en;q=0.8")
+	first.Header.Set("Accept-Language", "en-US,en;q=0.9")
 	firstResponse := httptest.NewRecorder()
 	router.ServeHTTP(firstResponse, first)
 	if firstResponse.Code != http.StatusOK {
 		t.Fatalf("first page status = %d", firstResponse.Code)
 	}
-	assertBodyContains(t, firstResponse.Body.String(), `<html lang="en">`, ">Upload</h1>", `data-language-toggle`, ">한국어</button>")
+	assertBodyContains(t, firstResponse.Body.String(), `<html lang="ko">`, ">보따리 맡기기</h1>", "필수 암호화 비밀번호", `data-language-toggle`, ">English</button>")
 	cookies := firstResponse.Result().Cookies()
 	if len(cookies) == 0 {
 		t.Fatal("session cookie missing")
 	}
 
 	second := httptest.NewRequest(http.MethodGet, "/upload", nil)
-	second.Header.Set("Accept-Language", "en")
+	second.Header.Set("Accept-Language", "ko")
 	second.AddCookie(cookies[0])
-	second.Header.Add("Cookie", "shareserver_lang=ko")
+	second.Header.Add("Cookie", "shareserver_lang=en")
 	secondResponse := httptest.NewRecorder()
 	router.ServeHTTP(secondResponse, second)
-	assertBodyContains(t, secondResponse.Body.String(), `<html lang="ko">`, ">업로드</h1>", "필수 암호화 비밀번호", ">English</button>")
+	assertBodyContains(t, secondResponse.Body.String(), `<html lang="en">`, ">Upload</h1>", ">한국어</button>")
 
 	api := httptest.NewRequest(http.MethodGet, "/api/", nil)
-	api.Header.Add("Cookie", "shareserver_lang=ko")
+	api.Header.Add("Cookie", "shareserver_lang=en")
 	apiResponse := httptest.NewRecorder()
 	router.ServeHTTP(apiResponse, api)
-	assertBodyContains(t, apiResponse.Body.String(), `<html lang="ko">`, "사용 안내")
+	assertBodyContains(t, apiResponse.Body.String(), `<html lang="en">`, "Usage Guide")
 	if len(apiResponse.Result().Cookies()) != 0 {
 		t.Fatal("language cookie must not create an API session")
 	}
-	if err := a.DB.Session.UpdateOneID(cookies[0].Value).SetLanguage("ko").Exec(context.Background()); err != nil {
+	if err := a.DB.Session.UpdateOneID(cookies[0].Value).SetLanguage("en").Exec(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	noPreference := httptest.NewRequest(http.MethodGet, "/upload", nil)
 	noPreference.AddCookie(cookies[0])
 	noPreferenceResponse := httptest.NewRecorder()
 	router.ServeHTTP(noPreferenceResponse, noPreference)
-	assertBodyContains(t, noPreferenceResponse.Body.String(), `<html lang="en">`, ">Upload</h1>")
-	english := httptest.NewRequest(http.MethodGet, "/upload", nil)
-	english.AddCookie(cookies[0])
-	english.Header.Add("Cookie", "shareserver_lang=en")
-	englishResponse := httptest.NewRecorder()
-	router.ServeHTTP(englishResponse, english)
-	assertBodyContains(t, englishResponse.Body.String(), `<html lang="en">`, ">Upload</h1>")
+	assertBodyContains(t, noPreferenceResponse.Body.String(), `<html lang="ko">`, ">보따리 맡기기</h1>")
+	korean := httptest.NewRequest(http.MethodGet, "/upload", nil)
+	korean.AddCookie(cookies[0])
+	korean.Header.Add("Cookie", "shareserver_lang=ko")
+	koreanResponse := httptest.NewRecorder()
+	router.ServeHTTP(koreanResponse, korean)
+	assertBodyContains(t, koreanResponse.Body.String(), `<html lang="ko">`, ">보따리 맡기기</h1>")
 
 	invalid := httptest.NewRequest(http.MethodGet, "/upload", nil)
 	invalid.Header.Add("Cookie", "shareserver_lang=zh")
 	invalidResponse := httptest.NewRecorder()
 	router.ServeHTTP(invalidResponse, invalid)
-	assertBodyContains(t, invalidResponse.Body.String(), `<html lang="en">`, ">Upload</h1>")
+	assertBodyContains(t, invalidResponse.Body.String(), `<html lang="ko">`, ">보따리 맡기기</h1>")
 }
 
-func TestUnsupportedChineseLanguageFallsBackToEnglish(t *testing.T) {
+func TestUnsupportedChineseLanguageFallsBackToKorean(t *testing.T) {
 	a, router := newRouter(t)
 	req := httptest.NewRequest(http.MethodGet, "/upload", nil)
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	assertBodyContains(t, w.Body.String(), `<html lang="en">`, ">Upload</h1>")
+	assertBodyContains(t, w.Body.String(), `<html lang="ko">`, ">보따리 맡기기</h1>")
 	cookies := w.Result().Cookies()
 	if len(cookies) == 0 {
 		t.Fatal("session cookie missing")
@@ -778,7 +778,7 @@ func TestUnsupportedChineseLanguageFallsBackToEnglish(t *testing.T) {
 	next.AddCookie(cookies[0])
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, next)
-	assertBodyContains(t, response.Body.String(), `<html lang="en">`, ">Upload</h1>")
+	assertBodyContains(t, response.Body.String(), `<html lang="ko">`, ">보따리 맡기기</h1>")
 }
 
 func TestAPIDownloadErrorsDoNotWait(t *testing.T) {

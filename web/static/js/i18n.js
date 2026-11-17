@@ -1,4 +1,4 @@
-const DEFAULT_LANG = "en";
+const DEFAULT_LANG = "ko";
 const LANGS = ["en", "ko"];
 
 let lang = DEFAULT_LANG;
