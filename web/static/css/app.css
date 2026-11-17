@@ -92,7 +92,19 @@ svg.d {
 	position: absolute;
 	top: 26px;
 	left: 30px;
+	width: 260px;
+	aspect-ratio: 26 / 11;
 	text-decoration: none;
+}
+.site-logo:not(:has(svg)) > .sr-only {
+	inset: 0;
+	display: grid;
+	width: 100%;
+	height: 100%;
+	place-items: center;
+	clip-path: none;
+	font-size: 32px;
+	font-weight: bold;
 }
 .head-actions {
 	position: absolute;
@@ -125,9 +137,15 @@ svg.d {
 }
 .nav-tab .art {
 	display: block;
+	width: 100%;
+	max-width: 140px;
+	aspect-ratio: 7 / 6;
+	margin: 0 auto;
 }
-.nav-tab:hover {
-	translate: 0 -6px;
+@media (hover: hover) and (pointer: fine) {
+	.nav-tab:hover {
+		translate: 0 -6px;
+	}
 }
 .nav-tab .tab-label {
 	position: absolute;
@@ -136,6 +154,20 @@ svg.d {
 	overflow: hidden;
 	clip-path: inset(50%);
 	white-space: nowrap;
+}
+.nav-tab:not(:has(svg)) {
+	background: #cdcdcd;
+	border-radius: 40% 40% 0 0;
+	outline: 3px solid var(--ink);
+}
+.nav-tab:not(:has(svg)) .tab-label {
+	top: 55%;
+	left: 0;
+	width: 100%;
+	height: auto;
+	clip-path: none;
+	text-align: center;
+	font-weight: bold;
 }
 .scenery {
 	position: absolute;
@@ -203,6 +235,10 @@ svg.d {
 .site-ground svg.d {
 	width: 100%;
 }
+.site-ground > .art {
+	display: block;
+	aspect-ratio: 95 / 21;
+}
 
 /* Headings */
 h1 {
@@ -219,6 +255,7 @@ h1 {
 h3 {
 	margin: 0 0 8px;
 	font-size: 11pt;
+	overflow-wrap: anywhere;
 }
 p {
 	margin: 5px 0 10px;
@@ -437,13 +474,17 @@ button.visually-disabled {
 }
 .api-index-row {
 	display: block;
-	padding: 8px 4px;
+	width: 100%;
+	max-width: 100%;
+	padding: 8px 14px;
 	border-bottom: 1px dotted #bbb;
 	text-decoration: none;
+	text-align: left;
+	overflow-wrap: anywhere;
 }
 .api-index-row:hover,
 .api-index-row[aria-current="page"] {
-	background: #fffbe2;
+	background-color: #fffbe2;
 }
 .api-index-row[aria-current="page"] {
 	font-weight: bold;
@@ -508,7 +549,31 @@ button.visually-disabled {
 	height: auto;
 }
 .detail-actions > * {
-	margin: 4px 8px 4px 0;
+	max-width: 100%;
+	overflow-wrap: anywhere;
+}
+.detail-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.share-doc-layout .api-main {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+.share-doc-layout .api-main > * {
+	min-width: 0;
+	margin-top: 0;
+	margin-bottom: 0;
+}
+.share-doc-layout .progress-output:empty {
+	display: none;
+}
+.share-control:not([hidden]) {
+	display: grid;
+	gap: 10px;
+	justify-items: start;
 }
 
 /* Admin table: legacy square look */
@@ -604,6 +669,8 @@ button.visually-disabled {
 .drawn {
 	border-color: transparent;
 	background: var(--art) center / 100% 100% no-repeat;
+	/* village.js measures the border box, not the smaller padding box. */
+	background-origin: border-box;
 }
 button.drawn:hover,
 .primary-action-button.drawn:hover {
@@ -621,7 +688,9 @@ button.drawn.visually-disabled {
 		padding: 64px 12px 0;
 	}
 	.site-logo {
-		position: static;
+		position: relative;
+		top: auto;
+		left: auto;
 		display: block;
 		width: clamp(170px, 46vw, 260px);
 		margin: 0 auto 10px;
@@ -668,7 +737,14 @@ button.drawn.visually-disabled {
 }
 @media (max-width: 760px) {
 	.paper {
-		padding: 70px 18px 90px;
+		margin-top: 0;
+		padding: 24px 24px 90px;
+		border: 3px solid var(--ink);
+		background: var(--paper);
+	}
+	.paper > .paper-art,
+	.title-art {
+		display: none;
 	}
 	.site-ground {
 		margin-top: -40px;
@@ -681,6 +757,7 @@ button.drawn.visually-disabled {
 		width: 100%;
 	}
 	.api-doc-layout .sidebar-cell {
+		width: 100%;
 		padding-right: 0;
 	}
 	.sidebar-toggle-row {
@@ -702,7 +779,7 @@ button.drawn.visually-disabled {
 		font-size: 15pt;
 	}
 	.paper {
-		padding: 64px 12px 80px;
+		padding: 24px 20px 80px;
 	}
 	.panel,
 	.input-panel,

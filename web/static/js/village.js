@@ -1,7 +1,9 @@
 // Draws the village chrome with the mouse-drawing kit in /static/js/draw/:
 // logo, tabs, scenery, ground, the paper sheet, page headings, button pills
 // and panel frames. The real text and controls stay in the DOM.
-import { onLanguageChange, translate } from "./i18n.js";
+import { initI18n, onLanguageChange, translate } from "./i18n.js";
+
+await initI18n();
 
 const BM = globalThis.BM;
 const { C, cr } = BM;
@@ -24,16 +26,8 @@ const T = (text, x, y, size, color, outline, anchor) =>
 const fit = (text, width, max) =>
 	Math.min(max, (max * width) / Math.max(1, BM.measure(text, max)));
 
-const path = location.pathname;
-const section = path.startsWith("/admin")
-	? "admin"
-	: path.startsWith("/api/")
-		? "api"
-		: path === "/upload"
-			? "upload"
-			: path === "/" || path.startsWith("/s/")
-				? "archive"
-				: "error";
+const section = document.body.dataset.section;
+const mobile = matchMedia("(max-width: 760px)");
 
 // Tab color, active label color and icon for each section.
 const SECTIONS = {
@@ -142,12 +136,17 @@ const SCENES = {
 	ground,
 };
 
-// Replace each page <h1> with a drawn heading and a side remark. The real
-// heading stays for screen readers. Long user titles stay plain text.
+// Decorate desktop headings; mobile keeps the server-rendered text in place.
+// Long user titles stay plain text at every width.
 function drawHeadings() {
 	const [color, text, icon] = SECTIONS[section];
 	for (const h1 of document.querySelectorAll("main h1")) {
 		let art = h1.previousElementSibling;
+		if (mobile.matches) {
+			h1.classList.remove("sr-only");
+			if (art?.classList.contains("title-art")) art.hidden = true;
+			continue;
+		}
 		if (!art?.classList.contains("title-art")) {
 			art = document.createElement("div");
 			art.className = "title-art";
@@ -218,12 +217,21 @@ function paint(el) {
 	el.dataset.drawnSize = `${w}x${h}`;
 	const seed = el.id || el.className;
 	if (el.matches("button, .primary-action-button")) {
-		const pill = (fill) =>
-			V(w, h, S(BM.pill(3, 3, w - 6, h - 6), { fill, sw: 4, seed }));
+		const frame = (fill) =>
+			V(
+				w,
+				h,
+				S(
+					el.matches(".api-index-row")
+						? BM.rrect(3, 3, w - 6, h - 6, 12)
+						: BM.pill(3, 3, w - 6, h - 6),
+					{ fill, sw: 4, seed },
+				),
+			);
 		const off = el.matches(".language-toggle") ? C.pink : C.sky;
-		el.style.setProperty("--art", svgURL(pill(off)));
-		el.style.setProperty("--art-hover", svgURL(pill(C.green)));
-		el.style.setProperty("--art-disabled", svgURL(pill(C.off)));
+		el.style.setProperty("--art", svgURL(frame(off)));
+		el.style.setProperty("--art-hover", svgURL(frame(C.green)));
+		el.style.setProperty("--art-disabled", svgURL(frame(C.off)));
 		return;
 	}
 	const fill = el.matches(".err")
@@ -254,6 +262,7 @@ function frameAll(root = document) {
 	for (const el of root.querySelectorAll(FRAMED)) {
 		if (el.classList.contains("drawn")) continue;
 		el.classList.add("drawn");
+		paint(el);
 		frames.observe(el);
 	}
 }
@@ -278,6 +287,7 @@ function drawText() {
 drawText();
 frameAll();
 onLanguageChange(drawText);
+mobile.addEventListener("change", drawHeadings);
 // Scripts add panels and buttons later (file lists, previews, results).
 new MutationObserver(() => frameAll()).observe(document.querySelector("main"), {
 	childList: true,

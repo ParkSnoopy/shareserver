@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -618,7 +619,7 @@ func TestAPIIndexShowsArchiveListAndUsageGuide(t *testing.T) {
 
 func TestReaderPagesUseVillageFrame(t *testing.T) {
 	_, router := newRouter(t)
-	for _, path := range []string{"/", "/upload", "/api/", "/s/nope"} {
+	for path, section := range map[string]string{"/": "archive", "/upload": "upload", "/api/": "api", "/admin/login": "admin", "/s/nope": "archive"} {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			w := httptest.NewRecorder()
@@ -632,10 +633,14 @@ func TestReaderPagesUseVillageFrame(t *testing.T) {
 			assertBodyContains(t, w.Body.String(),
 				`class="stage"`,
 				`class="paper"`,
+				`data-section="`+section+`"`,
 				`/static/js/village.js`,
 				`<meta name="color-scheme" content="only light">`,
 				`href="/static/css/app.css"`,
 			)
+			if !regexp.MustCompile(`<a\b[^>]*data-tab="` + section + `"[^>]*aria-current="page"`).MatchString(w.Body.String()) {
+				t.Fatal("active navigation must be rendered before JavaScript runs")
+			}
 			if path == "/" || path == "/api/" {
 				assertBodyContains(t, w.Body.String(), `class="api-doc-layout`)
 			}

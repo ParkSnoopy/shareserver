@@ -9,7 +9,7 @@
     <link rel="icon" href="/static/img/favicon.ico" sizes="any">
     <link rel="stylesheet" href="/static/css/app.css">
   </head>
-  <body>
+  <body data-section="{{.Section}}">
     <div class="stage">
       <header class="village-head">
         <a class="site-logo" href="/"><span class="sr-only">Share://</span><span class="art" data-art="logo" aria-hidden="true"></span></a>
@@ -23,10 +23,10 @@
           <button type="button" class="pill-button language-toggle" data-language-toggle aria-label='{{.T "nav.language"}}: {{if eq .Language "ko"}}English{{else}}한국어{{end}}'>{{if eq .Language "ko"}}English{{else}}한국어{{end}}</button>
         </div>
         <nav class="tabs" aria-label="Main navigation">
-          <a class="nav-tab" data-tab="archive" href="/"><span class="tab-label" data-i18n="nav.archive">{{.T "nav.archive"}}</span><span class="art" aria-hidden="true"></span></a>
-          <a class="nav-tab" data-tab="upload" href="/upload"><span class="tab-label" data-i18n="nav.upload">{{.T "nav.upload"}}</span><span class="art" aria-hidden="true"></span></a>
-          <a class="nav-tab" data-tab="api" href="/api/"><span class="tab-label" data-i18n="nav.api">{{.T "nav.api"}}</span><span class="art" aria-hidden="true"></span></a>
-          <a class="nav-tab" data-tab="admin" href="/admin"><span class="tab-label" data-i18n="nav.admin">{{.T "nav.admin"}}</span><span class="art" aria-hidden="true"></span></a>
+          <a class="nav-tab" data-tab="archive" href="/"{{if eq .Section "archive"}} aria-current="page"{{end}}><span class="tab-label" data-i18n="nav.archive">{{.T "nav.archive"}}</span><span class="art" aria-hidden="true"></span></a>
+          <a class="nav-tab" data-tab="upload" href="/upload"{{if eq .Section "upload"}} aria-current="page"{{end}}><span class="tab-label" data-i18n="nav.upload">{{.T "nav.upload"}}</span><span class="art" aria-hidden="true"></span></a>
+          <a class="nav-tab" data-tab="api" href="/api/"{{if eq .Section "api"}} aria-current="page"{{end}}><span class="tab-label" data-i18n="nav.api">{{.T "nav.api"}}</span><span class="art" aria-hidden="true"></span></a>
+          <a class="nav-tab" data-tab="admin" href="/admin"{{if eq .Section "admin"}} aria-current="page"{{end}}><span class="tab-label" data-i18n="nav.admin">{{.T "nav.admin"}}</span><span class="art" aria-hidden="true"></span></a>
         </nav>
         <div class="scenery">
           <a class="scene-link scene-sun" href="/" title='{{.T "nav.archive"}}' aria-label='{{.T "nav.archive"}}' data-i18n-title="nav.archive" data-i18n-aria-label="nav.archive"><span class="art" data-art="sun" aria-hidden="true"></span></a>

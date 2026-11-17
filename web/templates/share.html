@@ -22,10 +22,10 @@
 			class="sidebar-toggle"
 			data-sidebar-toggle
 			aria-controls="archiveSidebar"
-			aria-expanded="false"
-			data-i18n="share.showSearch"
+			aria-expanded="{{if .Selected}}false{{else}}true{{end}}"
+			data-i18n="{{if .Selected}}share.showSearch{{else}}share.hideSearch{{end}}"
 		>
-			{{.T "share.showSearch"}}
+			{{if .Selected}}{{.T "share.showSearch"}}{{else}}{{.T "share.hideSearch"}}{{end}}
 		</button>
 		</td></tr><tr><td class="sidebar-cell">
 		<aside

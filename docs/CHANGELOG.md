@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Fix
+- Keep the mobile paper edge flat below the navigation tabs, use full-width stacked sidebars, and separate share controls, file rows, and previews so they cannot collide.
+- Render active navigation on the server and reserve drawing dimensions; retain readable mobile headings and navigation before JavaScript loads without shifting the main content when decoration arrives.
 - Bundle Anubis v1.28.2 so delayed anonymous challenge responses cannot delete a newly issued auth cookie and break CSS/JavaScript loading after challenge success.
 - Regress late favicon-response replay through the real gateway while retaining challenge coverage and client-IP binding.
 - Count malformed admin login requests against a separate limit of 20 per minute and check the IP ban before form validation, so repeated invalid requests receive `429` instead of an unlimited stream of `401` responses.

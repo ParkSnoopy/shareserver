@@ -47,6 +47,7 @@ type pageContext struct {
 	CSRF     string
 	Admin    bool
 	Language string
+	Section  string
 }
 
 type errorPage struct {
@@ -98,7 +99,18 @@ func (h *Handler) pageContext(r *http.Request, title string) pageContext {
 	if cookie, err := r.Cookie("shareserver_lang"); err == nil && (cookie.Value == "en" || cookie.Value == "ko") {
 		language = cookie.Value
 	}
-	return pageContext{Title: title, CSRF: session.CSRF, Admin: session.AdminID > 0, Language: language}
+	section := "error"
+	switch path := r.URL.Path; {
+	case strings.HasPrefix(path, "/admin"):
+		section = "admin"
+	case strings.HasPrefix(path, "/api/"):
+		section = "api"
+	case path == "/upload":
+		section = "upload"
+	case path == "/" || strings.HasPrefix(path, "/s/"):
+		section = "archive"
+	}
+	return pageContext{Title: title, CSRF: session.CSRF, Admin: session.AdminID > 0, Language: language, Section: section}
 }
 
 func (h *Handler) renderTemplate(w http.ResponseWriter, status int, name string, data any) {
