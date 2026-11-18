@@ -6,7 +6,9 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="only light">
     <title>{{.Title}}</title>
-    <link rel="icon" href="/static/img/favicon.ico" sizes="any">
+    <!-- sizes="32x32", not "any": Chrome picks an "any" ICO over the SVG. -->
+    <link rel="icon" href="/static/img/favicon.ico" sizes="32x32">
+    <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/static/css/app.css">
   </head>
   <body data-section="{{.Section}}" data-village-name='{{.T "village.name"}}' data-village-footer='{{.T "village.footer"}}' data-remark='{{.T (printf "remark.%s" .Section)}}'>

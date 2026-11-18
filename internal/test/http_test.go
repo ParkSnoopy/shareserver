@@ -708,11 +708,13 @@ func TestStaticFilesHaveRevalidateCacheControl(t *testing.T) {
 		t.Fatalf("static Cache-Control = %q, want no-cache, must-revalidate", cc)
 	}
 
-	req = httptest.NewRequest(http.MethodGet, "/static/img/favicon.ico", nil)
-	w = httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected favicon 200, got %d", w.Code)
+	for _, path := range []string{"/static/img/favicon.ico", "/static/img/favicon.svg"} {
+		req = httptest.NewRequest(http.MethodGet, path, nil)
+		w = httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected %s 200, got %d", path, w.Code)
+		}
 	}
 }
 
@@ -745,7 +747,10 @@ func TestBaseTemplateIncludesFavicon(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected home 200, got %d", w.Code)
 	}
-	assertBodyContains(t, w.Body.String(), `<link rel="icon" href="/static/img/favicon.ico" sizes="any">`)
+	assertBodyContains(t, w.Body.String(),
+		`<link rel="icon" href="/static/img/favicon.ico" sizes="32x32">`,
+		`<link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">`,
+	)
 }
 
 func TestAdminDashboardOmitsManualStorageCleanupAction(t *testing.T) {

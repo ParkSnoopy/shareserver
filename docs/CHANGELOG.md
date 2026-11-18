@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Fix
+- Use the village sun drawing as the favicon (SVG with a 16–256 px ICO fallback) and remove the unused `shareserver.png` source image.
 - Draw the village artwork without waiting for page modules or the language catalog, restore the drawn mobile paper edge, and extend the navigation tabs below the paper so a hovered tab stays attached.
 - Keep failed and rate-limited admin logins inside the site theme with localized errors and a retry form, preserving HTTP status codes and lockout enforcement.
 - Use full-width stacked sidebars on mobile, and separate share controls, file rows, and previews so they cannot collide.
