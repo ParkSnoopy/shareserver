@@ -142,6 +142,12 @@ svg.d {
 	aspect-ratio: 7 / 6;
 	margin: 0 auto;
 }
+/* The tab body is drawn below the SVG box and the paper hides it. Clicks
+   go to the link box only, so that hidden part never takes a click. */
+.nav-tab svg.d {
+	overflow: visible;
+	pointer-events: none;
+}
 @media (hover: hover) and (pointer: fine) {
 	.nav-tab:hover {
 		translate: 0 -6px;
@@ -737,12 +743,9 @@ button.drawn.visually-disabled {
 }
 @media (max-width: 760px) {
 	.paper {
-		margin-top: 0;
-		padding: 24px 24px 90px;
-		border: 3px solid var(--ink);
-		background: var(--paper);
+		/* The drawn edge sits up to 77px down at the sides. */
+		padding: 88px 24px 90px;
 	}
-	.paper > .paper-art,
 	.title-art {
 		display: none;
 	}
@@ -779,7 +782,7 @@ button.drawn.visually-disabled {
 		font-size: 15pt;
 	}
 	.paper {
-		padding: 24px 20px 80px;
+		padding: 88px 20px 80px;
 	}
 	.panel,
 	.input-panel,

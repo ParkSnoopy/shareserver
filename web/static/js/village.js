@@ -1,9 +1,20 @@
 // Draws the village chrome with the mouse-drawing kit in /static/js/draw/:
 // logo, tabs, scenery, ground, the paper sheet, page headings, button pills
 // and panel frames. The real text and controls stay in the DOM.
-import { initI18n, onLanguageChange, translate } from "./i18n.js";
+import { onLanguageChange, translate } from "./i18n.js";
 
-await initI18n();
+// The server renders the strings the drawings need, so the first drawing
+// does not wait for the language catalog to load.
+const section = document.body.dataset.section;
+const preset = {
+	"village.name": document.body.dataset.villageName,
+	"village.footer": document.body.dataset.villageFooter,
+	[`remark.${section}`]: document.body.dataset.remark,
+};
+const say = (key) => {
+	const text = translate(key);
+	return text === key ? (preset[key] ?? "") : text;
+};
 
 const BM = globalThis.BM;
 const { C, cr } = BM;
@@ -26,7 +37,6 @@ const T = (text, x, y, size, color, outline, anchor) =>
 const fit = (text, width, max) =>
 	Math.min(max, (max * width) / Math.max(1, BM.measure(text, max)));
 
-const section = document.body.dataset.section;
 const mobile = matchMedia("(max-width: 760px)");
 
 // Tab color, active label color and icon for each section.
@@ -43,11 +53,12 @@ function drawTab(tab) {
 	const on = tab.getAttribute("aria-current") === "page";
 	const label = tab.querySelector(".tab-label").textContent.trim();
 	const size = fit(label, 118, 26);
-	// The body runs past the bottom of the SVG: the paper covers the cut.
+	// The body runs far past the bottom of the SVG, which shows overflow, so
+	// a lifted tab or a low paper edge still covers the gap below the tab.
 	tab.querySelector(".art").innerHTML = V(
 		140,
 		120,
-		S(BM.tomb(4, 6, 132, 150), {
+		S(BM.tomb(4, 6, 132, 200), {
 			fill: on ? color : C.off,
 			sw: 5,
 			seed: `tab${tab.dataset.tab}`,
@@ -84,7 +95,7 @@ function sun() {
 }
 
 function ground() {
-	const name = translate("village.name");
+	const name = say("village.name");
 	return V(
 		950,
 		210,
@@ -109,7 +120,7 @@ function ground() {
 			at(680, 118, 1.3, cr.pig("gp")) +
 			at(800, 124, 1.2, cr.octopus("go")) +
 			at(880, 110, 1, cr.flower("gf")) +
-			T(translate("village.footer"), 30, 166, 18, "#000"),
+			T(say("village.footer"), 30, 166, 18, "#000"),
 		"ground",
 	);
 }
@@ -126,7 +137,7 @@ const SCENES = {
 				seed: "logo",
 			}) +
 				T("Share://", 130, 18, 50, C.sun, "#000", "middle") +
-				T(translate("village.name"), 214, 70, 22, "#FFF", "#000", "middle"),
+				T(say("village.name"), 214, 70, 22, "#FFF", "#000", "middle"),
 			"logo",
 		),
 	sun,
@@ -161,9 +172,7 @@ function drawHeadings() {
 		const size = 40;
 		const width = Math.ceil(BM.measure(label, size)) + 150;
 		const remark =
-			h1 === document.querySelector("main h1")
-				? translate(`remark.${section}`)
-				: "";
+			h1 === document.querySelector("main h1") ? say(`remark.${section}`) : "";
 		const remarkSize = 16;
 		const bubble = remark ? Math.ceil(BM.measure(remark, remarkSize)) + 40 : 0;
 		art.innerHTML = V(
@@ -286,7 +295,13 @@ function drawText() {
 
 drawText();
 frameAll();
-onLanguageChange(drawText);
+// The catalog load also reports the page language; redraw only on a change.
+let drawnLanguage = document.documentElement.lang;
+onLanguageChange((language) => {
+	if (language === drawnLanguage) return;
+	drawnLanguage = language;
+	drawText();
+});
 mobile.addEventListener("change", drawHeadings);
 // Scripts add panels and buttons later (file lists, previews, results).
 new MutationObserver(() => frameAll()).observe(document.querySelector("main"), {

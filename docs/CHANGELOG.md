@@ -3,8 +3,9 @@
 ## Unreleased
 
 ### Fix
+- Draw the village artwork without waiting for page modules or the language catalog, restore the drawn mobile paper edge, and extend the navigation tabs below the paper so a hovered tab stays attached.
 - Keep failed and rate-limited admin logins inside the site theme with localized errors and a retry form, preserving HTTP status codes and lockout enforcement.
-- Keep the mobile paper edge flat below the navigation tabs, use full-width stacked sidebars, and separate share controls, file rows, and previews so they cannot collide.
+- Use full-width stacked sidebars on mobile, and separate share controls, file rows, and previews so they cannot collide.
 - Render active navigation on the server and reserve drawing dimensions; retain readable mobile headings and navigation before JavaScript loads without shifting the main content when decoration arrives.
 - Bundle Anubis v1.28.2 so delayed anonymous challenge responses cannot delete a newly issued auth cookie and break CSS/JavaScript loading after challenge success.
 - Regress late favicon-response replay through the real gateway while retaining challenge coverage and client-IP binding.

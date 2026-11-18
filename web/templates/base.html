@@ -9,7 +9,7 @@
     <link rel="icon" href="/static/img/favicon.ico" sizes="any">
     <link rel="stylesheet" href="/static/css/app.css">
   </head>
-  <body data-section="{{.Section}}">
+  <body data-section="{{.Section}}" data-village-name='{{.T "village.name"}}' data-village-footer='{{.T "village.footer"}}' data-remark='{{.T (printf "remark.%s" .Section)}}'>
     <div class="stage">
       <header class="village-head">
         <a class="site-logo" href="/"><span class="sr-only">Share://</span><span class="art" data-art="logo" aria-hidden="true"></span></a>
@@ -47,7 +47,8 @@
     <script src="/static/js/draw/draw.js"></script>
     <script src="/static/js/draw/art.js"></script>
     <script type="module" src="/static/js/i18n.js"></script>
-    <script type="module" src="/static/js/village.js"></script>
+    <!-- async: draw as soon as the kit is ready, not after page modules. -->
+    <script type="module" async src="/static/js/village.js"></script>
   </body>
 </html>
 {{end}}
