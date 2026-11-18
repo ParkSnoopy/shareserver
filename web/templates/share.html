@@ -1,200 +1,285 @@
 {{ define "share.html" }}
 {{ template "base_top" . }}
 <div class="numbered-page">
-	<div class="editor-line">
-		<span class="line-gutter" aria-hidden="true">01</span>
-		{{ if .Selected }}
-		<h1>{{ .Share.Title }}</h1>
-		{{ else }}
-		<h1 data-i18n="share.sharesTitle">{{.T "share.sharesTitle"}}</h1>
-		{{ end }}
-	</div>
-	<div class="editor-line" aria-hidden="true">
-		<span class="line-gutter">--</span>
-		<div class="section-rule"></div>
-	</div>
-	<div class="editor-line">
-		<span class="line-gutter" aria-hidden="true">02</span>
-		<table class="api-doc-layout share-doc-layout" data-selected="{{.Selected}}" role="presentation"><tbody>
-		<tr class="sidebar-toggle-row"><td colspan="2">
-		<button
-			type="button"
-			class="sidebar-toggle"
-			data-sidebar-toggle
-			aria-controls="archiveSidebar"
-			aria-expanded="{{if .Selected}}false{{else}}true{{end}}"
-			data-i18n="{{if .Selected}}share.showSearch{{else}}share.hideSearch{{end}}"
-		>
-			{{if .Selected}}{{.T "share.showSearch"}}{{else}}{{.T "share.hideSearch"}}{{end}}
-		</button>
-		</td></tr><tr><td class="sidebar-cell">
-		<aside
-			id="archiveSidebar"
-			class="api-sidebar {{ if .Selected }}is-collapsed{{ end }}"
-			aria-label='{{.T "share.searchLabel"}}'
-			data-i18n-aria-label="share.searchLabel"
-		>
-			<h3 data-i18n="share.searchTitle">{{.T "share.searchTitle"}}</h3>
-			<form class="lookup-form" method="post" action="/">
-				<input type="hidden" name="csrf" value="{{.CSRF}}">
-				<label
-					class="field-label"
-					for="lookupKey"
-					data-i18n="share.privateKeyLabel"
-					>{{.T "share.privateKeyLabel"}}</label
-				>
-				<input
-					class="text-input field-md"
-					id="lookupKey"
-					name="key"
-					autocomplete="off"
-					placeholder='{{.T "share.privateKeyPlaceholder"}}'
-					data-i18n-placeholder="share.privateKeyPlaceholder"
-					data-lookup-key
-				>
-				<button type="submit" class="primary-action-button field-md">
-					<span data-i18n="share.lookup">{{.T "share.lookup"}}</span>
-				</button>
-			</form>
-			<div class="sidebar-rule" aria-hidden="true"></div>
+    <div class="editor-line">
+        <span class="line-gutter" aria-hidden="true">01</span>
+        {{ if .Selected }}
+        <h1>{{ .Share.Title }}</h1>
+        {{ else }}
+        <h1 data-i18n="share.sharesTitle">{{ .T "share.sharesTitle" }}</h1>
+        {{ end }}
+    </div>
+    <div class="editor-line" aria-hidden="true">
+        <span class="line-gutter">--</span>
+        <div class="section-rule"></div>
+    </div>
+    <div class="editor-line">
+        <span class="line-gutter" aria-hidden="true">02</span>
+        <table
+            class="api-doc-layout share-doc-layout"
+            data-selected="{{.Selected}}"
+            role="presentation"
+        >
+            <tbody>
+                <tr class="sidebar-toggle-row">
+                    <td colspan="2">
+                        <!-- biome-ignore-start lint/a11y/useValidAriaValues: the server fills in "true" or "false". -->
+                        <button
+                            type="button"
+                            class="sidebar-toggle"
+                            data-sidebar-toggle
+                            aria-controls="archiveSidebar"
+                            aria-expanded="{{if .Selected}}false{{else}}true{{end}}"
+                            data-i18n="{{if .Selected}}share.showSearch{{else}}share.hideSearch{{end}}"
+                        >
+                            <!-- biome-ignore-end lint/a11y/useValidAriaValues: the server fills in "true" or "false". -->
+                            {{ if .Selected }}{{ .T "share.showSearch" }}
+                            {{ else }}{{ .T "share.hideSearch" }}{{ end }}
+                        </button>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="sidebar-cell">
+                        <aside
+                            id="archiveSidebar"
+                            class="api-sidebar {{ if .Selected }}is-collapsed{{ end }}"
+                            aria-label='{{.T "share.searchLabel"}}'
+                            data-i18n-aria-label="share.searchLabel"
+                        >
+                            <h3 data-i18n="share.searchTitle">
+                                {{ .T "share.searchTitle" }}
+                            </h3>
+                            <form class="lookup-form" method="post" action="/">
+                                <input
+                                    type="hidden"
+                                    name="csrf"
+                                    value="{{.CSRF}}"
+                                >
+                                <label
+                                    class="field-label"
+                                    for="lookupKey"
+                                    data-i18n="share.privateKeyLabel"
+                                    >{{
+                                        .T "share.privateKeyLabel"
+                                    }}</label
+                                >
+                                <input
+                                    class="text-input field-md"
+                                    id="lookupKey"
+                                    name="key"
+                                    autocomplete="off"
+                                    placeholder='{{.T "share.privateKeyPlaceholder"}}'
+                                    data-i18n-placeholder="share.privateKeyPlaceholder"
+                                    data-lookup-key
+                                >
+                                <button
+                                    type="submit"
+                                    class="primary-action-button field-md"
+                                >
+                                    <span data-i18n="share.lookup">{{
+                                        .T "share.lookup"
+                                    }}</span>
+                                </button>
+                            </form>
+                            <div class="sidebar-rule" aria-hidden="true"></div>
 
-			<nav
-				class="api-index"
-				aria-label='{{.T "share.resultsLabel"}}'
-				data-i18n-aria-label="share.resultsLabel"
-			>
-				<h3 data-i18n="share.listTitle">{{.T "share.listTitle"}}</h3>
-				<div
-					class="api-index-list"
-					data-archive-list
-					data-private-mode="{{.PrivateMode}}"
-				>
-					{{ range .Archives }}
-					<a class="api-index-row" href="/s/{{.ID}}">
-						<span class="archive-name">{{ .Title }}</span>
-						<span
-							class="method-label {{if .Encrypted}}method-put{{else}}method-get{{end}}"
-							>{{ if .Encrypted }}ENC{{ else }}GET{{ end }}</span
-						>
-					</a>
-					{{ else }}
-					<p class="muted" data-i18n="share.noArchives">{{$.T "share.noArchives"}}</p>
-					{{ end }}
-				</div>
-			</nav>
-		</aside>
-		</td><td>
+                            <nav
+                                class="api-index"
+                                aria-label='{{.T "share.resultsLabel"}}'
+                                data-i18n-aria-label="share.resultsLabel"
+                            >
+                                <h3 data-i18n="share.listTitle">
+                                    {{ .T "share.listTitle" }}
+                                </h3>
+                                <div
+                                    class="api-index-list"
+                                    data-archive-list
+                                    data-private-mode="{{.PrivateMode}}"
+                                >
+                                    {{ range .Archives }}
+                                    <a class="api-index-row" href="/s/{{.ID}}">
+                                        <span class="archive-name">{{
+                                            .Title
+                                        }}</span>
+                                        <span
+                                            class="method-label {{if .Encrypted}}method-put{{else}}method-get{{end}}"
+                                            >{{ if .Encrypted }}ENC{{
+                                                else
+                                            }}GET{{ end }}</span
+                                        >
+                                    </a>
+                                    {{ else }}
+                                    <p
+                                        class="muted"
+                                        data-i18n="share.noArchives"
+                                    >
+                                        {{ $.T "share.noArchives" }}
+                                    </p>
+                                    {{ end }}
+                                </div>
+                            </nav>
+                        </aside>
+                    </td>
+                    <td>
+                        <section class="api-main">
+                            {{ if .Selected }}
+                            {{ if .Expired }}
+                            <p class="err" data-i18n="share.expired">
+                                {{ .T "share.expired" }}
+                            </p>
+                            <p class="comment-text">
+                                <span data-i18n="share.redirectHome">{{
+                                    .T "share.redirectHome"
+                                }}</span>
+                                <span
+                                    data-redirect-countdown
+                                    data-seconds="5"
+                                    data-redirect-to="/"
+                                    >5</span
+                                >{{ .T "time.secondsSuffix" }}
+                            </p>
+                            {{ else }}
+                            <nav
+                                id="listing"
+                                class="api-index"
+                                aria-label='{{.T "share.filesLabel"}}'
+                                data-i18n-aria-label="share.filesLabel"
+                                hidden
+                            >
+                                <h3 data-i18n="share.filesTitle">
+                                    {{ .T "share.filesTitle" }}
+                                </h3>
+                            </nav>
 
-		<section class="api-main">
-			{{ if .Selected }}
-			{{ if .Expired }}
-			<p class="err" data-i18n="share.expired">{{.T "share.expired"}}</p>
-			<p class="comment-text">
-				<span data-i18n="share.redirectHome">{{.T "share.redirectHome"}}</span>
-				<span data-redirect-countdown data-seconds="5" data-redirect-to="/"
-					>5</span
-				>{{.T "time.secondsSuffix"}}
-			</p>
-			{{ else }}
-			<nav
-				id="listing"
-				class="api-index"
-				aria-label='{{.T "share.filesLabel"}}'
-				data-i18n-aria-label="share.filesLabel"
-				hidden
-			>
-				<h3 data-i18n="share.filesTitle">{{.T "share.filesTitle"}}</h3>
-			</nav>
+                            <div class="section-rule" aria-hidden="true"></div>
 
-			<div class="section-rule" aria-hidden="true"></div>
+                            {{ if .Share.SecurityWarning }}
+                            <section
+                                class="download-notice"
+                                aria-labelledby="securityWarningTitle"
+                            >
+                                <h3
+                                    id="securityWarningTitle"
+                                    data-i18n="share.securityWarningTitle"
+                                >
+                                    {{ .T "share.securityWarningTitle" }}
+                                </h3>
+                                <p data-i18n="share.securityWarning">
+                                    {{ .T "share.securityWarning" }}
+                                </p>
+                            </section>
+                            {{ end }}
+                            {{ if .Share.AdminMessage }}
+                            <section
+                                class="download-notice"
+                                aria-labelledby="adminMessageTitle"
+                            >
+                                <h3
+                                    id="adminMessageTitle"
+                                    data-i18n="share.adminMessage"
+                                >
+                                    {{ .T "share.adminMessage" }}
+                                </h3>
+                                <!-- biome-ignore format: white-space: pre-wrap shows any whitespace inside. -->
+                                <p class="admin-message">{{.Share.AdminMessage}}</p>
+                            </section>
+                            {{ end }}
 
-			{{ if .Share.SecurityWarning }}
-			<section class="download-notice" aria-labelledby="securityWarningTitle">
-				<h3 id="securityWarningTitle" data-i18n="share.securityWarningTitle">{{.T "share.securityWarningTitle"}}</h3>
-				<p data-i18n="share.securityWarning">{{.T "share.securityWarning"}}</p>
-			</section>
-			{{ end }}
-			{{ if .Share.AdminMessage }}
-			<section class="download-notice" aria-labelledby="adminMessageTitle">
-				<h3 id="adminMessageTitle" data-i18n="share.adminMessage">{{.T "share.adminMessage"}}</h3>
-				<p class="admin-message">{{.Share.AdminMessage}}</p>
-			</section>
-			{{ end }}
+                            <div
+                                id="share"
+                                class="input-panel share-control"
+                                data-id="{{.Share.ID}}"
+                                data-title="{{.Share.Title}}"
+                                data-size="{{.Share.Size}}"
+                                data-encrypted="{{.Share.Encrypted}}"
+                                data-cipher="{{.Share.CipherMeta}}"
+                                data-manifest="{{.Share.ZipManifest}}"
+                            >
+                                {{ if .Share.Encrypted }}
+                                <label
+                                    class="field-label"
+                                    for="sharePassword"
+                                    data-i18n="share.passwordLabel"
+                                    >{{
+                                        .T "share.passwordLabel"
+                                    }}</label
+                                >
+                                <input
+                                    class="text-input field-md"
+                                    id="sharePassword"
+                                    type="password"
+                                    autocomplete="off"
+                                    autocapitalize="none"
+                                    autocorrect="off"
+                                    spellcheck="false"
+                                    placeholder='{{.T "share.passwordPlaceholder"}}'
+                                    data-i18n-placeholder="share.passwordPlaceholder"
+                                >
+                                <button
+                                    id="loadBtn"
+                                    type="button"
+                                    class="primary-action-button field-md"
+                                >
+                                    <span data-i18n="share.decryptFiles">{{
+                                        .T "share.decryptFiles"
+                                    }}</span>
+                                </button>
+                                {{ else }}
+                                <button
+                                    id="loadBtn"
+                                    type="button"
+                                    class="primary-action-button field-md"
+                                >
+                                    <span data-i18n="share.listFiles">{{
+                                        .T "share.listFiles"
+                                    }}</span>
+                                </button>
+                                {{ end }}
+                            </div>
 
-			<div
-				id="share"
-				class="input-panel share-control"
-				data-id="{{.Share.ID}}"
-				data-title="{{.Share.Title}}"
-				data-size="{{.Share.Size}}"
-				data-encrypted="{{.Share.Encrypted}}"
-				data-cipher="{{.Share.CipherMeta}}"
-				data-manifest="{{.Share.ZipManifest}}"
-			>
-				{{ if .Share.Encrypted }}
-				<label
-					class="field-label"
-					for="sharePassword"
-					data-i18n="share.passwordLabel"
-					>{{.T "share.passwordLabel"}}</label
-				>
-				<input
-					class="text-input field-md"
-					id="sharePassword"
-					type="password"
-					autocomplete="off"
-					autocapitalize="none"
-					autocorrect="off"
-					spellcheck="false"
-					placeholder='{{.T "share.passwordPlaceholder"}}'
-					data-i18n-placeholder="share.passwordPlaceholder"
-				>
-				<button
-					id="loadBtn"
-					type="button"
-					class="primary-action-button field-md"
-				>
-					<span data-i18n="share.decryptFiles">{{.T "share.decryptFiles"}}</span>
-				</button>
-				{{ else }}
-				<button
-					id="loadBtn"
-					type="button"
-					class="primary-action-button field-md"
-				>
-					<span data-i18n="share.listFiles">{{.T "share.listFiles"}}</span>
-				</button>
-				{{ end }}
-			</div>
+                            <pre id="progress" class="progress-output"></pre>
 
-			<pre id="progress" class="progress-output"></pre>
-
-			<section id="previewPane" class="api-detail detail-pane" hidden></section>
-			{{ end }}
-			{{ else }}
-			<p class="comment-text">
-				<span data-i18n="share.chooseArchive"
-					>{{.T "share.chooseArchive"}}</span
-				>
-			</p>
-			<div class="section-rule" aria-hidden="true"></div>
-			<section class="api-detail detail-pane">
-				<h3 data-i18n="share.archiveTitle">{{.T "share.archiveTitle"}}</h3>
-				<p class="comment-text" data-i18n="share.noArchive">
-					{{.T "share.noArchive"}}
-				</p>
-			</section>
-			{{ end }}
-		</section>
-		</td></tr></tbody></table>
-	</div>
+                            <section
+                                id="previewPane"
+                                class="api-detail detail-pane"
+                                hidden
+                            ></section>
+                            {{ end }}
+                            {{ else }}
+                            <p class="comment-text">
+                                <span data-i18n="share.chooseArchive">{{
+                                    .T "share.chooseArchive"
+                                }}</span>
+                            </p>
+                            <div class="section-rule" aria-hidden="true"></div>
+                            <section class="api-detail detail-pane">
+                                <h3 data-i18n="share.archiveTitle">
+                                    {{ .T "share.archiveTitle" }}
+                                </h3>
+                                <p
+                                    class="comment-text"
+                                    data-i18n="share.noArchive"
+                                >
+                                    {{ .T "share.noArchive" }}
+                                </p>
+                            </section>
+                            {{ end }}
+                        </section>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
 </div>
 {{ if and .Selected (not .Expired) }}
-<script type="module" src="/static/js/share.js"></script>
+<script type="module" src='{{static "/static/js/share.js"}}'></script>
 {{ end }}
 {{ if .Expired }}
-<script type="module" src="/static/js/redirect-countdown.js"></script>
+<script
+    type="module"
+    src='{{static "/static/js/redirect-countdown.js"}}'
+></script>
 {{ end }}
-<script type="module" src="/static/js/archive-list.js"></script>
+<script type="module" src='{{static "/static/js/archive-list.js"}}'></script>
 {{ template "base_bottom" . }}
 {{ end }}

@@ -7,16 +7,16 @@ const passwordHash = document.getElementById("adminPasswordHash");
 let composing = false;
 
 password.addEventListener("compositionstart", () => {
-	composing = true;
+    composing = true;
 });
 password.addEventListener("compositionend", () => {
-	composing = false;
+    composing = false;
 });
 
 form.addEventListener("submit", async (event) => {
-	event.preventDefault();
-	await settlePasswordInput(password, () => composing);
-	passwordHash.value = await adminPasswordHash(password.value);
-	password.value = "";
-	form.submit();
+    event.preventDefault();
+    await settlePasswordInput(password, () => composing);
+    passwordHash.value = await adminPasswordHash(password.value);
+    password.value = "";
+    form.submit();
 });

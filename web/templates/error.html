@@ -1,34 +1,44 @@
 {{ define "error.html" }}
 {{ template "base_top" . }}
 <div class="numbered-page narrow">
-	<div class="editor-line">
-		<span class="line-gutter" aria-hidden="true">01</span>
-		<h1>{{ .StatusCode }}</h1>
-	</div>
-	<div class="editor-line" aria-hidden="true">
-		<span class="line-gutter">--</span>
-		<div class="section-rule"></div>
-	</div>
-	<div class="editor-line">
-		<span class="line-gutter" aria-hidden="true">02</span>
-		<div class="api-detail detail-pane">
-		<p class="err" {{ if .MessageKey }} data-i18n="{{ .MessageKey }}" {{ end }}>
-			{{ .Message }}
-		</p>
-		<p class="comment-text">
-			<span data-i18n="error.redirectHome">{{ .T "error.redirectHome" }}</span>
-			<span
-				data-redirect-countdown
-				data-seconds="{{.RedirectSeconds}}"
-				data-redirect-to="/"
-				>{{
-					.RedirectSeconds
-				}}</span
-			>{{ .T "time.secondsSuffix" }}
-		</p>
-		</div>
-	</div>
+    <div class="editor-line">
+        <span class="line-gutter" aria-hidden="true">01</span>
+        <h1>{{ .StatusCode }}</h1>
+    </div>
+    <div class="editor-line" aria-hidden="true">
+        <span class="line-gutter">--</span>
+        <div class="section-rule"></div>
+    </div>
+    <div class="editor-line">
+        <span class="line-gutter" aria-hidden="true">02</span>
+        <div class="api-detail detail-pane">
+            <p
+                class="err"
+                {{ if .MessageKey }}
+                data-i18n="{{ .MessageKey }}"
+                {{ end }}
+            >
+                {{ .Message }}
+            </p>
+            <p class="comment-text">
+                <span data-i18n="error.redirectHome">{{
+                    .T "error.redirectHome"
+                }}</span>
+                <span
+                    data-redirect-countdown
+                    data-seconds="{{.RedirectSeconds}}"
+                    data-redirect-to="/"
+                    >{{
+                        .RedirectSeconds
+                    }}</span
+                >{{ .T "time.secondsSuffix" }}
+            </p>
+        </div>
+    </div>
 </div>
-<script type="module" src="/static/js/redirect-countdown.js"></script>
+<script
+    type="module"
+    src='{{static "/static/js/redirect-countdown.js"}}'
+></script>
 {{ template "base_bottom" . }}
 {{ end }}

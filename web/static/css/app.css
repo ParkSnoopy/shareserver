@@ -2,56 +2,56 @@
    The drawings come from /static/js/village.js. Every rule here only places
    them or styles plain HTML, which keeps square legacy shapes. */
 :root {
-	color-scheme: only light;
-	--canvas: #ffd200;
-	--ink: #000;
-	--paper: #fff;
-	--sky: #2bb8e6;
-	--sun: #ffe400;
-	--red: #c00000;
-	--blue: #005aff;
-	--focus: #005eff;
-	--line: #c9c9c9;
+    color-scheme: only light;
+    --canvas: #ffd200;
+    --ink: #000;
+    --paper: #fff;
+    --sky: #2bb8e6;
+    --sun: #ffe400;
+    --red: #c00000;
+    --blue: #005aff;
+    --focus: #005eff;
+    --line: #c9c9c9;
 }
 [hidden],
 .api-sidebar[hidden],
 .api-detail[hidden] {
-	display: none;
+    display: none;
 }
 * {
-	box-sizing: border-box;
+    box-sizing: border-box;
 }
 html,
 body {
-	background: var(--canvas);
+    background: var(--canvas);
 }
 body {
-	margin: 0;
-	color: var(--ink);
-	font:
-		10pt "굴림",
-		Gulim,
-		"돋움",
-		Dotum,
-		Tahoma,
-		sans-serif;
+    margin: 0;
+    color: var(--ink);
+    font:
+        10pt "굴림",
+        Gulim,
+        "돋움",
+        Dotum,
+        Tahoma,
+        sans-serif;
 }
 button,
 input,
 select,
 textarea {
-	font: inherit;
-	border-radius: 0;
+    font: inherit;
+    border-radius: 0;
 }
 a {
-	color: #333;
+    color: #333;
 }
 a:visited {
-	color: #777;
+    color: #777;
 }
 a:hover {
-	color: #004eff;
-	text-decoration: underline;
+    color: #004eff;
+    text-decoration: underline;
 }
 a:focus-visible,
 button:focus-visible,
@@ -59,152 +59,146 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 [tabindex]:focus-visible {
-	outline: 3px solid var(--focus);
-	outline-offset: 2px;
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
 }
 .sr-only {
-	position: absolute;
-	width: 1px;
-	height: 1px;
-	overflow: hidden;
-	clip-path: inset(50%);
-	white-space: nowrap;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
 }
 svg.d {
-	display: block;
-	max-width: 100%;
-	height: auto;
-	shape-rendering: crispEdges;
+    display: block;
+    max-width: 100%;
+    height: auto;
+    shape-rendering: crispEdges;
 }
 
 /* Stage, header and scenery */
 .stage {
-	position: relative;
-	z-index: 0;
-	width: min(950px, 100%);
-	margin: 0 auto;
+    position: relative;
+    z-index: 0;
+    width: min(950px, 100%);
+    margin: 0 auto;
 }
 .village-head {
-	position: relative;
-	height: 230px;
+    position: relative;
+    height: 230px;
 }
 .site-logo {
-	position: absolute;
-	top: 26px;
-	left: 30px;
-	width: 260px;
-	aspect-ratio: 26 / 11;
-	text-decoration: none;
+    position: absolute;
+    top: 26px;
+    left: 30px;
+    width: 260px;
+    aspect-ratio: 26 / 11;
+    text-decoration: none;
 }
 .site-logo:not(:has(svg)) > .sr-only {
-	inset: 0;
-	display: grid;
-	width: 100%;
-	height: 100%;
-	place-items: center;
-	clip-path: none;
-	font-size: 32px;
-	font-weight: bold;
+    inset: 0;
+    display: grid;
+    width: 100%;
+    height: 100%;
+    place-items: center;
+    clip-path: none;
+    font-size: 32px;
+    font-weight: bold;
 }
 .head-actions {
-	position: absolute;
-	top: 18px;
-	right: 20px;
-	display: flex;
-	gap: 8px;
+    position: absolute;
+    top: 18px;
+    right: 20px;
+    display: flex;
+    gap: 8px;
 }
 .head-actions form {
-	margin: 0;
+    margin: 0;
 }
 /* The paper comes after the header and paints over the flat tab bottoms.
    Tabs share one baseline, because a lifted tab leaves a gap above the
    paper. No negative z-index here: it would put the tabs under the header
    box, and the header would take every click. */
 .tabs {
-	position: absolute;
-	bottom: 0;
-	left: 320px;
-	display: flex;
-	align-items: flex-end;
-	gap: 4px;
+    position: absolute;
+    bottom: 0;
+    left: 320px;
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
 }
 .nav-tab {
-	position: relative;
-	display: block;
-	width: 140px;
-	text-decoration: none;
-	transition: translate 0.1s;
+    position: relative;
+    display: block;
+    width: 140px;
+    text-decoration: none;
+    transition: translate 0.1s;
 }
 .nav-tab .art {
-	display: block;
-	width: 100%;
-	max-width: 140px;
-	aspect-ratio: 7 / 6;
-	margin: 0 auto;
+    display: block;
+    width: 100%;
+    max-width: 140px;
+    aspect-ratio: 7 / 6;
+    margin: 0 auto;
 }
 /* The tab body is drawn below the SVG box and the paper hides it. Clicks
    go to the link box only, so that hidden part never takes a click. */
 .nav-tab svg.d {
-	overflow: visible;
-	pointer-events: none;
+    overflow: visible;
+    pointer-events: none;
 }
 @media (hover: hover) and (pointer: fine) {
-	.nav-tab:hover {
-		translate: 0 -6px;
-	}
+    .nav-tab:hover {
+        translate: 0 -6px;
+    }
 }
 .nav-tab .tab-label {
-	position: absolute;
-	width: 1px;
-	height: 1px;
-	overflow: hidden;
-	clip-path: inset(50%);
-	white-space: nowrap;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
 }
 .nav-tab:not(:has(svg)) {
-	background: #cdcdcd;
-	border-radius: 40% 40% 0 0;
-	outline: 3px solid var(--ink);
+    background: #cdcdcd;
+    border-radius: 40% 40% 0 0;
+    outline: 3px solid var(--ink);
 }
 .nav-tab:not(:has(svg)) .tab-label {
-	top: 55%;
-	left: 0;
-	width: 100%;
-	height: auto;
-	clip-path: none;
-	text-align: center;
-	font-weight: bold;
+    top: 55%;
+    left: 0;
+    width: 100%;
+    height: auto;
+    clip-path: none;
+    text-align: center;
+    font-weight: bold;
 }
 .scenery {
-	position: absolute;
-	inset: 0;
-	pointer-events: none;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
 }
 .scene-link {
-	position: absolute;
-	pointer-events: auto;
+    position: absolute;
+    pointer-events: auto;
 }
 .scene-sun {
-	top: 2px;
-	left: 300px;
+    top: 2px;
+    left: 300px;
 }
 .scene-cloud {
-	top: 34px;
-	left: 470px;
+    top: 34px;
+    left: 470px;
 }
 .scene-bird {
-	top: 64px;
-	left: 610px;
+    top: 64px;
+    left: 610px;
 }
 .scene-garbage {
-	top: 160px;
-	left: 40px;
-}
-.scene-link .art {
-	display: block;
-}
-.scene-link:hover .art {
-	translate: 0 -3px;
+    top: 160px;
+    left: 40px;
 }
 
 /* Paper sheet and ground */
@@ -212,90 +206,98 @@ svg.d {
    over the tabs. The paper box starts above its drawn edge, so the box
    itself lets clicks through to the tabs; its content still takes them. */
 .paper {
-	position: relative;
-	z-index: 0;
-	display: block;
-	min-height: 320px;
-	margin-top: -60px;
-	padding: 92px 70px 120px;
-	pointer-events: none;
+    position: relative;
+    z-index: 0;
+    display: block;
+    min-height: 320px;
+    margin-top: -60px;
+    padding: 92px 70px 120px;
+    pointer-events: none;
 }
 .paper > * {
-	pointer-events: auto;
+    pointer-events: auto;
 }
 .paper > .paper-art {
-	position: absolute;
-	inset: 0;
-	z-index: -1;
-	pointer-events: none;
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
 }
 .paper-art svg {
-	display: block;
-	shape-rendering: crispEdges;
+    display: block;
+    shape-rendering: crispEdges;
 }
 .site-ground {
-	position: relative;
-	margin-top: -84px;
-	pointer-events: none;
+    position: relative;
+    margin-top: -84px;
+    pointer-events: none;
 }
 .site-ground svg.d {
-	width: 100%;
+    width: 100%;
 }
 .site-ground > .art {
-	display: block;
-	aspect-ratio: 95 / 21;
+    display: block;
+    aspect-ratio: 95 / 21;
+}
+/* Scenery art comes after the ground art so .art selectors ascend in
+   specificity. */
+.scene-link .art {
+    display: block;
+}
+.scene-link:hover .art {
+    translate: 0 -3px;
 }
 
 /* Headings */
 h1 {
-	margin: 0 0 12px;
-	font:
-		bold 18pt "굴림",
-		Gulim,
-		sans-serif;
-	overflow-wrap: anywhere;
+    margin: 0 0 12px;
+    font:
+        bold 18pt "굴림",
+        Gulim,
+        sans-serif;
+    overflow-wrap: anywhere;
 }
 .title-art {
-	margin: 0 0 12px -12px;
+    margin: 0 0 12px -12px;
 }
 h3 {
-	margin: 0 0 8px;
-	font-size: 11pt;
-	overflow-wrap: anywhere;
+    margin: 0 0 8px;
+    font-size: 11pt;
+    overflow-wrap: anywhere;
 }
 p {
-	margin: 5px 0 10px;
-	line-height: 1.6;
-	overflow-wrap: anywhere;
+    margin: 5px 0 10px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
 }
 
 /* Page skeleton kept from the old layout */
 .source-buffer,
 .grid,
 .numbered-page {
-	width: 100%;
+    width: 100%;
 }
 .editor-line,
 .row {
-	display: block;
+    display: block;
 }
 .line-gutter,
 .row > span:first-child,
 .section-rule {
-	display: none;
+    display: none;
 }
 .editor-line > :last-child,
 .row > :last-child {
-	max-width: 100%;
+    max-width: 100%;
 }
 .sidebar-rule {
-	height: 0;
-	margin: 14px 0;
-	border-top: 3px dotted var(--ink);
+    height: 0;
+    margin: 14px 0;
+    border-top: 3px dotted var(--ink);
 }
 .source-buffer > .editor-line:has(.progress-output:empty),
 .source-buffer > .editor-line:has(.result-output:empty) {
-	display: none;
+    display: none;
 }
 
 /* Panels */
@@ -305,498 +307,500 @@ p {
 .api-sidebar,
 .wide,
 .download-notice {
-	margin-bottom: 14px;
-	padding: 20px 22px;
-	border: 3px solid var(--ink);
-	background-color: var(--paper);
+    margin-bottom: 14px;
+    padding: 20px 22px;
+    border: 3px solid var(--ink);
+    background-color: var(--paper);
 }
 .api-main,
 .api-guide {
-	min-width: 0;
+    min-width: 0;
 }
 
 /* Forms */
 .field-row,
 .field-grid {
-	margin-bottom: 14px;
+    margin-bottom: 14px;
 }
 .field-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-	gap: 0 14px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0 14px;
 }
 .field-grid > .field-row {
-	margin-bottom: 14px;
+    margin-bottom: 14px;
 }
 .field-label,
 label {
-	display: block;
-	margin: 0 0 5px;
-	font-weight: bold;
+    display: block;
+    margin: 0 0 5px;
+    font-weight: bold;
 }
 input:not([type="hidden"]):not([type="checkbox"]):not([type="file"]),
 select,
 textarea,
 .textarea-input {
-	width: 100%;
-	min-width: 0;
-	min-height: 36px;
-	padding: 6px 8px;
-	border: 2px solid var(--ink);
-	background: var(--paper);
-	color: #222;
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    padding: 6px 8px;
+    border: 2px solid var(--ink);
+    background: var(--paper);
+    color: #222;
 }
 select {
-	cursor: pointer;
+    cursor: pointer;
 }
 input[type="checkbox"] {
-	width: 18px;
-	height: 18px;
-	vertical-align: middle;
+    width: 18px;
+    height: 18px;
+    vertical-align: middle;
 }
 .native-file {
-	position: absolute;
-	width: 1px;
-	height: 1px;
-	overflow: hidden;
-	clip-path: inset(50%);
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
 }
 .dropzone {
-	display: block;
-	min-height: 90px;
-	padding: 24px;
-	border: 3px dashed var(--ink);
-	background: #fffbe2;
-	cursor: pointer;
-	font-weight: normal;
-	text-align: center;
+    display: block;
+    min-height: 90px;
+    padding: 24px;
+    border: 3px dashed var(--ink);
+    background: #fffbe2;
+    cursor: pointer;
+    font-weight: normal;
+    text-align: center;
 }
 .dropzone:hover,
 .dropzone.drag-over,
 #fileSource:has(.native-file:focus-visible) .dropzone {
-	border-color: var(--focus);
-	background: #e8fbff;
+    border-color: var(--focus);
+    background: #e8fbff;
 }
 .selected-file-list {
-	margin: 8px 0;
+    margin: 8px 0;
 }
 .selected-file-row {
-	padding: 6px 4px;
-	border-bottom: 1px dotted #bbb;
+    padding: 6px 4px;
+    border-bottom: 1px dotted #bbb;
 }
 .selected-file-name {
-	overflow-wrap: anywhere;
+    overflow-wrap: anywhere;
 }
 .selected-file-meta,
 .status-line,
 .muted,
 .comment-text {
-	color: #333;
+    color: #333;
 }
 .check {
-	display: inline-block;
+    display: inline-block;
 }
 .check label,
 .admin-bulk-actions label {
-	display: inline;
+    display: inline;
 }
 .download-notice h3 {
-	margin-top: 0;
+    margin-top: 0;
 }
 .download-notice p {
-	margin-bottom: 0;
-	overflow-wrap: anywhere;
+    margin-bottom: 0;
+    overflow-wrap: anywhere;
 }
 .admin-message {
-	white-space: pre-wrap;
+    white-space: pre-wrap;
 }
 
 /* Buttons */
 button,
 .primary-action-button {
-	display: inline-block;
-	min-height: 40px;
-	padding: 8px 22px;
-	border: 3px solid var(--ink);
-	background-color: var(--sky);
-	color: var(--ink);
-	font-weight: bold;
-	text-decoration: none;
-	cursor: pointer;
+    display: inline-block;
+    min-height: 40px;
+    padding: 8px 22px;
+    border: 3px solid var(--ink);
+    background-color: var(--sky);
+    color: var(--ink);
+    font-weight: bold;
+    text-decoration: none;
+    cursor: pointer;
 }
 .pill-button {
-	min-height: 36px;
-	padding: 6px 18px;
+    min-height: 36px;
+    padding: 6px 18px;
 }
 button:disabled,
 button.visually-disabled {
-	color: #555;
-	cursor: default;
+    color: #555;
+    cursor: default;
 }
 .lookup-form > button {
-	margin-top: 8px;
+    margin-top: 8px;
 }
 
 /* Output */
 .progress-output {
-	white-space: pre-wrap;
-	overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 .result-output:not(:empty) {
-	padding: 10px;
-	border: 3px solid var(--ink);
-	background: var(--paper);
+    padding: 10px;
+    border: 3px solid var(--ink);
+    background: var(--paper);
 }
 .err {
-	padding: 14px 18px;
-	border: 3px solid var(--red);
-	background-color: var(--sun);
-	color: var(--red);
-	font-weight: bold;
+    padding: 14px 18px;
+    border: 3px solid var(--red);
+    background-color: var(--sun);
+    color: var(--red);
+    font-weight: bold;
 }
 
-/* Archive and API layout */
-.api-doc-layout {
-	width: 100%;
-	table-layout: fixed;
-	border-spacing: 0;
-}
-.sidebar-toggle-row {
-	display: none;
-}
-.api-doc-layout > tbody > tr > td {
-	vertical-align: top;
-	padding: 0;
-}
-.api-doc-layout .sidebar-cell {
-	width: 250px;
-	padding-right: 14px;
-}
-.api-doc-layout > tbody > tr:not(.sidebar-toggle-row) > td:last-child {
-	overflow: hidden;
-}
-.api-index-list {
-	margin: 4px 0;
-}
-.api-index-row {
-	display: block;
-	width: 100%;
-	max-width: 100%;
-	padding: 8px 14px;
-	border-bottom: 1px dotted #bbb;
-	text-decoration: none;
-	text-align: left;
-	overflow-wrap: anywhere;
-}
-.api-index-row:hover,
-.api-index-row[aria-current="page"] {
-	background-color: #fffbe2;
-}
-.api-index-row[aria-current="page"] {
-	font-weight: bold;
-}
-.archive-name {
-	overflow-wrap: anywhere;
-}
-.method-label {
-	margin-left: 8px;
-	padding: 0 5px;
-	border: 2px solid var(--ink);
-	background: var(--sun);
-	color: var(--ink);
-	font:
-		bold 8pt Tahoma,
-		sans-serif;
-}
-.api-endpoint {
-	overflow-wrap: anywhere;
-}
-.api-code {
-	max-width: 100%;
-	margin: 8px 0;
-	padding: 10px;
-	overflow-x: auto;
-	border: 2px solid var(--ink);
-	background: #f4f4f4;
-	font:
-		9pt "Courier New",
-		monospace;
-}
-.api-meta {
-	margin: 5px 0;
-}
-.api-policy {
-	padding-left: 8px;
-	border-left: 4px solid var(--red);
-}
-.sidebar-toggle {
-	display: none;
-}
-
-/* Upload clipboard */
-#clipbox {
-	min-height: 70px;
-	max-height: 260px;
-	overflow: auto;
-	white-space: pre-wrap;
-	overflow-wrap: anywhere;
-}
-#clipbox:empty::before {
-	content: attr(data-placeholder);
-	color: #666;
-}
-#clipbox.clipbox-collapsed {
-	max-height: 72px;
-}
-.clip-preview img,
-#preview img,
-#preview video {
-	max-width: 100%;
-	height: auto;
-}
-.detail-actions > * {
-	max-width: 100%;
-	overflow-wrap: anywhere;
-}
-.detail-actions {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-}
-.share-doc-layout .api-main {
-	display: flex;
-	flex-direction: column;
-	gap: 14px;
-}
-.share-doc-layout .api-main > * {
-	min-width: 0;
-	margin-top: 0;
-	margin-bottom: 0;
-}
-.share-doc-layout .progress-output:empty {
-	display: none;
-}
-.share-control:not([hidden]) {
-	display: grid;
-	gap: 10px;
-	justify-items: start;
-}
-
-/* Admin table: legacy square look */
+/* Admin table: legacy square look. It comes before the layout tables so
+   the td selectors ascend in specificity. */
 .table-scroll {
-	width: 100%;
-	overflow-x: auto;
+    width: 100%;
+    overflow-x: auto;
 }
 .admin-shares {
-	width: 100%;
-	min-width: 760px;
-	border-collapse: collapse;
-	background: var(--paper);
+    width: 100%;
+    min-width: 760px;
+    border-collapse: collapse;
+    background: var(--paper);
 }
 .admin-shares th,
 .admin-shares td {
-	padding: 7px;
-	border: 1px solid var(--line);
-	text-align: left;
-	vertical-align: top;
-	white-space: nowrap;
+    padding: 7px;
+    border: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+    white-space: nowrap;
 }
 .admin-shares th {
-	border-bottom: 3px solid var(--ink);
-	background: var(--canvas);
+    border-bottom: 3px solid var(--ink);
+    background: var(--canvas);
 }
 .admin-shares tbody tr:hover {
-	background: #fffbe2;
+    background: #fffbe2;
 }
 .admin-title {
-	max-width: 240px;
-	overflow: hidden;
-	text-overflow: ellipsis;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .admin-bulk-actions {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 10px;
-	margin: 8px 0 12px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin: 8px 0 12px;
 }
 #deleteSelectedShares:not(:disabled) {
-	color: var(--red);
+    color: var(--red);
 }
 
-/* Archive viewer */
+/* Archive viewer. It comes before the share layout and clipboard preview so
+   the child and media selectors ascend in specificity. */
 .archive-list {
-	width: 100%;
+    width: 100%;
 }
 .archive-row {
-	padding: 7px;
-	border-bottom: 1px dotted #bbb;
+    padding: 7px;
+    border-bottom: 1px dotted #bbb;
 }
 .archive-row > * {
-	margin-right: 10px;
+    margin-right: 10px;
 }
 .archive-preview {
-	max-height: 70vh;
-	min-height: 140px;
-	padding: 8px;
-	overflow: auto;
-	border: 2px solid var(--ink);
-	background: var(--paper);
+    max-height: 70vh;
+    min-height: 140px;
+    padding: 8px;
+    overflow: auto;
+    border: 2px solid var(--ink);
+    background: var(--paper);
 }
 .archive-preview img,
 .archive-preview video,
 .archive-preview iframe {
-	display: block;
-	max-width: 100%;
-	max-height: 65vh;
-	border: 0;
+    display: block;
+    max-width: 100%;
+    max-height: 65vh;
+    border: 0;
 }
 .archive-preview audio {
-	width: 100%;
+    width: 100%;
+}
+
+/* Archive and API layout */
+.api-doc-layout {
+    width: 100%;
+    table-layout: fixed;
+    border-spacing: 0;
+}
+.sidebar-toggle-row {
+    display: none;
+}
+.api-doc-layout > tbody > tr > td {
+    vertical-align: top;
+    padding: 0;
+}
+.api-doc-layout .sidebar-cell {
+    width: 250px;
+    padding-right: 14px;
+}
+.api-doc-layout > tbody > tr:not(.sidebar-toggle-row) > td:last-child {
+    overflow: hidden;
+}
+.api-index-list {
+    margin: 4px 0;
+}
+.api-index-row {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    padding: 8px 14px;
+    border-bottom: 1px dotted #bbb;
+    text-decoration: none;
+    text-align: left;
+    overflow-wrap: anywhere;
+}
+.api-index-row:hover,
+.api-index-row[aria-current="page"] {
+    background-color: #fffbe2;
+}
+.api-index-row[aria-current="page"] {
+    font-weight: bold;
+}
+.archive-name {
+    overflow-wrap: anywhere;
+}
+.method-label {
+    margin-left: 8px;
+    padding: 0 5px;
+    border: 2px solid var(--ink);
+    background: var(--sun);
+    color: var(--ink);
+    font:
+        bold 8pt Tahoma,
+        sans-serif;
+}
+.api-endpoint {
+    overflow-wrap: anywhere;
+}
+.api-code {
+    max-width: 100%;
+    margin: 8px 0;
+    padding: 10px;
+    overflow-x: auto;
+    border: 2px solid var(--ink);
+    background: #f4f4f4;
+    font:
+        9pt "Courier New",
+        monospace;
+}
+.api-meta {
+    margin: 5px 0;
+}
+.api-policy {
+    padding-left: 8px;
+    border-left: 4px solid var(--red);
+}
+.sidebar-toggle {
+    display: none;
+}
+
+/* Upload clipboard */
+#clipbox {
+    min-height: 70px;
+    max-height: 260px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+#clipbox:empty::before {
+    content: attr(data-placeholder);
+    color: #666;
+}
+#clipbox.clipbox-collapsed {
+    max-height: 72px;
+}
+.clip-preview img,
+#preview img,
+#preview video {
+    max-width: 100%;
+    height: auto;
+}
+.detail-actions > * {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+.detail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.share-doc-layout .api-main {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.share-doc-layout .api-main > * {
+    min-width: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+}
+.share-doc-layout .progress-output:empty {
+    display: none;
+}
+.share-control:not([hidden]) {
+    display: grid;
+    gap: 10px;
+    justify-items: start;
 }
 .preview-well {
-	min-height: 140px;
-	cursor: pointer;
+    min-height: 140px;
+    cursor: pointer;
 }
 .text-preview {
-	white-space: pre-wrap;
-	overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 #preview {
-	max-width: 100%;
+    max-width: 100%;
 }
 #preview iframe {
-	width: 100%;
-	height: 70vh;
+    width: 100%;
+    height: 70vh;
 }
 
 /* Drawn frames: village.js paints --art as a background image. These rules
    come last so they win over the square frames above. */
 .drawn {
-	border-color: transparent;
-	background: var(--art) center / 100% 100% no-repeat;
-	/* village.js measures the border box, not the smaller padding box. */
-	background-origin: border-box;
+    border-color: transparent;
+    background: var(--art) center / 100% 100% no-repeat;
+    /* village.js measures the border box, not the smaller padding box. */
+    background-origin: border-box;
 }
 button.drawn:hover,
 .primary-action-button.drawn:hover {
-	background-image: var(--art-hover);
+    background-image: var(--art-hover);
 }
 button.drawn:disabled,
 button.drawn.visually-disabled {
-	background-image: var(--art-disabled);
+    background-image: var(--art-disabled);
 }
 
 /* Narrow screens: the stage turns fluid and the tabs form a grid. */
 @media (max-width: 950px) {
-	.village-head {
-		height: auto;
-		padding: 64px 12px 0;
-	}
-	.site-logo {
-		position: relative;
-		top: auto;
-		left: auto;
-		display: block;
-		width: clamp(170px, 46vw, 260px);
-		margin: 0 auto 10px;
-	}
-	.site-logo svg.d {
-		width: 100%;
-	}
-	.head-actions {
-		top: 12px;
-		right: 12px;
-	}
-	.tabs {
-		position: static;
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: 4px;
-	}
-	.nav-tab {
-		width: auto;
-	}
-	.nav-tab svg.d {
-		width: 100%;
-		max-width: 140px;
-		margin: 0 auto;
-	}
-	.scene-cloud,
-	.scene-bird {
-		display: none;
-	}
-	.scene-sun {
-		top: 4px;
-		left: 6px;
-	}
-	.scene-sun svg.d {
-		width: 64px;
-	}
-	.scene-garbage {
-		display: none;
-	}
-	.paper {
-		margin-top: -52px;
-		padding: 74px 36px 110px;
-	}
+    .village-head {
+        height: auto;
+        padding: 64px 12px 0;
+    }
+    .site-logo {
+        position: relative;
+        top: auto;
+        left: auto;
+        display: block;
+        width: clamp(170px, 46vw, 260px);
+        margin: 0 auto 10px;
+    }
+    .site-logo svg.d {
+        width: 100%;
+    }
+    .head-actions {
+        top: 12px;
+        right: 12px;
+    }
+    .tabs {
+        position: static;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+    }
+    .nav-tab {
+        width: auto;
+    }
+    .nav-tab svg.d {
+        width: 100%;
+        max-width: 140px;
+        margin: 0 auto;
+    }
+    .scene-cloud,
+    .scene-bird {
+        display: none;
+    }
+    .scene-sun {
+        top: 4px;
+        left: 6px;
+    }
+    .scene-sun svg.d {
+        width: 64px;
+    }
+    .scene-garbage {
+        display: none;
+    }
+    .paper {
+        margin-top: -52px;
+        padding: 74px 36px 110px;
+    }
 }
 @media (max-width: 760px) {
-	.paper {
-		/* The drawn edge sits up to 77px down at the sides. */
-		padding: 88px 24px 90px;
-	}
-	.title-art {
-		display: none;
-	}
-	.site-ground {
-		margin-top: -40px;
-	}
-	.api-doc-layout,
-	.api-doc-layout > tbody,
-	.api-doc-layout > tbody > tr,
-	.api-doc-layout > tbody > tr > td {
-		display: block;
-		width: 100%;
-	}
-	.api-doc-layout .sidebar-cell {
-		width: 100%;
-		padding-right: 0;
-	}
-	.sidebar-toggle-row {
-		display: block;
-		margin-bottom: 10px;
-	}
-	.sidebar-toggle {
-		display: inline-block;
-	}
-	.api-doc-layout:has(.api-sidebar.is-collapsed) .sidebar-cell {
-		display: none;
-	}
-	.title-art {
-		margin-left: -6px;
-	}
+    .paper {
+        /* The drawn edge sits up to 77px down at the sides. */
+        padding: 88px 24px 90px;
+    }
+    .title-art {
+        display: none;
+    }
+    .site-ground {
+        margin-top: -40px;
+    }
+    .api-doc-layout,
+    .api-doc-layout > tbody,
+    .api-doc-layout > tbody > tr,
+    .api-doc-layout > tbody > tr > td {
+        display: block;
+        width: 100%;
+    }
+    .api-doc-layout .sidebar-cell {
+        width: 100%;
+        padding-right: 0;
+    }
+    .sidebar-toggle-row {
+        display: block;
+        margin-bottom: 10px;
+    }
+    .sidebar-toggle {
+        display: inline-block;
+    }
+    .api-doc-layout:has(.api-sidebar.is-collapsed) .sidebar-cell {
+        display: none;
+    }
+    .title-art {
+        margin-left: -6px;
+    }
 }
 @media (max-width: 520px) {
-	h1 {
-		font-size: 15pt;
-	}
-	.paper {
-		padding: 88px 20px 80px;
-	}
-	.panel,
-	.input-panel,
-	.api-detail,
-	.api-sidebar,
-	.wide,
-	.download-notice {
-		padding: 16px 14px;
-	}
-	.head-actions .pill-button {
-		min-height: 32px;
-		padding: 4px 12px;
-	}
-	.dropzone {
-		padding: 16px;
-	}
+    h1 {
+        font-size: 15pt;
+    }
+    .paper {
+        padding: 88px 20px 80px;
+    }
+    .panel,
+    .input-panel,
+    .api-detail,
+    .api-sidebar,
+    .wide,
+    .download-notice {
+        padding: 16px 14px;
+    }
+    .head-actions .pill-button {
+        min-height: 32px;
+        padding: 4px 12px;
+    }
+    .dropzone {
+        padding: 16px;
+    }
 }

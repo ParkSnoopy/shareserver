@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Fix
+- Lint and format JavaScript, CSS and HTML templates with Biome using four-space indentation; fix the reported accessibility issues, and keep pre-wrapped text and literal braces unchanged by the formatter.
+- Serve static assets under content-versioned URLs as immutable and load every module and language catalog into the browser cache after the first page loads, so later pages and a language switch need no asset requests.
 - Use the village sun drawing as the favicon (SVG with a 16–256 px ICO fallback) and remove the unused `shareserver.png` source image.
 - Draw the village artwork without waiting for page modules or the language catalog, restore the drawn mobile paper edge, and extend the navigation tabs below the paper so a hovered tab stays attached.
 - Keep failed and rate-limited admin logins inside the site theme with localized errors and a retry form, preserving HTTP status codes and lockout enforcement.

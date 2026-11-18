@@ -7,113 +7,125 @@ let ready = null;
 const listeners = new Set();
 
 function sessionLang() {
-	const code = (document.documentElement.lang || "")
-		.toLowerCase()
-		.split("-")[0];
-	return LANGS.includes(code) ? code : DEFAULT_LANG;
+    const code = (document.documentElement.lang || "")
+        .toLowerCase()
+        .split("-")[0];
+    return LANGS.includes(code) ? code : DEFAULT_LANG;
+}
+
+// The versioned catalog URL from <body data-assets> never changes content,
+// so the cached copy is used as is. Without it, revalidate the plain URL.
+function catalogRequest(code) {
+    const plain = `/static/i18n/${code}.json`;
+    const versioned = (document.body?.dataset.assets || "")
+        .split(" ")
+        .find((url) => url.startsWith(`${plain}?`));
+    return versioned ? [versioned] : [plain, { cache: "no-cache" }];
 }
 
 async function loadMessages(value) {
-	const chosen = LANGS.includes(value) ? value : DEFAULT_LANG;
-	const res = await fetch(`/static/i18n/${chosen}.json`, { cache: "no-cache" });
-	if (!res.ok) throw Error(`i18n ${chosen}`);
-	messages = await res.json();
-	lang = chosen;
-	document.documentElement.lang = chosen;
+    const chosen = LANGS.includes(value) ? value : DEFAULT_LANG;
+    const res = await fetch(...catalogRequest(chosen));
+    if (!res.ok) throw Error(`i18n ${chosen}`);
+    messages = await res.json();
+    lang = chosen;
+    document.documentElement.lang = chosen;
 }
 
 function valueFor(key) {
-	return key.split(".").reduce((node, part) => node?.[part], messages);
+    return key.split(".").reduce((node, part) => node?.[part], messages);
 }
 
 function fallback(key) {
-	if (key === "action.download") return "Download";
-	if (key === "state.done") return "done";
-	if (key === "state.failed") return "failed";
-	if (key.startsWith("phase.")) return key.slice("phase.".length);
-	return key;
+    if (key === "action.download") return "Download";
+    if (key === "state.done") return "done";
+    if (key === "state.failed") return "failed";
+    if (key.startsWith("phase.")) return key.slice("phase.".length);
+    return key;
 }
 
 export function translate(key, vars = {}) {
-	let text = valueFor(key);
-	if (typeof text !== "string") text = fallback(key);
-	return text.replace(/\{\{(\w+)\}\}/g, (_, name) => String(vars[name] ?? ""));
+    let text = valueFor(key);
+    if (typeof text !== "string") text = fallback(key);
+    return text.replace(/\{\{(\w+)\}\}/g, (_, name) =>
+        String(vars[name] ?? ""),
+    );
 }
 
 function applyNode(node) {
-	let vars = {};
-	if (node.dataset.i18nVars) {
-		try {
-			vars = JSON.parse(node.dataset.i18nVars);
-		} catch {}
-	}
-	if (node.dataset.i18n) node.textContent = translate(node.dataset.i18n, vars);
-	for (const attr of ["placeholder", "ariaLabel", "title"]) {
-		const key = node.dataset[`i18n${attr[0].toUpperCase()}${attr.slice(1)}`];
-		if (!key) continue;
-		const real = attr === "ariaLabel" ? "aria-label" : attr;
-		node.setAttribute(real, translate(key, vars));
-	}
+    let vars = {};
+    if (node.dataset.i18nVars) {
+        try {
+            vars = JSON.parse(node.dataset.i18nVars);
+        } catch {}
+    }
+    if (node.dataset.i18n)
+        node.textContent = translate(node.dataset.i18n, vars);
+    for (const attr of ["placeholder", "ariaLabel", "title"]) {
+        const key =
+            node.dataset[`i18n${attr[0].toUpperCase()}${attr.slice(1)}`];
+        if (!key) continue;
+        const real = attr === "ariaLabel" ? "aria-label" : attr;
+        node.setAttribute(real, translate(key, vars));
+    }
 }
 
 export function applyI18n(root = document) {
-	root
-		.querySelectorAll(
-			"[data-i18n], [data-i18n-placeholder], [data-i18n-aria-label], [data-i18n-title]",
-		)
-		.forEach(applyNode);
+    root.querySelectorAll(
+        "[data-i18n], [data-i18n-placeholder], [data-i18n-aria-label], [data-i18n-title]",
+    ).forEach(applyNode);
 }
 
 export function onLanguageChange(listener) {
-	listeners.add(listener);
-	return () => listeners.delete(listener);
+    listeners.add(listener);
+    return () => listeners.delete(listener);
 }
 
 export async function initI18n() {
-	if (!ready) {
-		ready = loadMessages(sessionLang())
-			.catch(() => loadMessages(DEFAULT_LANG))
-			.then(() => {
-				applyI18n();
-				for (const listener of listeners) listener(lang);
-			});
-	}
-	return ready;
+    if (!ready) {
+        ready = loadMessages(sessionLang())
+            .catch(() => loadMessages(DEFAULT_LANG))
+            .then(() => {
+                applyI18n();
+                for (const listener of listeners) listener(lang);
+            });
+    }
+    return ready;
 }
 
 if (typeof document !== "undefined") {
-	const languageToggle = document.querySelector("[data-language-toggle]");
-	const updateLanguageToggle = () => {
-		if (!languageToggle) return;
-		const next = lang === "en" ? "한국어" : "English";
-		languageToggle.textContent = next;
-		languageToggle.setAttribute(
-			"aria-label",
-			`${translate("nav.language")}: ${next}`,
-		);
-	};
-	languageToggle?.addEventListener("click", async () => {
-		languageToggle.disabled = true;
-		try {
-			await initI18n();
-			await loadMessages(lang === "en" ? "ko" : "en");
-			// biome-ignore lint/suspicious/noDocumentCookie: Cookie Store is not available in every supported browser; this value is a validated UI preference.
-			document.cookie = `shareserver_lang=${lang}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
-			applyI18n();
-			for (const listener of listeners) listener(lang);
-			updateLanguageToggle();
-		} catch (error) {
-			console.error("language change failed", error);
-		} finally {
-			languageToggle.disabled = false;
-		}
-	});
-	const path = location.pathname;
+    const languageToggle = document.querySelector("[data-language-toggle]");
+    const updateLanguageToggle = () => {
+        if (!languageToggle) return;
+        const next = lang === "en" ? "한국어" : "English";
+        languageToggle.textContent = next;
+        languageToggle.setAttribute(
+            "aria-label",
+            `${translate("nav.language")}: ${next}`,
+        );
+    };
+    languageToggle?.addEventListener("click", async () => {
+        languageToggle.disabled = true;
+        try {
+            await initI18n();
+            await loadMessages(lang === "en" ? "ko" : "en");
+            // biome-ignore lint/suspicious/noDocumentCookie: Cookie Store is not available in every supported browser; this value is a validated UI preference.
+            document.cookie = `shareserver_lang=${lang}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
+            applyI18n();
+            for (const listener of listeners) listener(lang);
+            updateLanguageToggle();
+        } catch (error) {
+            console.error("language change failed", error);
+        } finally {
+            languageToggle.disabled = false;
+        }
+    });
+    const path = location.pathname;
 
-	if (path.startsWith("/s/")) {
-		document
-			.querySelector(`.api-index-row[href="${path}"]`)
-			?.setAttribute("aria-current", "page");
-	}
-	initI18n().then(updateLanguageToggle);
+    if (path.startsWith("/s/")) {
+        document
+            .querySelector(`.api-index-row[href="${path}"]`)
+            ?.setAttribute("aria-current", "page");
+    }
+    initI18n().then(updateLanguageToggle);
 }

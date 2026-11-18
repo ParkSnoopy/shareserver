@@ -17,11 +17,15 @@ func human(n int64) string { return fmt.Sprintf("%.1f MiB", float64(n)/1024/1024
 
 // setupTemplates builds the template tree with format helpers and stores it on
 // the app. Called once during router construction; all render calls share the
-// parsed tree.
-func setupTemplates(tz *time.Location) *template.Template {
+// parsed tree. staticURL gives the versioned URL of a static file.
+func setupTemplates(tz *time.Location, staticURL func(string) string) *template.Template {
 	loadCatalogs()
 	funcs := template.FuncMap{
-		"csrf": func() string { return "" },
+		"csrf":   func() string { return "" },
+		"static": staticURL,
+		// Biome parses a doctype only at the start of a file, and base.html
+		// must start with {{define}}, so the doctype is emitted from here.
+		"doctype": func() template.HTML { return "<!doctype html>" },
 		"short": func(s string) string {
 			if len(s) > 8 {
 				return s[:8]
@@ -48,6 +52,9 @@ type pageContext struct {
 	Admin    bool
 	Language string
 	Section  string
+	// Assets is the space-separated versioned URL list for prefetch.js and
+	// the catalog URLs for i18n.js.
+	Assets string
 }
 
 type errorPage struct {
@@ -115,7 +122,7 @@ func (h *Handler) pageContext(r *http.Request, title string) pageContext {
 	case path == "/" || strings.HasPrefix(path, "/s/"):
 		section = "archive"
 	}
-	return pageContext{Title: title, CSRF: session.CSRF, Admin: session.AdminID > 0, Language: language, Section: section}
+	return pageContext{Title: title, CSRF: session.CSRF, Admin: session.AdminID > 0, Language: language, Section: section, Assets: h.SiteAssets}
 }
 
 func (h *Handler) renderTemplate(w http.ResponseWriter, status int, name string, data any) {
