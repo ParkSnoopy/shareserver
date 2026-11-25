@@ -1,41 +1,62 @@
 {{ define "admin_login.html" }}
 {{ template "base_top" . }}
 <div class="grid">
-	<div class="row">
-		<span>01</span>
-		<h1 data-i18n="admin.loginTitle">{{ .T "admin.loginTitle" }}</h1>
-	</div>
+    <div class="row">
+        <span>01</span>
+        <h1 data-i18n="admin.loginTitle">{{ .T "admin.loginTitle" }}</h1>
+    </div>
 
-	<div class="row">
-		<span>--</span>
-		<div class="section-rule"></div>
-	</div>
+    <div class="row">
+        <span>--</span>
+        <div class="section-rule"></div>
+    </div>
 
-	<div class="row">
-		<span>02</span>
-		<form class="panel" id="adminLoginForm" method="post" action="/admin/login">
-			<input type="hidden" name="csrf" value="{{.CSRF}}">
-			<input type="hidden" name="password_hash" id="adminPasswordHash">
-			{{if .MessageKey}}
-			<p class="err" role="alert" data-i18n="{{.MessageKey}}">{{.T .MessageKey}}</p>
-			{{end}}
+    <div class="row">
+        <span>02</span>
+        <form
+            class="panel"
+            id="adminLoginForm"
+            method="post"
+            action="/admin/login"
+        >
+            <input type="hidden" name="csrf" value="{{.CSRF}}">
+            <input type="hidden" name="password_hash" id="adminPasswordHash">
+            {{ if .MessageKey }}
+            <p class="err" role="alert" data-i18n="{{.MessageKey}}">
+                {{ .T .MessageKey }}
+            </p>
+            {{ end }}
 
-			<div class="field-row">
-				<label for="adminUsername" data-i18n="admin.user">{{ .T "admin.user" }}</label>
-				<input class="field-md" id="adminUsername" name="username" autocomplete="username">
-			</div>
+            <div class="field-row">
+                <label for="adminUsername" data-i18n="admin.user">{{
+                    .T "admin.user"
+                }}</label>
+                <input
+                    class="field-md"
+                    id="adminUsername"
+                    name="username"
+                    autocomplete="username"
+                >
+            </div>
 
-			<div class="field-row">
-				<label for="adminPassword" data-i18n="admin.password">{{ .T "admin.password" }}</label>
-				<input class="field-md" id="adminPassword" type="password" autocomplete="current-password">
-			</div>
+            <div class="field-row">
+                <label for="adminPassword" data-i18n="admin.password">{{
+                    .T "admin.password"
+                }}</label>
+                <input
+                    class="field-md"
+                    id="adminPassword"
+                    type="password"
+                    autocomplete="current-password"
+                >
+            </div>
 
-			<button class="field-md" data-i18n="admin.login">
-				{{ .T "admin.login" }}
-			</button>
-		</form>
-	</div>
+            <button type="submit" class="field-md" data-i18n="admin.login">
+                {{ .T "admin.login" }}
+            </button>
+        </form>
+    </div>
 </div>
-<script type="module" src="/static/js/admin-login.js"></script>
+<script type="module" src='{{static "/static/js/admin-login.js"}}'></script>
 {{ template "base_bottom" . }}
 {{ end }}

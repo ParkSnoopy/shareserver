@@ -8,30 +8,30 @@
 // caller reads the value.
 
 function nextFrame() {
-	return new Promise((resolve) => requestAnimationFrame(resolve));
+    return new Promise((resolve) => requestAnimationFrame(resolve));
 }
 
 function wait(ms) {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // waitForPasswordComposition resolves when an in-progress IME composition
 // ends, or immediately if none is active. The 350ms timeout guards against a
 // compositionend that never fires.
 function waitForPasswordComposition(el, isComposing) {
-	if (!el || !isComposing()) return Promise.resolve(false);
-	return new Promise((resolve) => {
-		let settled = false;
-		const done = (ended) => {
-			if (settled) return;
-			settled = true;
-			el.removeEventListener("compositionend", onCompositionEnd);
-			resolve(ended);
-		};
-		const onCompositionEnd = () => done(true);
-		el.addEventListener("compositionend", onCompositionEnd, { once: true });
-		setTimeout(() => done(false), 350);
-	});
+    if (!el || !isComposing()) return Promise.resolve(false);
+    return new Promise((resolve) => {
+        let settled = false;
+        const done = (ended) => {
+            if (settled) return;
+            settled = true;
+            el.removeEventListener("compositionend", onCompositionEnd);
+            resolve(ended);
+        };
+        const onCompositionEnd = () => done(true);
+        el.addEventListener("compositionend", onCompositionEnd, { once: true });
+        setTimeout(() => done(false), 350);
+    });
 }
 
 // settlePasswordInput lets mobile IMEs commit their final text before the
@@ -40,16 +40,16 @@ function waitForPasswordComposition(el, isComposing) {
 // listeners on the element). onDebug is an optional diagnostic callback that
 // receives the settle-start and settle-done events.
 export async function settlePasswordInput(el, isComposing, { onDebug } = {}) {
-	if (!el) return;
-	onDebug?.("password-input-settle-start", {
-		active: document.activeElement === el,
-		composing: isComposing(),
-	});
-	const compositionDone = waitForPasswordComposition(el, isComposing);
-	if (document.activeElement === el) el.blur();
-	await compositionDone;
-	await nextFrame();
-	await wait(80);
-	await nextFrame();
-	onDebug?.("password-input-settle-done");
+    if (!el) return;
+    onDebug?.("password-input-settle-start", {
+        active: document.activeElement === el,
+        composing: isComposing(),
+    });
+    const compositionDone = waitForPasswordComposition(el, isComposing);
+    if (document.activeElement === el) el.blur();
+    await compositionDone;
+    await nextFrame();
+    await wait(80);
+    await nextFrame();
+    onDebug?.("password-input-settle-done");
 }

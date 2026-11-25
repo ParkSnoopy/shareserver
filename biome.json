@@ -1,11 +1,39 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.5.1/schema.json",
-	"html": {
-		"parser": {
-			"interpolation": true
-		},
-		"formatter": {
-			"enabled": true
-		}
-	}
+    "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
+    "files": {
+        "includes": [
+            "**/*.js",
+            "**/*.mjs",
+            "**/*.css",
+            "**/*.html",
+            "!web/static/vendor"
+        ]
+    },
+    "formatter": {
+        "indentStyle": "space",
+        "indentWidth": 4
+    },
+    "html": {
+        "parser": {
+            "interpolation": true
+        },
+        "formatter": {
+            "enabled": true
+        },
+        "linter": {
+            "enabled": true
+        }
+    },
+    "overrides": [
+        {
+            "includes": ["web/static/js/draw/**"],
+            "linter": {
+                "rules": {
+                    "suspicious": {
+                        "noRedundantUseStrict": "off"
+                    }
+                }
+            }
+        }
+    ]
 }

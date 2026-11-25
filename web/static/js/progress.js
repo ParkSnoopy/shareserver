@@ -2,196 +2,201 @@ import { translate } from "./i18n.js";
 
 // fmtBytes renders byte counts in compact binary units for terminal UI text.
 export function fmtBytes(n) {
-	if (!n) return "0 B";
-	const u = ["B", "KiB", "MiB", "GiB"];
-	let i = 0;
-	let x = n;
-	while (x >= 1024 && i < u.length - 1) {
-		x /= 1024;
-		i++;
-	}
-	return `${x.toFixed(i ? 1 : 0)} ${u[i]}`;
+    if (!n) return "0 B";
+    const u = ["B", "KiB", "MiB", "GiB"];
+    let i = 0;
+    let x = n;
+    while (x >= 1024 && i < u.length - 1) {
+        x /= 1024;
+        i++;
+    }
+    return `${x.toFixed(i ? 1 : 0)} ${u[i]}`;
 }
 
 // Progress renders ordered transfer phases with throttled updates and failure state.
 export class Progress {
-	// constructor binds progress rendering to one DOM element.
-	constructor(el) {
-		this.el = el;
-		this.reset();
-	}
+    // constructor binds progress rendering to one DOM element.
+    constructor(el) {
+        this.el = el;
+        this.reset();
+    }
 
-	// reset clears visible lines and stops delayed or pulsing updates.
-	reset() {
-		if (this.timer) clearTimeout(this.timer);
-		if (this._pulseTimers)
-			for (const timer of this._pulseTimers) clearInterval(timer);
-		this.order = [];
-		this.seen = new Set();
-		this.failed = new Set();
-		this.lines = new Map();
-		this.pending = null;
-		this.timer = null;
-		this._pulseTimers = new Set();
-		this.pulses = new Map();
-		this.t0 = performance.now();
-		this.el.textContent = "";
-		this.el.hidden = true;
-	}
+    // reset clears visible lines and stops delayed or pulsing updates.
+    reset() {
+        if (this.timer) clearTimeout(this.timer);
+        if (this._pulseTimers)
+            for (const timer of this._pulseTimers) clearInterval(timer);
+        this.order = [];
+        this.seen = new Set();
+        this.failed = new Set();
+        this.lines = new Map();
+        this.pending = null;
+        this.timer = null;
+        this._pulseTimers = new Set();
+        this.pulses = new Map();
+        this.t0 = performance.now();
+        this.el.textContent = "";
+        this.el.hidden = true;
+    }
 
-	// bar renders a fixed-width text progress bar.
-	bar(p) {
-		const w = 20;
-		const n = Math.max(0, Math.min(w, Math.round(p * w)));
-		return `[${"#".repeat(n)}${" ".repeat(w - n)}]`;
-	}
+    // bar renders a fixed-width text progress bar.
+    bar(p) {
+        const w = 20;
+        const n = Math.max(0, Math.min(w, Math.round(p * w)));
+        return `[${"#".repeat(n)}${" ".repeat(w - n)}]`;
+    }
 
-	// render writes phase lines in first-seen order.
-	render() {
-		this.el.hidden = false;
-		this.el.textContent = this.order
-			.map((phase) => this.lines.get(phase))
-			.join("\n\n");
-	}
+    // render writes phase lines in first-seen order.
+    render() {
+        this.el.hidden = false;
+        this.el.textContent = this.order
+            .map((phase) => this.lines.get(phase))
+            .join("\n\n");
+    }
 
-	// paint lets the current phase reach the screen before the next work starts.
-	async paint() {
-		await new Promise((resolve) => {
-			requestAnimationFrame(() => requestAnimationFrame(resolve));
-		});
-	}
+    // paint lets the current phase reach the screen before the next work starts.
+    async paint() {
+        await new Promise((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(resolve));
+        });
+    }
 
-	// line formats one transfer phase with percent, bytes, and state.
-	line(phase, done, total, state) {
-		const p = total ? done / total : 0;
-		const label = translate(`phase.${phase}`);
-		return `${label} ${Math.round(p * 100)}% ${state}\n${this.bar(p)}\n${fmtBytes(done)} / ${fmtBytes(total)}`;
-	}
+    // line formats one transfer phase with percent, bytes, and state.
+    line(phase, done, total, state) {
+        const p = total ? done / total : 0;
+        const label = translate(`phase.${phase}`);
+        return `${label} ${Math.round(p * 100)}% ${state}\n${this.bar(p)}\n${fmtBytes(done)} / ${fmtBytes(total)}`;
+    }
 
-	// cancelPending removes a delayed update for a completed or failed phase.
-	cancelPending(phase) {
-		if (this.pending?.phase === phase) {
-			this.pending = null;
-			if (this.timer) {
-				clearTimeout(this.timer);
-				this.timer = null;
-			}
-		}
-	}
+    // cancelPending removes a delayed update for a completed or failed phase.
+    cancelPending(phase) {
+        if (this.pending?.phase === phase) {
+            this.pending = null;
+            if (this.timer) {
+                clearTimeout(this.timer);
+                this.timer = null;
+            }
+        }
+    }
 
-	// set renders a phase's first update immediately, then throttles later updates.
-	set(phase, done, total, state = "") {
-		if (this.failed.has(phase)) return;
-		const firstUpdate = !this.seen.has(phase);
-		if (firstUpdate) {
-			this.seen.add(phase);
-			this.order.push(phase);
-			this.lines.set(phase, this.line(phase, done, total, state));
-			this.render();
-			this.el.scrollIntoView?.({ block: "nearest" });
-			return;
-		}
-		this.pending = { phase, done, total, state };
-		if (this.timer) return;
-		this.timer = setTimeout(() => this.flush(), 500);
-	}
+    // set renders a phase's first update immediately, then throttles later updates.
+    set(phase, done, total, state = "") {
+        if (this.failed.has(phase)) return;
+        const firstUpdate = !this.seen.has(phase);
+        if (firstUpdate) {
+            this.seen.add(phase);
+            this.order.push(phase);
+            this.lines.set(phase, this.line(phase, done, total, state));
+            this.render();
+            this.el.scrollIntoView?.({ block: "nearest" });
+            return;
+        }
+        this.pending = { phase, done, total, state };
+        if (this.timer) return;
+        this.timer = setTimeout(() => this.flush(), 500);
+    }
 
-	// flush commits the latest queued update and estimates speed when no state is given.
-	flush() {
-		this.timer = null;
-		if (!this.pending) return;
-		const { phase, done, total, state } = this.pending;
-		this.pending = null;
-		if (this.failed.has(phase)) return;
-		const dt = Math.max(0.1, (performance.now() - this.t0) / 1000);
-		const speed = done ? `${fmtBytes(done / dt)}/s` : state;
-		this.lines.set(phase, this.line(phase, done, total, state || speed));
-		this.render();
-	}
+    // flush commits the latest queued update and estimates speed when no state is given.
+    flush() {
+        this.timer = null;
+        if (!this.pending) return;
+        const { phase, done, total, state } = this.pending;
+        this.pending = null;
+        if (this.failed.has(phase)) return;
+        const dt = Math.max(0.1, (performance.now() - this.t0) / 1000);
+        const speed = done ? `${fmtBytes(done / dt)}/s` : state;
+        this.lines.set(phase, this.line(phase, done, total, state || speed));
+        this.render();
+    }
 
-	// fail freezes a phase in error state and cancels pending success updates.
-	fail(phase, msg, done = 0, total = 0) {
-		this.failed.add(phase);
-		this.cancelPending(phase);
-		if (this.timer) {
-			clearTimeout(this.timer);
-			this.timer = null;
-		}
-		this.pending = null;
-		if (!this.seen.has(phase)) {
-			this.seen.add(phase);
-			this.order.push(phase);
-		}
-		if (total)
-			this.lines.set(
-				phase,
-				this.line(phase, done, total, `${translate("state.failed")}: ${msg}`),
-			);
-		else
-			this.lines.set(
-				phase,
-				`${translate(`phase.${phase}`).padEnd(9)} ${this.bar(0)} ${translate("state.failed")}: ${msg}`,
-			);
-		this.render();
-	}
+    // fail freezes a phase in error state and cancels pending success updates.
+    fail(phase, msg, done = 0, total = 0) {
+        this.failed.add(phase);
+        this.cancelPending(phase);
+        if (this.timer) {
+            clearTimeout(this.timer);
+            this.timer = null;
+        }
+        this.pending = null;
+        if (!this.seen.has(phase)) {
+            this.seen.add(phase);
+            this.order.push(phase);
+        }
+        if (total)
+            this.lines.set(
+                phase,
+                this.line(
+                    phase,
+                    done,
+                    total,
+                    `${translate("state.failed")}: ${msg}`,
+                ),
+            );
+        else
+            this.lines.set(
+                phase,
+                `${translate(`phase.${phase}`).padEnd(9)} ${this.bar(0)} ${translate("state.failed")}: ${msg}`,
+            );
+        this.render();
+    }
 
-	// pulse shows bounded synthetic progress for work without byte callbacks.
-	pulse(phase, total, state = "working") {
-		const start = performance.now();
-		this.pulses.set(phase, { total, start, state });
-		const tick = () => {
-			if (this.failed.has(phase)) return;
-			const meta = this.pulses.get(phase);
-			if (!meta) return;
-			const elapsed = (performance.now() - meta.start) / 1000;
-			const p = Math.min(0.95, elapsed / 8);
-			this.set(phase, Math.round(meta.total * p), meta.total, meta.state);
-		};
-		tick();
-		const timer = setInterval(tick, 500);
-		this._pulseTimers.add(timer);
-		return () => {
-			clearInterval(timer);
-			this._pulseTimers.delete(timer);
-			this.pulses.delete(phase);
-		};
-	}
+    // pulse shows bounded synthetic progress for work without byte callbacks.
+    pulse(phase, total, state = "working") {
+        const start = performance.now();
+        this.pulses.set(phase, { total, start, state });
+        const tick = () => {
+            if (this.failed.has(phase)) return;
+            const meta = this.pulses.get(phase);
+            if (!meta) return;
+            const elapsed = (performance.now() - meta.start) / 1000;
+            const p = Math.min(0.95, elapsed / 8);
+            this.set(phase, Math.round(meta.total * p), meta.total, meta.state);
+        };
+        tick();
+        const timer = setInterval(tick, 500);
+        this._pulseTimers.add(timer);
+        return () => {
+            clearInterval(timer);
+            this._pulseTimers.delete(timer);
+            this.pulses.delete(phase);
+        };
+    }
 
-	// state relabels an active pulse and re-renders immediately so a mode
-	// change (e.g. native -> pure-JS decrypt fallback) shows without waiting
-	// for the next pulse tick. No-op when the phase is not pulsing or has failed.
-	state(phase, newState) {
-		if (this.failed.has(phase)) return;
-		const meta = this.pulses.get(phase);
-		if (!meta) return;
-		meta.state = newState;
-		const elapsed = (performance.now() - meta.start) / 1000;
-		const p = Math.min(0.95, elapsed / 8);
-		this.cancelPending(phase);
-		this.lines.set(
-			phase,
-			this.line(phase, Math.round(meta.total * p), meta.total, newState),
-		);
-		this.render();
-	}
+    // state relabels an active pulse and re-renders immediately so a mode
+    // change (e.g. native -> pure-JS decrypt fallback) shows without waiting
+    // for the next pulse tick. No-op when the phase is not pulsing or has failed.
+    state(phase, newState) {
+        if (this.failed.has(phase)) return;
+        const meta = this.pulses.get(phase);
+        if (!meta) return;
+        meta.state = newState;
+        const elapsed = (performance.now() - meta.start) / 1000;
+        const p = Math.min(0.95, elapsed / 8);
+        this.cancelPending(phase);
+        this.lines.set(
+            phase,
+            this.line(phase, Math.round(meta.total * p), meta.total, newState),
+        );
+        this.render();
+    }
 
-	// done marks a phase complete and prevents stale queued updates from overwriting it.
-	done(phase, total) {
-		if (this.failed.has(phase)) return;
-		this.cancelPending(phase);
-		if (this.timer) {
-			clearTimeout(this.timer);
-			this.timer = null;
-		}
-		this.pending = null;
-		if (!this.seen.has(phase)) {
-			this.seen.add(phase);
-			this.order.push(phase);
-		}
-		this.lines.set(
-			phase,
-			this.line(phase, total, total, translate("state.done")),
-		);
-		this.render();
-	}
+    // done marks a phase complete and prevents stale queued updates from overwriting it.
+    done(phase, total) {
+        if (this.failed.has(phase)) return;
+        this.cancelPending(phase);
+        if (this.timer) {
+            clearTimeout(this.timer);
+            this.timer = null;
+        }
+        this.pending = null;
+        if (!this.seen.has(phase)) {
+            this.seen.add(phase);
+            this.order.push(phase);
+        }
+        this.lines.set(
+            phase,
+            this.line(phase, total, total, translate("state.done")),
+        );
+        this.render();
+    }
 }

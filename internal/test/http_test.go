@@ -18,10 +18,22 @@ import (
 	"shareserver/internal/share"
 )
 
+var (
+	markupSpace    = regexp.MustCompile(`\s+`)
+	markupTagSpace = regexp.MustCompile(` ?([<>]) ?`)
+)
+
+// normalizeMarkup collapses whitespace runs and drops whitespace next to
+// tag brackets, so assertions do not depend on how Biome wraps a template.
+func normalizeMarkup(s string) string {
+	return markupTagSpace.ReplaceAllString(markupSpace.ReplaceAllString(s, " "), "$1")
+}
+
 func assertBodyContains(t *testing.T, body string, wants ...string) {
 	t.Helper()
+	normalized := normalizeMarkup(body)
 	for _, want := range wants {
-		if !strings.Contains(body, want) {
+		if !strings.Contains(normalized, normalizeMarkup(want)) {
 			t.Fatalf("body missing %q in:\n%s", want, body)
 		}
 	}
@@ -625,7 +637,8 @@ func TestAPIIndexShowsArchiveListAndUsageGuide(t *testing.T) {
 		"/api/v0/upload",
 		"/api/v0/list",
 		"아직 살아있는 비공개 보따리",
-		"/api/v0/download/{uuid}",
+		// The template writes the braces as entities; see api.html.
+		"/api/v0/download/&#123;uuid&#125;",
 		"SHA-256",
 		"23–29시간 동안 출입금지",
 	)
@@ -644,13 +657,16 @@ func TestReaderPagesUseVillageFrame(t *testing.T) {
 			if path != "/s/nope" && w.Code != http.StatusOK {
 				t.Fatalf("page status = %d", w.Code)
 			}
+			if !strings.HasPrefix(strings.TrimSpace(w.Body.String()), "<!doctype html>") {
+				t.Fatal("page must start with the doctype to render in standards mode")
+			}
 			assertBodyContains(t, w.Body.String(),
 				`class="stage"`,
 				`class="paper"`,
 				`data-section="`+section+`"`,
 				`/static/js/village.js`,
 				`<meta name="color-scheme" content="only light">`,
-				`href="/static/css/app.css"`,
+				`href='/static/css/app.css?v=`,
 			)
 			if !regexp.MustCompile(`<a\b[^>]*data-tab="` + section + `"[^>]*aria-current="page"`).MatchString(w.Body.String()) {
 				t.Fatal("active navigation must be rendered before JavaScript runs")
@@ -708,11 +724,13 @@ func TestStaticFilesHaveRevalidateCacheControl(t *testing.T) {
 		t.Fatalf("static Cache-Control = %q, want no-cache, must-revalidate", cc)
 	}
 
-	req = httptest.NewRequest(http.MethodGet, "/static/img/favicon.ico", nil)
-	w = httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected favicon 200, got %d", w.Code)
+	for _, path := range []string{"/static/img/favicon.ico", "/static/img/favicon.svg"} {
+		req = httptest.NewRequest(http.MethodGet, path, nil)
+		w = httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected %s 200, got %d", path, w.Code)
+		}
 	}
 }
 
@@ -735,6 +753,77 @@ func TestRobotsTxtAllowsOnlyAPIWithoutCreatingSession(t *testing.T) {
 	}
 }
 
+func TestPagesListEverySiteAssetForCaching(t *testing.T) {
+	_, router := newRouter(t)
+	get := func(path string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		return w
+	}
+
+	// Every page gives prefetch.js the modules of all pages, including
+	// imports no template names, and the language catalogs.
+	assetList := regexp.MustCompile(`data-assets="([^"]+)"`)
+	var urls []string
+	for _, path := range []string{"/upload", "/s/nope", "/api/"} {
+		list := assetList.FindStringSubmatch(get(path).Body.String())
+		if list == nil {
+			t.Fatalf("%s lacks the asset list", path)
+		}
+		assertBodyContains(t, regexp.MustCompile(`\?v=[0-9a-f]{12}`).ReplaceAllString(list[1], ""),
+			"/static/js/share.js", "/static/js/admin-login.js", "/static/js/upload.js",
+			"/static/js/download.js", "/static/vendor/fflate.mjs",
+			"/static/i18n/en.json", "/static/i18n/ko.json",
+		)
+		urls = strings.Fields(list[1])
+	}
+
+	// Every listed URL is versioned and cacheable without revalidation.
+	for _, url := range urls {
+		w := get(url)
+		if w.Code != http.StatusOK || !strings.Contains(url, "?v=") {
+			t.Fatalf("hinted asset %s status = %d", url, w.Code)
+		}
+		if cc := w.Header().Get("Cache-Control"); cc != "public, max-age=31536000, immutable" {
+			t.Fatalf("hinted asset %s Cache-Control = %q", url, cc)
+		}
+	}
+}
+
+func TestVersionedStaticModulesImportVersionedURLs(t *testing.T) {
+	_, router := newRouter(t)
+	get := func(path string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		return w
+	}
+
+	// A module served under one version must import the exact versioned
+	// URLs, so an immutable copy never pairs with another module version.
+	upload := get("/static/js/upload.js").Body.String()
+	imports := regexp.MustCompile(`from\s*"(\./[^"]+)"`).FindAllStringSubmatch(upload, -1)
+	if len(imports) == 0 {
+		t.Fatal("upload.js has no relative imports")
+	}
+	for _, match := range imports {
+		if !regexp.MustCompile(`\.m?js\?v=[0-9a-f]{12}$`).MatchString(match[1]) {
+			t.Fatalf("upload.js import %q is not versioned", match[1])
+		}
+		target := "/static/js/" + strings.TrimPrefix(match[1], "./")
+		if cc := get(target).Header().Get("Cache-Control"); cc != "public, max-age=31536000, immutable" {
+			t.Fatalf("import %s Cache-Control = %q", target, cc)
+		}
+	}
+
+	// An outdated version must revalidate instead of being kept.
+	if cc := get("/static/js/upload.js?v=000000000000").Header().Get("Cache-Control"); cc != "no-cache, must-revalidate" {
+		t.Fatalf("stale version Cache-Control = %q", cc)
+	}
+	if w := get("/static/js/"); w.Code != http.StatusNotFound {
+		t.Fatalf("static directory listing status = %d", w.Code)
+	}
+}
+
 func TestBaseTemplateIncludesFavicon(t *testing.T) {
 	_, router := newRouter(t)
 
@@ -745,7 +834,14 @@ func TestBaseTemplateIncludesFavicon(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected home 200, got %d", w.Code)
 	}
-	assertBodyContains(t, w.Body.String(), `<link rel="icon" href="/static/img/favicon.ico" sizes="any">`)
+	for _, icon := range []string{
+		`<link rel="icon" href='/static/img/favicon\.ico\?v=[0-9a-f]{12}' sizes="32x32">`,
+		`<link rel="icon" href='/static/img/favicon\.svg\?v=[0-9a-f]{12}' type="image/svg\+xml">`,
+	} {
+		if !regexp.MustCompile(icon).MatchString(normalizeMarkup(w.Body.String())) {
+			t.Fatalf("home page lacks %s", icon)
+		}
+	}
 }
 
 func TestAdminDashboardOmitsManualStorageCleanupAction(t *testing.T) {

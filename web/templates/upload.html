@@ -1,173 +1,273 @@
 {{ define "upload.html" }}
 {{ template "base_top" . }}
 <div class="source-buffer">
-	<div class="editor-line">
-		<span class="line-gutter" aria-hidden="true">01</span>
-		<h1 data-i18n="upload.title">{{.T "upload.title"}}</h1>
-	</div>
+    <div class="editor-line">
+        <span class="line-gutter" aria-hidden="true">01</span>
+        <h1 data-i18n="upload.title">{{ .T "upload.title" }}</h1>
+    </div>
 
-	<div class="editor-line" aria-hidden="true">
-		<span class="line-gutter">--</span>
-		<div class="section-rule"></div>
-	</div>
+    <div class="editor-line" aria-hidden="true">
+        <span class="line-gutter">--</span>
+        <div class="section-rule"></div>
+    </div>
 
-	<div class="editor-line form-line">
-		<span class="line-gutter" aria-hidden="true">02</span>
-		<form
-			id="uploadForm"
-			class="input-panel upload-panel"
-			data-max-bytes="{{.Max}}"
-		>
-			<input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="editor-line form-line">
+        <span class="line-gutter" aria-hidden="true">02</span>
+        <form
+            id="uploadForm"
+            class="input-panel upload-panel"
+            data-max-bytes="{{.Max}}"
+        >
+            <input type="hidden" name="csrf" value="{{.CSRF}}">
 
-			<div class="field-row">
-				<label class="field-label" for="uploadTitle" data-i18n="upload.titleLabel">{{.T "upload.titleLabel"}}</label>
-				<input class="text-input field-md" id="uploadTitle" name="title" autocomplete="off">
-			</div>
+            <div class="field-row">
+                <label
+                    class="field-label"
+                    for="uploadTitle"
+                    data-i18n="upload.titleLabel"
+                    >{{
+                        .T "upload.titleLabel"
+                    }}</label
+                >
+                <input
+                    class="text-input field-md"
+                    id="uploadTitle"
+                    name="title"
+                    autocomplete="off"
+                >
+            </div>
 
-			<section id="fileSource" class="field-row">
-				<label class="field-label" id="filesLabel" data-i18n="upload.filesLabel">{{.T "upload.filesLabel"}}</label>
-				<label id="dropzone" class="dropzone field-full" for="files">
-					<span class="command-text" data-i18n="upload.dropFiles"
-						>{{.T "upload.dropFiles"}}</span
-					>
-				</label>
-				<input class="native-file" id="files" type="file" multiple aria-labelledby="filesLabel">
-				<div id="fileSize" class="muted status-line"></div>
-				<div id="fileList" class="selected-file-list" aria-live="polite"></div>
-			</section>
+            <section id="fileSource" class="field-row">
+                <span
+                    class="field-label"
+                    id="filesLabel"
+                    data-i18n="upload.filesLabel"
+                    >{{
+                        .T "upload.filesLabel"
+                    }}</span
+                >
+                <label id="dropzone" class="dropzone field-full" for="files">
+                    <span class="command-text" data-i18n="upload.dropFiles">{{
+                        .T "upload.dropFiles"
+                    }}</span>
+                </label>
+                <input
+                    class="native-file"
+                    id="files"
+                    type="file"
+                    multiple
+                    aria-labelledby="filesLabel"
+                >
+                <div id="fileSize" class="muted status-line"></div>
+                <div
+                    id="fileList"
+                    class="selected-file-list"
+                    aria-live="polite"
+                ></div>
+            </section>
 
-			<section id="clipSource" class="field-row">
-				<label class="field-label" id="clipboxLabel" data-i18n="upload.clipboardLabel"
-					>{{.T "upload.clipboardLabel"}}</label
-				>
-				<button type="button" id="clip" class="primary-action-button field-md">
-					<span data-i18n="upload.readClipboard">{{.T "upload.readClipboard"}}</span>
-				</button>
-				<div
-					id="clipbox"
-					tabindex="0"
-					role="textbox"
-					aria-multiline="true"
-					aria-labelledby="clipboxLabel"
-					class="textarea-input field-full"
-					contenteditable="true"
-					data-placeholder='{{.T "upload.clipboardPlaceholder"}}'
-					data-i18n-placeholder="upload.clipboardPlaceholder"
-				></div>
-				<button
-					type="button"
-					id="clipCollapse"
-					class="copy-button field-sm"
-					hidden
-				>
-					<span data-i18n="upload.collapse">{{.T "upload.collapse"}}</span>
-				</button>
-			</section>
+            <section id="clipSource" class="field-row">
+                <span
+                    class="field-label"
+                    id="clipboxLabel"
+                    data-i18n="upload.clipboardLabel"
+                    >{{
+                        .T "upload.clipboardLabel"
+                    }}</span
+                >
+                <button
+                    type="button"
+                    id="clip"
+                    class="primary-action-button field-md"
+                >
+                    <span data-i18n="upload.readClipboard">{{
+                        .T "upload.readClipboard"
+                    }}</span>
+                </button>
+                <!-- biome-ignore-start lint/a11y/useSemanticElements: a textarea cannot hold pasted images. -->
+                <div
+                    id="clipbox"
+                    tabindex="0"
+                    role="textbox"
+                    aria-multiline="true"
+                    aria-labelledby="clipboxLabel"
+                    class="textarea-input field-full"
+                    contenteditable="true"
+                    data-placeholder='{{.T "upload.clipboardPlaceholder"}}'
+                    data-i18n-placeholder="upload.clipboardPlaceholder"
+                ></div>
+                <!-- biome-ignore-end lint/a11y/useSemanticElements: a textarea cannot hold pasted images. -->
+                <button
+                    type="button"
+                    id="clipCollapse"
+                    class="copy-button field-sm"
+                    hidden
+                >
+                    <span data-i18n="upload.collapse">{{
+                        .T "upload.collapse"
+                    }}</span>
+                </button>
+            </section>
 
-			<div class="field-grid">
-				<div class="field-row compact">
-					<label class="field-label" for="visibility" data-i18n="upload.visibilityLabel"
-						>{{.T "upload.visibilityLabel"}}</label
-					>
-					<select
-						class="select-input field-md"
-						name="visibility"
-						id="visibility"
-					>
-						<option value="public" data-i18n="upload.public">{{.T "upload.public"}}</option>
-						<option value="private" data-i18n="upload.private">{{.T "upload.private"}}</option>
-					</select>
-				</div>
+            <div class="field-grid">
+                <div class="field-row compact">
+                    <label
+                        class="field-label"
+                        for="visibility"
+                        data-i18n="upload.visibilityLabel"
+                        >{{
+                            .T "upload.visibilityLabel"
+                        }}</label
+                    >
+                    <select
+                        class="select-input field-md"
+                        name="visibility"
+                        id="visibility"
+                    >
+                        <option value="public" data-i18n="upload.public">
+                            {{ .T "upload.public" }}
+                        </option>
+                        <option value="private" data-i18n="upload.private">
+                            {{ .T "upload.private" }}
+                        </option>
+                    </select>
+                </div>
 
-				<div class="field-row compact" id="privateKeyRow" hidden>
-					<label
-						class="field-label"
-						id="privateKeyLabel"
-						for="privateKey"
-						data-i18n="upload.privateKeyLabel"
-						>{{.T "upload.privateKeyLabel"}}</label
-					>
-					<input
-						class="text-input field-md"
-						name="private_key"
-						id="privateKey"
-						autocomplete="off"
-						placeholder='{{.T "upload.privateKeyPlaceholder"}}'
-						data-i18n-placeholder="upload.privateKeyPlaceholder"
-					>
-				</div>
-			</div>
+                <div class="field-row compact" id="privateKeyRow" hidden>
+                    <label
+                        class="field-label"
+                        id="privateKeyLabel"
+                        for="privateKey"
+                        data-i18n="upload.privateKeyLabel"
+                        >{{
+                            .T "upload.privateKeyLabel"
+                        }}</label
+                    >
+                    <input
+                        class="text-input field-md"
+                        name="private_key"
+                        id="privateKey"
+                        autocomplete="off"
+                        placeholder='{{.T "upload.privateKeyPlaceholder"}}'
+                        data-i18n-placeholder="upload.privateKeyPlaceholder"
+                    >
+                </div>
+            </div>
 
-			{{ if .Admin }}
-			<div class="field-row">
-				<label class="check" for="securityWarning">
-					<input id="securityWarning" name="security_warning" type="checkbox" role="switch" value="1">
-					<span data-i18n="upload.securityWarning">{{.T "upload.securityWarning"}}</span>
-				</label>
-			</div>
-			<div class="field-row">
-				<label class="field-label" for="adminMessage" data-i18n="upload.adminMessage">{{.T "upload.adminMessage"}}</label>
-				<textarea id="adminMessage" name="admin_message" rows="3" maxlength="{{.MaxAdminMessageBytes}}" data-max-bytes="{{.MaxAdminMessageBytes}}" placeholder='{{.T "upload.adminMessagePlaceholder"}}' data-i18n-placeholder="upload.adminMessagePlaceholder"></textarea>
-			</div>
-			{{ end }}
+            {{ if .Admin }}
+            <div class="field-row">
+                <label class="check" for="securityWarning">
+                    <!-- biome-ignore-start lint/a11y/useAriaPropsForRole: a native checkbox exposes its own checked state. -->
+                    <input
+                        id="securityWarning"
+                        name="security_warning"
+                        type="checkbox"
+                        role="switch"
+                        value="1"
+                    >
+                    <!-- biome-ignore-end lint/a11y/useAriaPropsForRole: a native checkbox exposes its own checked state. -->
+                    <span data-i18n="upload.securityWarning">{{
+                        .T "upload.securityWarning"
+                    }}</span>
+                </label>
+            </div>
+            <div class="field-row">
+                <label
+                    class="field-label"
+                    for="adminMessage"
+                    data-i18n="upload.adminMessage"
+                    >{{
+                        .T "upload.adminMessage"
+                    }}</label
+                >
+                <textarea
+                    id="adminMessage"
+                    name="admin_message"
+                    rows="3"
+                    maxlength="{{.MaxAdminMessageBytes}}"
+                    data-max-bytes="{{.MaxAdminMessageBytes}}"
+                    placeholder='{{.T "upload.adminMessagePlaceholder"}}'
+                    data-i18n-placeholder="upload.adminMessagePlaceholder"
+                ></textarea>
+            </div>
+            {{ end }}
 
-			<div class="field-row compact">
-				<label class="field-label" for="uploadPassword" data-i18n="upload.passwordLabel"
-					>{{.T "upload.passwordLabel"}}</label
-				>
-				<input
-					class="text-input field-md"
-					id="uploadPassword"
-					type="password"
-					required
-					autocomplete="off"
-					autocapitalize="none"
-					autocorrect="off"
-					spellcheck="false"
-					placeholder='{{.T "upload.passwordPlaceholder"}}'
-					data-i18n-placeholder="upload.passwordPlaceholder"
-				>
-			</div>
+            <div class="field-row compact">
+                <label
+                    class="field-label"
+                    for="uploadPassword"
+                    data-i18n="upload.passwordLabel"
+                    >{{
+                        .T "upload.passwordLabel"
+                    }}</label
+                >
+                <input
+                    class="text-input field-md"
+                    id="uploadPassword"
+                    type="password"
+                    required
+                    autocomplete="off"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
+                    placeholder='{{.T "upload.passwordPlaceholder"}}'
+                    data-i18n-placeholder="upload.passwordPlaceholder"
+                >
+            </div>
 
-			<div class="field-row compact">
-				<label class="field-label" for="expiryHours" data-i18n="upload.expiryLabel"
-					>{{.T "upload.expiryLabel"}}</label
-				>
-				<select class="select-input field-md" name="expiry_hours" id="expiryHours">
-					<option value="1">1h</option>
-					<option value="6" selected>6h</option>
-					<option value="12">12h</option>
-					<option value="24">24h</option>
-					{{ if .Admin }}
-					<option value="168" data-i18n="upload.sevenDays">{{.T "upload.sevenDays"}}</option>
-					<option value="720" data-i18n="upload.oneMonth">{{.T "upload.oneMonth"}}</option>
-					<option value="2160" data-i18n="upload.threeMonths">{{.T "upload.threeMonths"}}</option>
-					{{ end }}
-				</select>
-			</div>
+            <div class="field-row compact">
+                <label
+                    class="field-label"
+                    for="expiryHours"
+                    data-i18n="upload.expiryLabel"
+                    >{{
+                        .T "upload.expiryLabel"
+                    }}</label
+                >
+                <select
+                    class="select-input field-md"
+                    name="expiry_hours"
+                    id="expiryHours"
+                >
+                    <option value="1">1h</option>
+                    <option value="6" selected>6h</option>
+                    <option value="12">12h</option>
+                    <option value="24">24h</option>
+                    {{ if .Admin }}
+                    <option value="168" data-i18n="upload.sevenDays">
+                        {{ .T "upload.sevenDays" }}
+                    </option>
+                    <option value="720" data-i18n="upload.oneMonth">
+                        {{ .T "upload.oneMonth" }}
+                    </option>
+                    <option value="2160" data-i18n="upload.threeMonths">
+                        {{ .T "upload.threeMonths" }}
+                    </option>
+                    {{ end }}
+                </select>
+            </div>
 
-			<button type="submit" class="primary-action-button field-lg">
-				<span data-i18n="upload.start">{{.T "upload.start"}}</span>
-			</button>
-		</form>
-	</div>
+            <button type="submit" class="primary-action-button field-lg">
+                <span data-i18n="upload.start">{{ .T "upload.start" }}</span>
+            </button>
+        </form>
+    </div>
 
-	<div class="editor-line" aria-hidden="true">
-		<span class="line-gutter">--</span>
-		<div class="section-rule"></div>
-	</div>
+    <div class="editor-line" aria-hidden="true">
+        <span class="line-gutter">--</span>
+        <div class="section-rule"></div>
+    </div>
 
-	<div class="editor-line">
-		<span class="line-gutter" aria-hidden="true"></span>
-		<pre id="progress" class="progress-output"></pre>
-	</div>
+    <div class="editor-line">
+        <span class="line-gutter" aria-hidden="true"></span>
+        <pre id="progress" class="progress-output"></pre>
+    </div>
 
-	<div class="editor-line">
-		<span class="line-gutter" aria-hidden="true"></span>
-		<div id="result" class="result-output"></div>
-	</div>
+    <div class="editor-line">
+        <span class="line-gutter" aria-hidden="true"></span>
+        <div id="result" class="result-output"></div>
+    </div>
 </div>
-<script type="module" src="/static/js/upload.js"></script>
+<script type="module" src='{{static "/static/js/upload.js"}}'></script>
 {{ template "base_bottom" . }}
 {{ end }}

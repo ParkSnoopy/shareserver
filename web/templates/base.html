@@ -1,53 +1,191 @@
-{{define "base_top"}}
-<!doctype html>
+{{ define "base_top" }}
+{{ doctype }}
+<!-- biome-ignore lint/a11y/useValidLang: the server fills in "ko" or "en". -->
 <html lang="{{.Language}}">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <meta name="color-scheme" content="only light">
-    <title>{{.Title}}</title>
-    <link rel="icon" href="/static/img/favicon.ico" sizes="any">
-    <link rel="stylesheet" href="/static/css/app.css">
-  </head>
-  <body data-section="{{.Section}}">
-    <div class="stage">
-      <header class="village-head">
-        <a class="site-logo" href="/"><span class="sr-only">Share://</span><span class="art" data-art="logo" aria-hidden="true"></span></a>
-        <div class="head-actions">
-          {{if .Admin}}
-            <form method="post" action="/admin/logout">
-              <input type="hidden" name="csrf" value="{{.CSRF}}">
-              <button class="pill-button" data-i18n="nav.logout">{{.T "nav.logout"}}</button>
-            </form>
-          {{end}}
-          <button type="button" class="pill-button language-toggle" data-language-toggle aria-label='{{.T "nav.language"}}: {{if eq .Language "ko"}}English{{else}}한국어{{end}}'>{{if eq .Language "ko"}}English{{else}}한국어{{end}}</button>
-        </div>
-        <nav class="tabs" aria-label="Main navigation">
-          <a class="nav-tab" data-tab="archive" href="/"{{if eq .Section "archive"}} aria-current="page"{{end}}><span class="tab-label" data-i18n="nav.archive">{{.T "nav.archive"}}</span><span class="art" aria-hidden="true"></span></a>
-          <a class="nav-tab" data-tab="upload" href="/upload"{{if eq .Section "upload"}} aria-current="page"{{end}}><span class="tab-label" data-i18n="nav.upload">{{.T "nav.upload"}}</span><span class="art" aria-hidden="true"></span></a>
-          <a class="nav-tab" data-tab="api" href="/api/"{{if eq .Section "api"}} aria-current="page"{{end}}><span class="tab-label" data-i18n="nav.api">{{.T "nav.api"}}</span><span class="art" aria-hidden="true"></span></a>
-          <a class="nav-tab" data-tab="admin" href="/admin"{{if eq .Section "admin"}} aria-current="page"{{end}}><span class="tab-label" data-i18n="nav.admin">{{.T "nav.admin"}}</span><span class="art" aria-hidden="true"></span></a>
-        </nav>
-        <div class="scenery">
-          <a class="scene-link scene-sun" href="/" title='{{.T "nav.archive"}}' aria-label='{{.T "nav.archive"}}' data-i18n-title="nav.archive" data-i18n-aria-label="nav.archive"><span class="art" data-art="sun" aria-hidden="true"></span></a>
-          <a class="scene-link scene-cloud" href="/upload" title='{{.T "nav.upload"}}' aria-label='{{.T "nav.upload"}}' data-i18n-title="nav.upload" data-i18n-aria-label="nav.upload"><span class="art" data-art="cloud" aria-hidden="true"></span></a>
-          <a class="scene-link scene-bird" href="/api/" title='{{.T "nav.api"}}' aria-label='{{.T "nav.api"}}' data-i18n-title="nav.api" data-i18n-aria-label="nav.api"><span class="art" data-art="bird" aria-hidden="true"></span></a>
-          <a class="scene-link scene-garbage" href="/admin/shares" title='{{.T "admin.sharesTitle"}}' aria-label='{{.T "admin.sharesTitle"}}' data-i18n-title="admin.sharesTitle" data-i18n-aria-label="admin.sharesTitle"><span class="art" data-art="garbage" aria-hidden="true"></span></a>
-        </div>
-      </header>
-      <main class="paper">
-        <span class="paper-art" aria-hidden="true"></span>
-{{end}}
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <meta name="color-scheme" content="only light">
+        <title>{{ .Title }}</title>
+        <!-- sizes="32x32", not "any": Chrome picks an "any" ICO over the SVG. -->
+        <link
+            rel="icon"
+            href='{{static "/static/img/favicon.ico"}}'
+            sizes="32x32"
+        >
+        <link
+            rel="icon"
+            href='{{static "/static/img/favicon.svg"}}'
+            type="image/svg+xml"
+        >
+        <link rel="stylesheet" href='{{static "/static/css/app.css"}}'>
+    </head>
+    <body
+        data-section="{{.Section}}"
+        data-village-name='{{.T "village.name"}}'
+        data-village-footer='{{.T "village.footer"}}'
+        data-remark='{{.T (printf "remark.%s" .Section)}}'
+        data-assets="{{.Assets}}"
+    >
+        <div class="stage">
+            <header class="village-head">
+                <a class="site-logo" href="/"
+                    ><span class="sr-only">Share://</span
+                    ><span
+                        class="art"
+                        data-art="logo"
+                        aria-hidden="true"
+                    ></span></a
+                >
+                <div class="head-actions">
+                    {{ if .Admin }}
+                    <form method="post" action="/admin/logout">
+                        <input type="hidden" name="csrf" value="{{.CSRF}}">
+                        <button
+                            type="submit"
+                            class="pill-button"
+                            data-i18n="nav.logout"
+                        >
+                            {{ .T "nav.logout" }}
+                        </button>
+                    </form>
+                    {{ end }}
+                    <button
+                        type="button"
+                        class="pill-button language-toggle"
+                        data-language-toggle
+                        aria-label='{{.T "nav.language"}}: {{if eq .Language "ko"}}English{{else}}한국어{{end}}'
+                    >
+                        {{ if eq .Language "ko" }}English{{ else }}한국어{{
+                            end
+                        }}
+                    </button>
+                </div>
+                <nav class="tabs" aria-label="Main navigation">
+                    <a
+                        class="nav-tab"
+                        data-tab="archive"
+                        href="/"
+                        {{if eq .Section "archive"}}
+                        aria-current="page"
+                        {{end}}
+                        ><span class="tab-label" data-i18n="nav.archive">{{
+                            .T "nav.archive"
+                        }}</span><span class="art" aria-hidden="true"></span></a
+                    >
+                    <a
+                        class="nav-tab"
+                        data-tab="upload"
+                        href="/upload"
+                        {{if eq .Section "upload"}}
+                        aria-current="page"
+                        {{end}}
+                        ><span class="tab-label" data-i18n="nav.upload">{{
+                            .T "nav.upload"
+                        }}</span><span class="art" aria-hidden="true"></span></a
+                    >
+                    <a
+                        class="nav-tab"
+                        data-tab="api"
+                        href="/api/"
+                        {{if eq .Section "api"}}
+                        aria-current="page"
+                        {{end}}
+                        ><span class="tab-label" data-i18n="nav.api">{{
+                            .T "nav.api"
+                        }}</span><span class="art" aria-hidden="true"></span></a
+                    >
+                    <a
+                        class="nav-tab"
+                        data-tab="admin"
+                        href="/admin"
+                        {{if eq .Section "admin"}}
+                        aria-current="page"
+                        {{end}}
+                        ><span class="tab-label" data-i18n="nav.admin">{{
+                            .T "nav.admin"
+                        }}</span><span class="art" aria-hidden="true"></span></a
+                    >
+                </nav>
+                <div class="scenery">
+                    <a
+                        class="scene-link scene-sun"
+                        href="/"
+                        title='{{.T "nav.archive"}}'
+                        data-i18n-title="nav.archive"
+                        ><span class="sr-only" data-i18n="nav.archive">{{
+                            .T "nav.archive"
+                        }}</span><span
+                            class="art"
+                            data-art="sun"
+                            aria-hidden="true"
+                        ></span></a
+                    >
+                    <a
+                        class="scene-link scene-cloud"
+                        href="/upload"
+                        title='{{.T "nav.upload"}}'
+                        data-i18n-title="nav.upload"
+                        ><span class="sr-only" data-i18n="nav.upload">{{
+                            .T "nav.upload"
+                        }}</span><span
+                            class="art"
+                            data-art="cloud"
+                            aria-hidden="true"
+                        ></span></a
+                    >
+                    <a
+                        class="scene-link scene-bird"
+                        href="/api/"
+                        title='{{.T "nav.api"}}'
+                        data-i18n-title="nav.api"
+                        ><span class="sr-only" data-i18n="nav.api">{{
+                            .T "nav.api"
+                        }}</span><span
+                            class="art"
+                            data-art="bird"
+                            aria-hidden="true"
+                        ></span></a
+                    >
+                    <a
+                        class="scene-link scene-garbage"
+                        href="/admin/shares"
+                        title='{{.T "admin.sharesTitle"}}'
+                        data-i18n-title="admin.sharesTitle"
+                        ><span class="sr-only" data-i18n="admin.sharesTitle">{{
+                            .T "admin.sharesTitle"
+                        }}</span><span
+                            class="art"
+                            data-art="garbage"
+                            aria-hidden="true"
+                        ></span></a
+                    >
+                </div>
+            </header>
+            <main class="paper">
+                <span class="paper-art" aria-hidden="true"></span>
+                {{ end }}
 
-{{define "base_bottom"}}
-      </main>
-      <footer class="site-ground"><span class="art" data-art="ground" aria-hidden="true"></span></footer>
-    </div>
-    <script src="/static/js/draw/hangul.js"></script>
-    <script src="/static/js/draw/draw.js"></script>
-    <script src="/static/js/draw/art.js"></script>
-    <script type="module" src="/static/js/i18n.js"></script>
-    <script type="module" src="/static/js/village.js"></script>
-  </body>
+                {{ define "base_bottom" }}
+            </main>
+            <footer class="site-ground">
+                <span class="art" data-art="ground" aria-hidden="true"></span>
+            </footer>
+        </div>
+        <script src='{{static "/static/js/draw/hangul.js"}}'></script>
+        <script src='{{static "/static/js/draw/draw.js"}}'></script>
+        <script src='{{static "/static/js/draw/art.js"}}'></script>
+        <script type="module" src='{{static "/static/js/i18n.js"}}'></script>
+        <!-- async: draw as soon as the kit is ready, not after page modules. -->
+        <script
+            type="module"
+            async
+            src='{{static "/static/js/village.js"}}'
+        ></script>
+        <script
+            type="module"
+            src='{{static "/static/js/prefetch.js"}}'
+        ></script>
+    </body>
 </html>
-{{end}}
+{{ end }}

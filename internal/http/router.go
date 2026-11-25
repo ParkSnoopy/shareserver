@@ -23,6 +23,8 @@ type Handler struct {
 	Upload    *upload.Uploader
 	Sessions  SessionLifecycle
 	Downloads *downloadProtection
+	// SiteAssets lists the versioned URLs that prefetch.js caches.
+	SiteAssets string
 }
 
 // New wires middleware, routes, templates, share store, and upload policy.
@@ -51,7 +53,9 @@ func New(a *app.App) http.Handler {
 			DB:        a.DB,
 		},
 	}
-	a.T = setupTemplates(a.C.TZ)
+	static := loadStaticFiles(repoFile("web", "static"))
+	a.T = setupTemplates(a.C.TZ, static.url)
+	h.SiteAssets = siteAssets(a.T, static)
 	r := chi.NewRouter()
 	r.Use(h.security)
 	r.Use(h.withClock)
@@ -59,7 +63,7 @@ func New(a *app.App) http.Handler {
 	r.Use(h.csrf)
 	r.Get("/download-sw.js", h.downloadServiceWorker)
 	r.Get("/robots.txt", h.robotsTXT)
-	r.Handle("/static/*", noCacheStatic(http.StripPrefix("/static/", http.FileServer(http.Dir(repoFile("web", "static"))))))
+	r.Handle("/static/*", static)
 	r.Get("/", h.home)
 	r.Post("/", h.home)
 	r.Get("/s/", h.archivePage)
@@ -99,19 +103,6 @@ func (h *Handler) robotsTXT(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	http.ServeFile(w, r, repoFile("web", "robots.txt"))
-}
-
-// noCacheStatic wraps the static file server so browsers always revalidate
-// (If-Modified-Since) before using a cached asset. Without this, heuristic
-// caching can serve a stale progress.js whose API no longer matches the
-// freshly-fetched share.js, causing "progress.state is not a function" and
-// similar stale-module crashes on devices that visited the page before an
-// update. The 304 path still avoids re-sending unchanged bytes.
-func noCacheStatic(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
-		next.ServeHTTP(w, r)
-	})
 }
 
 // home renders public archives or private-key lookup results.

@@ -178,6 +178,35 @@ desired, belong to deployment infrastructure. Header behavior is implemented in
 [HTTP middleware](../internal/http/middleware.go) and covered by
 [HTTP tests](../internal/test/http_test.go).
 
+### Versioned static assets
+
+The server reads `web/static` into memory at startup (edits need a restart,
+as template edits do) and gives each file a content version, the first 12 hex
+digits of its SHA-256:
+
+- Templates reference static files as `{{static "/static/..."}}`, which
+  renders `/static/...?v=<version>`.
+- Relative and `/static/` import specifiers in JavaScript modules are
+  rewritten to carry the version of their target. A module version includes
+  the versions of its imports, so a versioned URL always names the same
+  bytes, including everything it imports.
+- A request with the current version gets
+  `Cache-Control: public, max-age=31536000, immutable`. A request without a
+  version, or with the version of an older deployment, gets
+  `no-cache, must-revalidate`, so a browser never keeps a module whose imports
+  no longer match. The `ETag` is the version.
+
+Every page lists, in `<body data-assets>`, the versioned URLs of every module
+that some template loads, with all imports, and of every language catalog.
+After the `load` event, `prefetch.js` preloads them: modules as
+`modulepreload`, catalogs as `prefetch` with `crossorigin`, so each cache
+entry matches the request mode of the later real load. The first page fills
+the browser cache; later pages and a language switch load all assets from it
+without a request. The warm-up waits for `load` because HTTP/2 servers in Go,
+Caddy included, do not prioritize streams, so earlier prefetches would slow the
+first page. `i18n.js` takes its catalog URL from the same list. Implementation:
+[versioned static assets](../internal/http/assets.go).
+
 ## Body-only JSON and form envelopes
 
 Private listing and download authorization share `requestBodyValue` in the
