@@ -61,8 +61,10 @@ docker run --detach \
   ghcr.io/parksnoopy/shareserver:latest
 ```
 
-The named volume persists the SQLite database and uploaded blobs. The entrypoint
-preserves configured secrets and supervises both processes:
+The named volume persists the SQLite database and uploaded blobs. The image runs
+as the non-root `shareserver` account (UID `100`, GID `101`). If you bind-mount
+`/app/data`, make sure that account can write to it. The entrypoint preserves
+configured secrets and supervises both processes:
 
 ```text
 TLS proxy -> Anubis :8080 -> Shareserver 127.0.0.1:8081

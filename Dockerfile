@@ -17,11 +17,11 @@ RUN apk add --no-cache bash ca-certificates
 COPY --from=ghcr.io/techarohq/anubis:v1.28.2 /ko-app/anubis /app/anubis
 ADD --chmod=644 https://raw.githubusercontent.com/TecharoHQ/anubis/v1.28.2/LICENSE /usr/share/licenses/anubis/LICENSE
 
-# Add user `shareserver`
+# Keep the existing shareserver UID/GID for persistent volume ownership.
 USER root
 RUN \
-	addgroup -S shareserver	&&\
-	adduser -S -D -H -h /app -s /sbin/nologin -G shareserver shareserver
+	addgroup -S -g 101 shareserver	&&\
+	adduser -S -D -H -u 100 -h /app -s /sbin/nologin -G shareserver shareserver
 
 # Copy server binary
 COPY --from=build /build/shareserver /app/shareserver
@@ -36,7 +36,7 @@ RUN \
 	chown -R shareserver:shareserver /app
 
 # As user `shareserver`
-USER shareserver
+USER 100:101
 WORKDIR /app
 
 ENV ANUBIS_DIFFICULTY=4
